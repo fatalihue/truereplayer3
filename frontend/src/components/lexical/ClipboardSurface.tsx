@@ -4,7 +4,7 @@ import { SegmentedControl } from '../common/SegmentedControl';
 import { NumberInput } from '../common/NumberInput';
 import { FieldError } from '../common/FieldError';
 import { Callout } from '../common/Callout';
-import { useTt } from '../../state/LanguageContext';
+import { t } from '../../i18n';
 import { ArgInput, CheckRow as PopoverCheckRow, type CheckRowProps } from './popoverAtoms';
 
 // Inline (not full-width) so the Lines / Clean up rows keep wrapping side by side.
@@ -37,19 +37,21 @@ import { useAppState } from '../../state/AppStateContext';
 // The surface is the ONE place a modifier chain is built, so its title names the SOURCE the
 // token reads — "Clipboard" beside "Variable" and "Data column", not "Advanced Clipboard": no head
 // is more advanced than the others, and "Advanced…" is the button that opens this, not its name.
+// The text is the catalog's (i18n/<language>/clipboard.ts): each t() below becomes the build's text
+// at compile time, so these tables still hold plain strings.
 const HEAD_TITLES: Record<ChainHead['kind'], string> = {
-  clipboard: 'Clipboard',
-  row: 'Data column',
-  rownext: 'Data column (next row)',
-  var: 'Variable',
-  clip: 'Clipboard slot',
-  winclip: 'Clipboard history',
-  counter: 'Run repeat',
-  loop: 'Loop iteration',
-  datarow: 'Data row number',
-  uuid: 'UUID',
-  timestamp: 'Timestamp',
-  env: 'Environment variable',
+  clipboard: t('clipboard.heads.clipboard'),
+  row: t('clipboard.heads.row'),
+  rownext: t('clipboard.heads.rownext'),
+  var: t('clipboard.heads.var'),
+  clip: t('clipboard.heads.clip'),
+  winclip: t('clipboard.heads.winclip'),
+  counter: t('clipboard.heads.counter'),
+  loop: t('clipboard.heads.loop'),
+  datarow: t('clipboard.heads.datarow'),
+  uuid: t('clipboard.heads.uuid'),
+  timestamp: t('clipboard.heads.timestamp'),
+  env: t('clipboard.heads.env'),
 };
 
 // The three counters and {uuid} have no identity: the head IS the value, so the card above the
@@ -57,17 +59,17 @@ const HEAD_TITLES: Record<ChainHead['kind'], string> = {
 // satisfy the Record.
 const IDENTITY_LABELS: Record<ChainHead['kind'], string> = {
   clipboard: '',
-  row: 'Data column',
-  rownext: 'Data column',
-  var: 'Variable name',
-  clip: 'Slot name',
-  winclip: 'History item',
+  row: t('clipboard.identity.column'),
+  rownext: t('clipboard.identity.column'),
+  var: t('clipboard.identity.variableName'),
+  clip: t('clipboard.identity.slotName'),
+  winclip: t('clipboard.identity.historyItem'),
   counter: '',
   loop: '',
   datarow: '',
   uuid: '',
-  timestamp: 'Unit',
-  env: 'Variable name',
+  timestamp: t('clipboard.identity.unit'),
+  env: t('clipboard.identity.variableName'),
 };
 
 // Heads with nothing above the ladder — the identity card is skipped for them.
@@ -75,20 +77,20 @@ const HEAD_ONLY: ReadonlySet<ChainHead['kind']> = new Set(['clipboard', 'counter
 
 const IDENTITY_HINTS: Record<ChainHead['kind'], string> = {
   clipboard: '',
-  row: 'Cell of this column in the current data row.',
-  rownext: 'Each use takes the next row (1st → row 1, 2nd → row 2…). Resets each run.',
-  var: 'Value stored by Set Variable under this name.',
-  clip: 'What Copy to Slot or the capture hotkey stored in this slot.',
+  row: t('clipboard.identity.hints.row'),
+  rownext: t('clipboard.identity.hints.rownext'),
+  var: t('clipboard.identity.hints.var'),
+  clip: t('clipboard.identity.hints.clip'),
   // One line at the column's width — the identity card is what pushes the ladder past the fold.
-  winclip: 'Newest first. Needs Win+V history on; may hold anything any app copied — passwords too.',
+  winclip: t('clipboard.identity.hints.winclip'),
   counter: '',
   loop: '',
   datarow: '',
   uuid: '',
-  timestamp: 'Unix time: seconds since 1970-01-01 UTC, or milliseconds.',
+  timestamp: t('clipboard.identity.hints.timestamp'),
   // The same caution as the history item, for the same reason: a variable set by an installer or
   // a shell profile can hold a key or a token, and nothing here can tell.
-  env: 'Read from this machine when the macro runs. May hold anything the system or an app stored — keys too.',
+  env: t('clipboard.identity.hints.env'),
 };
 
 // What to say when there is no source to preview against. Each reason is DIFFERENT, and saying
@@ -96,17 +98,17 @@ const IDENTITY_HINTS: Record<ChainHead['kind'], string> = {
 // "only the engine has it" is not.
 const UNKNOWN_SOURCE_COPY: Record<ChainHead['kind'], string> = {
   clipboard: '',
-  row: 'No column by that name in the data table',
-  rownext: 'No column by that name in the data table',
-  var: 'Not set — variables are cleared at the start of every run',
-  clip: 'Nothing captured in this slot yet',
-  winclip: 'Read from Windows when the macro runs',
-  counter: 'Counted while the macro runs',
-  loop: 'Counted while the macro runs',
-  datarow: 'Counted while the macro runs',
-  uuid: 'Generated when the macro runs',
+  row: t('clipboard.unknown.column'),
+  rownext: t('clipboard.unknown.column'),
+  var: t('clipboard.unknown.variable'),
+  clip: t('clipboard.unknown.slot'),
+  winclip: t('clipboard.unknown.history'),
+  counter: t('clipboard.unknown.counted'),
+  loop: t('clipboard.unknown.counted'),
+  datarow: t('clipboard.unknown.counted'),
+  uuid: t('clipboard.unknown.generated'),
   timestamp: '',
-  env: 'Read from the machine when the macro runs',
+  env: t('clipboard.unknown.machine'),
 };
 
 interface ClipboardSurfaceProps {
@@ -143,7 +145,6 @@ interface ClipboardSurfaceProps {
 // the clipboard, because a gap at the top would say nothing true. Serialization stays
 // exclusively in buildClipboardToken — this component emits no token strings of its own.
 export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onBack, onReset, originalToken, backTip }: ClipboardSurfaceProps) {
-  const tt = useTt();
   // Only a chain on the clipboard previews against it: the other sources never read it.
   const { clipRaw, clipReady, refresh } = useClipboardContent(head.kind === 'clipboard');
   const runState = useRunState(head.kind === 'clip' || head.kind === 'var');
@@ -162,52 +163,52 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
   const source = useMemo((): { raw: string; ready: boolean; unknown: boolean; label: string; note?: string } => {
     switch (head.kind) {
       case 'clipboard':
-        return { raw: clipRaw, ready: clipReady, unknown: false, label: 'Clipboard now' };
+        return { raw: clipRaw, ready: clipReady, unknown: false, label: t('clipboard.source.clipboardNow') };
       case 'row':
       case 'rownext': {
         const key = head.column.trim().toLowerCase();
         // LAST duplicate header wins, mirroring the backend's BuildRowDict.
         let idx = -1;
         dataTable.headers.forEach((h, i) => { if (h.trim().toLowerCase() === key) idx = i; });
-        if (idx < 0) return { raw: '', ready: true, unknown: true, label: 'Cell (first row)' };
-        return { raw: dataTable.rows[0]?.[idx] ?? '', ready: true, unknown: false, label: 'Cell (first row)' };
+        if (idx < 0) return { raw: '', ready: true, unknown: true, label: t('clipboard.source.cell') };
+        return { raw: dataTable.rows[0]?.[idx] ?? '', ready: true, unknown: false, label: t('clipboard.source.cell') };
       }
       case 'clip': {
         const v = lookupRunState(runState.slots, head.name);
         return v === undefined
-          ? { raw: '', ready: true, unknown: true, label: 'Slot text' }
-          : { raw: v, ready: true, unknown: false, label: 'Slot text' };
+          ? { raw: '', ready: true, unknown: true, label: t('clipboard.source.slotText') }
+          : { raw: v, ready: true, unknown: false, label: t('clipboard.source.slotText') };
       }
       case 'var': {
         const v = lookupRunState(runState.variables, head.name);
         return v === undefined
-          ? { raw: '', ready: true, unknown: true, label: 'Variable value' }
+          ? { raw: '', ready: true, unknown: true, label: t('clipboard.source.variableValue') }
           // Variables are cleared at the start of every run, so anything here came from the LAST
           // one. Saying that is the difference between a useful preview and a misleading one.
-          : { raw: v, ready: true, unknown: false, label: 'Variable value', note: 'from the last run' };
+          : { raw: v, ready: true, unknown: false, label: t('clipboard.source.variableValue'), note: t('clipboard.source.lastRun') };
       }
       case 'winclip':
         // The Windows clipboard history lives in the engine only — nothing to preview against.
         // Labelled "Item text", not "History item": that name already belongs to the field above
         // that picks WHICH item, and the same words over both boxes read as one repeated thing.
-        return { raw: '', ready: true, unknown: true, label: 'Item text' };
+        return { raw: '', ready: true, unknown: true, label: t('clipboard.source.itemText') };
       case 'counter':
       case 'loop':
       case 'datarow':
         // A run counter exists only inside a run — previewing a chain against "" would claim the
         // chain yields nothing, a statement about the user's work rather than about the source.
-        return { raw: '', ready: true, unknown: true, label: 'Value' };
+        return { raw: '', ready: true, unknown: true, label: t('clipboard.source.value') };
       case 'uuid':
         // Drawn at replay, a new one per use; a sample here would be an id the run never pastes.
-        return { raw: '', ready: true, unknown: true, label: 'Value' };
+        return { raw: '', ready: true, unknown: true, label: t('clipboard.source.value') };
       case 'env':
         // The machine has it; a WebView does not.
-        return { raw: '', ready: true, unknown: true, label: 'Variable value' };
+        return { raw: '', ready: true, unknown: true, label: t('clipboard.source.variableValue') };
       case 'timestamp': {
         // The one source this surface DOES know: the clock. Read when the head changes (opening
         // the surface, switching the unit) — a ticking preview would redraw the ladder every second.
-        const t = Date.now();
-        return { raw: String(head.ms ? t : Math.floor(t / 1000)), ready: true, unknown: false, label: 'Now', note: 'preview time' };
+        const now = Date.now();
+        return { raw: String(head.ms ? now : Math.floor(now / 1000)), ready: true, unknown: false, label: t('clipboard.source.now'), note: t('clipboard.source.previewTime') };
       }
     }
   }, [head, clipRaw, clipReady, dataTable, runState]);
@@ -219,9 +220,8 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
   // and the caller gets everything. Say that, rather than a preview built from a number the user
   // is no longer using.
   const refUnfinished = argRefIsUnfinished(state);
-  const refTip = tt('Take this number from a variable instead — @name, @counter, @loop, @row or @datarow',
-                    'Pegar este número de uma variável — @nome, @counter, @loop, @row ou @datarow');
-  const numTip = tt('Back to a fixed number', 'Voltar para um número fixo');
+  const refTip = t('clipboard.arg.refTip');
+  const numTip = t('clipboard.arg.numTip');
 
   const set = (patch: Partial<TransformState>) => onStateChange((s) => ({ ...s, ...patch }));
 
@@ -256,7 +256,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
           <button type="button" onClick={onBack}
             className="flex items-center gap-1 h-6 px-1.5 text-caption rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors">
             <ChevronLeft size={13} />
-            Editor
+            {t('clipboard.back')}
           </button>
           <div className="w-px h-4 bg-border-subtle" />
           <Wand2 size={13} className="text-accent-hover shrink-0" />
@@ -267,10 +267,10 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
               The same Callout the popover body shows, so read-only has one look. */}
           <Callout tone="warn" still role="status">
             {state.unmodeledRefArg
-              ? 'Read-only: the line argument comes from a variable, which these controls can’t show. It still runs; an invalid variable yields nothing. Edit the token text in the editor to change it.'
-              : 'Read-only: a modifier here can’t be rebuilt as written (unknown, repeated or reordered). Edit the token text in the editor instead.'}
+              ? t('clipboard.readOnly.refArgSurface')
+              : t('clipboard.readOnly.unknownSurface')}
           </Callout>
-          <div className="label-micro text-text-tertiary">Token</div>
+          <div className="label-micro text-text-tertiary">{t('clipboard.token')}</div>
           <div className="font-mono text-minor px-2 py-1 rounded break-all"
             style={{
               color: 'var(--color-action-sendtext-fg)',
@@ -291,10 +291,10 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
           type="button"
           onClick={onBack}
           className="flex items-center gap-1 h-6 px-1.5 text-caption rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors"
-          data-tip={backTip ?? tt('Discards changes', 'Descarta as alterações')}
+          data-tip={backTip ?? t('clipboard.backTip')}
         >
           <ChevronLeft size={13} />
-          Editor
+          {t('clipboard.back')}
         </button>
         <div className="w-px h-4 bg-border-subtle" />
         <Wand2 size={13} className="text-accent-hover shrink-0" />
@@ -305,7 +305,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
           className="flex items-center gap-1 h-6 px-1.5 text-caption rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors"
         >
           <RotateCcw size={12} />
-          Reset
+          {t('common.actions.reset')}
         </button>
       </div>
 
@@ -330,17 +330,17 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                     min={1}
                     inputWidth="w-16"
                     inputHeight="h-8"
-                    ariaLabel="History item"
+                    ariaLabel={t('clipboard.identity.historyItem')}
                   />
-                  <span className="text-caption text-text-tertiary">1 = most recent</span>
+                  <span className="text-caption text-text-tertiary">{t('clipboard.identity.mostRecent')}</span>
                 </div>
               ) : head.kind === 'timestamp' ? (
                 <div className="flex items-center gap-2 flex-wrap">
                   <SegmentedControl<'s' | 'ms'>
-                    ariaLabel="Unit"
+                    ariaLabel={t('clipboard.identity.unit')}
                     options={[
-                      { value: 's', label: 'Seconds' },
-                      { value: 'ms', label: 'Milliseconds' },
+                      { value: 's', label: t('clipboard.identity.seconds') },
+                      { value: 'ms', label: t('clipboard.identity.milliseconds') },
                     ]}
                     value={head.ms ? 'ms' : 's'}
                     onChange={(v) => onHeadChange({ kind: 'timestamp', ms: v === 'ms' })}
@@ -355,7 +355,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   onChange={(e) => onHeadChange({ kind: head.kind, column: e.target.value.replace(/[{}:]/g, '') })}
                   autoFocus
                   spellCheck={false}
-                  placeholder="column"
+                  placeholder={t('clipboard.identity.columnPlaceholder')}
                   className="input-field font-mono"
                 />
               ) : head.kind === 'var' || head.kind === 'clip' || head.kind === 'env' ? (
@@ -370,7 +370,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   }}
                   autoFocus
                   spellCheck={false}
-                  placeholder={head.kind === 'env' ? 'USERNAME' : 'name'}
+                  placeholder={head.kind === 'env' ? t('clipboard.identity.envPlaceholder') : t('clipboard.identity.namePlaceholder')}
                   className="input-field font-mono"
                 />
               ) : null /* the head-only kinds never reach this card (HEAD_ONLY above) */}
@@ -379,16 +379,16 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
               </div>
               {/* Reserved validation line — ALWAYS mounted, so emptying the field cannot grow the
                   identity block. An empty name builds a broken token ({clip:}), which the footer's
-                  Insert already refuses; this is what says WHY. English, like every other
-                  FieldError call site. winclip never shows it — chainHeadIsUsable is true for it. */}
+                  Insert already refuses; this is what says WHY. winclip never shows it —
+                  chainHeadIsUsable is true for it. */}
               <FieldError
                 show={!chainHeadIsUsable(head)}
                 className="text-caption mt-1"
                 style={{ color: 'var(--color-recording-fg)' }}
               >
                 {head.kind === 'row' || head.kind === 'rownext'
-                  ? 'Name the column to build this token'
-                  : 'Name it to build this token'}
+                  ? t('clipboard.identity.nameColumn')
+                  : t('clipboard.identity.nameIt')}
               </FieldError>
             </div>
           )}
@@ -397,44 +397,44 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
               ladder then transforms. The steps below shifted up by one to keep the numbering
               honest about pipeline order, which is what the ladder exists to communicate. */}
           {showSequence && (
-          <Step n={1} title="Sequence" active={state.next}>
+          <Step n={1} title={t('clipboard.steps.sequence')} active={state.next}>
             <CheckRow
               checked={state.next}
               onChange={() => set({ next: !state.next })}
-              label="One line per use"
+              label={t('clipboard.sequence.onePerUse')}
             />
             {/* The ON state is the one that needs a sentence; "Off: pastes the whole clipboard"
                 only repeated the unchecked box, and the three Off lines together cost the ladder
                 a step's worth of height. */}
             {state.next && (
               <div className="text-caption text-text-tertiary leading-snug mt-1">
-                Each use takes the next line; a new copy starts over. The preview always shows line 1.
+                {t('clipboard.sequence.onHint')}
               </div>
             )}
           </Step>
           )}
 
-          <Step n={sn(2)} title="Trim" active={state.trim}>
+          <Step n={sn(2)} title={t('clipboard.steps.trim')} active={state.trim}>
             <CheckRow
               checked={state.trim}
               onChange={() => set({ trim: !state.trim })}
-              label="Trim whitespace"
+              label={t('clipboard.trim.whitespace')}
             />
           </Step>
 
           {/* Replace runs right after trim in the emitted chain — on the raw text, before any cut.
               Two raw arguments like the join separator: no colon in either, and an EMPTY "with"
               deletes every match. */}
-          <Step n={sn(3)} title="Replace" active={replaceActive}>
+          <Step n={sn(3)} title={t('clipboard.steps.replace')} active={replaceActive}>
             <div className="space-y-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <input
                   type="text"
                   value={state.replaceFrom}
                   onChange={(e) => set({ replaceFrom: e.target.value.replace(/[{}:]/g, '') })}
-                  placeholder="find"
-                  aria-label="Find"
-                  data-tip={tt('Every match, ignoring case. { } : not allowed.', 'Toda ocorrência, sem diferenciar maiúsculas. { } : não podem.')}
+                  placeholder={t('clipboard.replace.findPlaceholder')}
+                  aria-label={t('clipboard.replace.find')}
+                  data-tip={t('clipboard.replace.findTip')}
                   className="input-field font-mono w-28"
                 />
                 <span className="text-caption text-text-tertiary">→</span>
@@ -443,9 +443,9 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   value={state.replaceTo}
                   onChange={(e) => set({ replaceTo: e.target.value.replace(/[{}:]/g, '') })}
                   disabled={state.replaceFrom.length === 0}
-                  placeholder="(nothing)"
-                  aria-label="Replace with"
-                  data-tip={tt('Empty deletes the match. { } : not allowed.', 'Vazio apaga a ocorrência. { } : não podem.')}
+                  placeholder={t('clipboard.replace.withPlaceholder')}
+                  aria-label={t('clipboard.replace.with')}
+                  data-tip={t('clipboard.replace.withTip')}
                   className="input-field font-mono w-28"
                 />
               </div>
@@ -456,15 +456,15 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
               mounted and inert while the mode does not use them (Join with already worked this way,
               and so does the popover ladder). The column keeps its shape when a mode changes, and
               the user sees what each mode asks for before choosing it. */}
-          <Step n={sn(4)} title="Split at" active={splitActive}>
+          <Step n={sn(4)} title={t('clipboard.steps.splitAt')} active={splitActive}>
             <div className="space-y-2">
               <div className="flex items-center gap-3 flex-wrap">
                 <SegmentedControl<Split>
-                  ariaLabel="Split at a delimiter"
+                  ariaLabel={t('clipboard.split.label')}
                   options={[
-                    { value: 'none', label: 'Off' },
-                    { value: 'before', label: 'Before' },
-                    { value: 'after', label: 'After' },
+                    { value: 'none', label: t('clipboard.split.off') },
+                    { value: 'before', label: t('clipboard.split.before') },
+                    { value: 'after', label: t('clipboard.split.after') },
                   ]}
                   value={state.split}
                   onChange={(v) => set({ split: v })}
@@ -479,29 +479,26 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   onChange={(e) => set({ splitDelim: e.target.value.replace(/[{}]/g, '') })}
                   disabled={state.split === 'none'}
                   placeholder=" - "
-                  aria-label="Delimiter"
-                  data-tip={tt(
-                    'Cut here — the delimiter is dropped. Spaces and : allowed, { } not.',
-                    'Corta aqui — o delimitador é descartado. Espaços e : podem, { } não.',
-                  )}
+                  aria-label={t('clipboard.split.delimiter')}
+                  data-tip={t('clipboard.split.delimiterTip')}
                   className="input-field font-mono w-28"
                 />
                 <CheckRow
                   checked={state.splitLast}
                   onChange={() => set({ splitLast: !state.splitLast })}
-                  label="Last match"
+                  label={t('clipboard.split.lastMatch')}
                   disabled={state.split === 'none'}
                 />
               </div>
               {state.split !== 'none' && (
                 <div className="text-caption text-text-tertiary leading-snug">
-                  No delimiter in the text = nothing, not the whole text.
+                  {t('clipboard.split.absentHint')}
                 </div>
               )}
             </div>
           </Step>
 
-          <Step n={sn(5)} title="Drop count" active={dropNumActive}>
+          <Step n={sn(5)} title={t('clipboard.steps.dropCount')} active={dropNumActive}>
             <div className="space-y-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <input
@@ -509,31 +506,28 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   value={state.dropNumSuffix}
                   onChange={(e) => set({ dropNumSuffix: e.target.value.replace(/[{}]/g, '') })}
                   placeholder="x "
-                  aria-label="Count suffix"
-                  data-tip={tt(
-                    'Strips leading digits + this text (e.g. "1x "). { } not allowed.',
-                    'Remove dígitos iniciais + este texto (ex.: "1x "). { } não podem.',
-                  )}
+                  aria-label={t('clipboard.dropCount.suffix')}
+                  data-tip={t('clipboard.dropCount.suffixTip')}
                   className="input-field font-mono w-28"
                 />
               </div>
               {state.dropNumSuffix.length > 0 && (
                 <div className="text-caption text-text-tertiary leading-snug">
-                  Strips only a leading count with this exact suffix: "1x Caixa" → "Caixa".
+                  {t('clipboard.dropCount.hint')}
                 </div>
               )}
             </div>
           </Step>
 
-          <Step n={sn(6)} title="Lines" active={linesActive}>
+          <Step n={sn(6)} title={t('clipboard.steps.lines')} active={linesActive}>
             <div className="space-y-2">
               <div className="flex items-center gap-3 flex-wrap">
                 <SegmentedControl<ListPick>
-                  ariaLabel="Lines"
+                  ariaLabel={t('clipboard.steps.lines')}
                   options={[
-                    { value: 'none', label: 'All lines' },
-                    { value: 'range', label: 'Range' },
-                    { value: 'lines', label: 'Pick #s' },
+                    { value: 'none', label: t('clipboard.lines.all') },
+                    { value: 'range', label: t('clipboard.lines.range') },
+                    { value: 'lines', label: t('clipboard.lines.pick') },
                   ]}
                   value={state.listPick}
                   onChange={(v) => set({ listPick: v })}
@@ -547,7 +541,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                     disabled={state.listPick !== 'range'}
                     min={1}
                     placeholder="1"
-                    ariaLabel="First line"
+                    ariaLabel={t('clipboard.lines.firstLine')}
                     inputWidth="w-14"
                     inputHeight="h-8"
                   />
@@ -558,8 +552,8 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                     onClear={() => set({ rangeTo: null })}
                     disabled={state.listPick !== 'range'}
                     min={1}
-                    placeholder="end"
-                    ariaLabel="Last line"
+                    placeholder={t('clipboard.openEnd')}
+                    ariaLabel={t('clipboard.lines.lastLine')}
                     inputWidth="w-14"
                     inputHeight="h-8"
                   />
@@ -570,21 +564,18 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   onChange={(e) => set({ linesSpec: e.target.value.replace(/[^0-9,]/g, '') })}
                   disabled={state.listPick !== 'lines'}
                   placeholder="3,1,2"
-                  aria-label="Line numbers"
-                  data-tip={tt(
-                    'Comma-separated line numbers; repeats allowed',
-                    'Números de linha separados por vírgula; repetição permitida',
-                  )}
+                  aria-label={t('clipboard.lines.numbers')}
+                  data-tip={t('clipboard.lines.numbersTip')}
                   className="input-field font-mono w-24"
                 />
               </div>
               <div className="flex items-center gap-4 flex-wrap">
-                <CheckRow checked={state.sort} onChange={() => set({ sort: !state.sort })} label="Sort A–Z" />
-                <CheckRow checked={state.dedupe} onChange={() => set({ dedupe: !state.dedupe })} label="Dedupe" />
-                <CheckRow checked={state.reverse} onChange={() => set({ reverse: !state.reverse })} label="Reverse" />
+                <CheckRow checked={state.sort} onChange={() => set({ sort: !state.sort })} label={t('clipboard.lines.sort')} />
+                <CheckRow checked={state.dedupe} onChange={() => set({ dedupe: !state.dedupe })} label={t('clipboard.lines.dedupe')} />
+                <CheckRow checked={state.reverse} onChange={() => set({ reverse: !state.reverse })} label={t('clipboard.lines.reverse')} />
               </div>
               <div className="flex items-center gap-2">
-                <CheckRow checked={state.join} onChange={() => set({ join: !state.join })} label="Join with" />
+                <CheckRow checked={state.join} onChange={() => set({ join: !state.join })} label={t('clipboard.lines.joinWith')} />
                 <input
                   type="text"
                   value={state.joinSep}
@@ -594,26 +585,23 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   onChange={(e) => set({ joinSep: e.target.value.replace(/[{}:]/g, '') })}
                   disabled={!state.join}
                   placeholder=","
-                  data-tip={tt(
-                    'Joins lines with this — empty allowed. { } : not allowed.',
-                    'Une as linhas com isto — vazio permitido. { } : não podem.',
-                  )}
+                  data-tip={t('clipboard.lines.joinTip')}
                   className="input-field font-mono w-24"
                 />
               </div>
             </div>
           </Step>
 
-          <Step n={sn(7)} title="Extract" active={state.extract !== 'none'}>
+          <Step n={sn(7)} title={t('clipboard.steps.extract')} active={state.extract !== 'none'}>
             <div className="space-y-2">
               <div className="flex items-center gap-3 flex-wrap">
                 <SegmentedControl<Extract>
-                  ariaLabel="Extract"
+                  ariaLabel={t('clipboard.steps.extract')}
                   options={[
-                    { value: 'none', label: 'Everything' },
-                    { value: 'line', label: 'Line #' },
-                    { value: 'word', label: 'Word #' },
-                    { value: 'words', label: 'Words' },
+                    { value: 'none', label: t('clipboard.extract.everything') },
+                    { value: 'line', label: t('clipboard.extract.line') },
+                    { value: 'word', label: t('clipboard.extract.word') },
+                    { value: 'words', label: t('clipboard.extract.words') },
                   ]}
                   value={state.extract}
                   onChange={(v) => set({ extract: v })}
@@ -631,10 +619,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                 />
                 <span
                   className="flex items-center gap-1"
-                  data-tip={tt(
-                    'Word range; a blank side is open-ended.',
-                    'Intervalo de palavras; lado em branco = sem limite.',
-                  )}
+                  data-tip={t('clipboard.extract.wordsTip')}
                 >
                   <NumberInput
                     value={state.wordsFrom}
@@ -643,7 +628,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                     disabled={state.extract !== 'words'}
                     min={1}
                     placeholder="1"
-                    ariaLabel="First word"
+                    ariaLabel={t('clipboard.extract.firstWord')}
                     inputWidth="w-14"
                     inputHeight="h-8"
                   />
@@ -654,8 +639,8 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                     onClear={() => set({ wordsTo: null })}
                     disabled={state.extract !== 'words'}
                     min={1}
-                    placeholder="end"
-                    ariaLabel="Last word"
+                    placeholder={t('clipboard.openEnd')}
+                    ariaLabel={t('clipboard.extract.lastWord')}
                     inputWidth="w-14"
                     inputHeight="h-8"
                   />
@@ -664,15 +649,15 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
             </div>
           </Step>
 
-          <Step n={sn(8)} title="Limit length" active={state.limit !== 'none'}>
+          <Step n={sn(8)} title={t('clipboard.steps.limit')} active={state.limit !== 'none'}>
             <div className="space-y-2">
               <div className="flex items-center gap-3 flex-wrap">
                 <SegmentedControl<Limit>
-                  ariaLabel="Limit length"
+                  ariaLabel={t('clipboard.steps.limit')}
                   options={[
-                    { value: 'none', label: 'None' },
-                    { value: 'first', label: 'First N chars' },
-                    { value: 'last', label: 'Last N chars' },
+                    { value: 'none', label: t('clipboard.limit.none') },
+                    { value: 'first', label: t('clipboard.limit.first') },
+                    { value: 'last', label: t('clipboard.limit.last') },
                   ]}
                   value={state.limit}
                   onChange={(v) => set({ limit: v })}
@@ -691,7 +676,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
             </div>
           </Step>
 
-          <Step n={sn(9)} title="Clean up" active={state.noAccents || state.digitsOnly}>
+          <Step n={sn(9)} title={t('clipboard.steps.cleanUp')} active={state.noAccents || state.digitsOnly}>
             {/* Character-class filters over the value at THIS point of the chain — the
                 builder emits them after the slice/limit steps and before Case (slice,
                 then clean, then case), which is why the step sits here in the ladder. */}
@@ -699,28 +684,28 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
               <CheckRow
                 checked={state.noAccents}
                 onChange={() => set({ noAccents: !state.noAccents })}
-                label="Remove accents"
+                label={t('clipboard.cleanUp.noAccents')}
               />
               <CheckRow
                 checked={state.digitsOnly}
                 onChange={() => set({ digitsOnly: !state.digitsOnly })}
-                label="Digits only"
+                label={t('clipboard.cleanUp.digitsOnly')}
               />
             </div>
           </Step>
 
           {/* count → pad, then case, then default: the number of lines is what gets padded. */}
-          <Step n={sn(10)} title="Count & pad" active={shapeActive}>
+          <Step n={sn(10)} title={t('clipboard.steps.countPad')} active={shapeActive}>
             <div className="flex items-center gap-4 flex-wrap">
               <CheckRow
                 checked={state.count}
                 onChange={() => set({ count: !state.count })}
-                label="Count lines"
+                label={t('clipboard.countPad.countLines')}
               />
               <CheckRow
                 checked={state.pad}
                 onChange={() => set({ pad: !state.pad })}
-                label="Zero-pad to"
+                label={t('clipboard.countPad.zeroPad')}
               />
               <ArgInput
                 value={state.padN}
@@ -736,19 +721,19 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
             </div>
           </Step>
 
-          <Step n={sn(11)} title="Case" active={state.case !== 'none'}>
+          <Step n={sn(11)} title={t('clipboard.steps.textCase')} active={state.case !== 'none'}>
             {/* Wrap like Steps 2-4 so the block-level SegmentedControl track hugs its
                 buttons instead of stretching to the full config-column width (which left
                 a wide empty pill after the last "Title" segment). */}
             <div className="flex items-center gap-2 flex-wrap">
               <SegmentedControl<CaseTransform>
-                ariaLabel="Case"
+                ariaLabel={t('clipboard.steps.textCase')}
                 options={[
-                  { value: 'none', label: 'None' },
-                  { value: 'upper', label: 'UPPER' },
-                  { value: 'lower', label: 'lower' },
-                  { value: 'sentence', label: 'Sentence' },
-                  { value: 'title', label: 'Title' },
+                  { value: 'none', label: t('clipboard.textCase.none') },
+                  { value: 'upper', label: t('clipboard.textCase.upper') },
+                  { value: 'lower', label: t('clipboard.textCase.lower') },
+                  { value: 'sentence', label: t('clipboard.textCase.sentence') },
+                  { value: 'title', label: t('clipboard.textCase.title') },
                 ]}
                 value={state.case}
                 onChange={(v) => set({ case: v })}
@@ -757,20 +742,20 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
           </Step>
 
           {/* LAST: the fallback sees the FINAL value, and only an empty one. */}
-          <Step n={sn(12)} title="Default" active={defaultActive}>
+          <Step n={sn(12)} title={t('clipboard.steps.fallback')} active={defaultActive}>
             <div className="space-y-2">
               <input
                 type="text"
                 value={state.defaultText}
                 onChange={(e) => set({ defaultText: e.target.value.replace(/[{}]/g, '') })}
-                placeholder="when empty"
-                aria-label="Default text"
-                data-tip={tt('Used when the result is empty. Spaces and : allowed, { } not.', 'Usado quando o resultado fica vazio. Espaços e : podem, { } não.')}
+                placeholder={t('clipboard.fallback.placeholder')}
+                aria-label={t('clipboard.fallback.label')}
+                data-tip={t('clipboard.fallback.tip')}
                 className="input-field font-mono"
               />
               {state.defaultText.length > 0 && (
                 <div className="text-caption text-text-tertiary leading-snug">
-                  An unset variable, a missing delimiter or a line past the end pastes this instead of nothing.
+                  {t('clipboard.fallback.hint')}
                 </div>
               )}
             </div>
@@ -802,7 +787,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   className="h-5 px-1.5 inline-flex items-center gap-1 rounded label-micro text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors"
                 >
                   <RefreshCw size={11} className="shrink-0" />
-                  Refresh
+                  {t('clipboard.refresh')}
                 </button>
               )}
             </div>
@@ -813,15 +798,15 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
               {source.unknown ? (
                 <span className="italic text-text-disabled">{UNKNOWN_SOURCE_COPY[head.kind]}</span>
               ) : source.ready ? (
-                source.raw === '' ? <span className="italic text-text-disabled">(empty)</span> : source.raw
+                source.raw === '' ? <span className="italic text-text-disabled">{t('clipboard.empty')}</span> : source.raw
               ) : (
-                <span className="italic text-text-disabled">Reading…</span>
+                <span className="italic text-text-disabled">{t('clipboard.reading')}</span>
               )}
             </div>
           </div>
 
           <div className="shrink-0 flex flex-col">
-            <div className="label-micro text-text-tertiary mb-1 shrink-0">Result</div>
+            <div className="label-micro text-text-tertiary mb-1 shrink-0">{t('clipboard.result')}</div>
             <div
               className="min-h-[64px] max-h-[calc(40vh/var(--ui-zoom))] font-mono text-caption px-2 py-1 rounded border whitespace-pre-wrap break-all overflow-auto"
               style={{
@@ -835,22 +820,22 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   it on. Unfinished then FIRST among the rest — see ClipboardModifierBody. */}
               {source.unknown
                 ? <span className="italic text-text-disabled">
-                    {'No preview until there is something to transform.'}
+                    {t('clipboard.noPreview.noSource')}
                   </span>
                 : refUnfinished
                 ? <span className="italic" style={{ color: 'var(--color-recording-fg)' }}>
-                    {'Finish the name after @ — until then the token keeps the fixed number.'}
+                    {t('clipboard.noPreview.refUnfinished')}
                   </span>
                 : runtimeDependent
                   ? <span className="italic text-text-disabled">
-                      {'Resolved when the macro runs — the index comes from a variable.'}
+                      {t('clipboard.noPreview.fromVariable')}
                     </span>
-                  : preview === '' ? <span className="italic text-text-disabled">(empty)</span> : preview}
+                  : preview === '' ? <span className="italic text-text-disabled">{t('clipboard.empty')}</span> : preview}
             </div>
           </div>
 
           <div className="shrink-0">
-            <div className="label-micro text-text-tertiary mb-1">Token</div>
+            <div className="label-micro text-text-tertiary mb-1">{t('clipboard.token')}</div>
             <div
               className="font-mono text-minor px-2 py-1 rounded break-all"
               style={{

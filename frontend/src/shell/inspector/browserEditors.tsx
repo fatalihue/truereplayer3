@@ -1,9 +1,9 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useBridge } from '../../bridge/BridgeContext';
 import type { ActionItem, BrowserTestResult, SelectorAlternative } from '../../bridge/messageTypes';
+import { fmtNum, t } from '../../i18n';
 import { newRequestId, useEditorTools } from '../../logic/useEditorTools';
 import { useSteps } from '../../logic/useSteps';
-import { useTt } from '../../state/LanguageContext';
 import { typeBudgetMs } from '../../utils/typeBudget';
 import { useShell } from '../store';
 import { DraftField, Section, Segmented, Switch } from './fields';
@@ -32,11 +32,11 @@ const useEdit = (step: ActionItem) => {
 
 type TextMode = 'exact' | 'contains' | 'icontains' | 'regex';
 const TEXT_PREFIX: Record<Exclude<TextMode, 'regex'>, string> = { exact: 'text=', contains: 'text*=', icontains: 'text~=' };
-const TEXT_MODES: { value: TextMode; label: string }[] = [
-  { value: 'exact', label: 'Exact' },
-  { value: 'contains', label: 'Contains' },
-  { value: 'icontains', label: 'Contains (i)' },
-  { value: 'regex', label: 'Regex' },
+const TEXT_MODES: { value: TextMode; label: string; tip?: string }[] = [
+  { value: 'exact', label: t('browser.textMatch.exact') },
+  { value: 'contains', label: t('browser.textMatch.contains') },
+  { value: 'icontains', label: t('browser.textMatch.icontains'), tip: t('browser.textMatch.icontainsTip') },
+  { value: 'regex', label: t('browser.textMatch.regex') },
 ];
 
 /**
@@ -57,6 +57,7 @@ const textKey = (mode: TextMode, raw: string, flags: string) => (mode === 'regex
 const regexError = (pattern: string): string | null => {
   try { new RegExp(pattern); return null; } catch (e) { return e instanceof Error ? e.message : String(e); }
 };
+const trim = (text: string) => text.trim();
 
 /**
  * ⑧ The browser steps (editor-passo-126 to 159): Open URL, with the address, the tab and what to
@@ -67,14 +68,14 @@ const regexError = (pattern: string): string | null => {
  * in the strip under the header, as every step's (D29).
  */
 export function BrowserEditor({ step, locked }: { step: ActionItem; locked: boolean }) {
-  const t = step.actionType;
+  const type = step.actionType;
   return (
     <>
       <ExtensionMissing />
-      {t === 'BrowserNavigate' ? <OpenUrlFields step={step} locked={locked} /> : <ElementFields step={step} locked={locked} withText={WITH_TEXT.has(t)} />}
-      {t === 'BrowserType' && <TypeFields step={step} locked={locked} />}
-      {t === 'BrowserSelectOption' && <SelectFields step={step} locked={locked} />}
-      {(t === 'BrowserWaitElement' || t === 'BrowserAssert') && <ConditionFields step={step} locked={locked} />}
+      {type === 'BrowserNavigate' ? <OpenUrlFields step={step} locked={locked} /> : <ElementFields step={step} locked={locked} withText={WITH_TEXT.has(type)} />}
+      {type === 'BrowserType' && <TypeFields step={step} locked={locked} />}
+      {type === 'BrowserSelectOption' && <SelectFields step={step} locked={locked} />}
+      {(type === 'BrowserWaitElement' || type === 'BrowserAssert') && <ConditionFields step={step} locked={locked} />}
       <TestAction step={step} locked={locked} />
       <Timing step={step} locked={locked} />
     </>
@@ -88,23 +89,23 @@ function OpenUrlFields({ step, locked }: { step: ActionItem; locked: boolean }) 
   const url = step.key ?? '';
   // Just added, it asks for its address first, as today's dialog did (dialogos-075).
   useLayoutEffect(() => {
-    if (takeFieldAsk(id, 'key')) document.querySelector<HTMLInputElement>('.insp-body input[aria-label="URL"]')?.focus();
+    if (takeFieldAsk(id, 'key')) document.querySelector<HTMLInputElement>(`.insp-body input[aria-label="${t('browser.openUrl.url')}"]`)?.focus();
   }, [id]);
   return (
     <>
-      <Section label="URL" hint={url.trim() ? 'https:// is added if omitted.' : <span data-error="">Enter the address to open.</span>}>
-        <DraftField stepId={id} field="key" label="URL" kind="mono" placeholder="https://example.com" stored={url} disabled={locked} parse={(t) => t.trim()} />
+      <Section label={t('browser.openUrl.url')} hint={url.trim() ? t('browser.openUrl.hint') : <span data-error="">{t('browser.openUrl.missing')}</span>}>
+        <DraftField stepId={id} field="key" label={t('browser.openUrl.url')} kind="mono" placeholder={t('browser.openUrl.placeholder')} stored={url} disabled={locked} parse={trim} />
       </Section>
       <div className="insp-row">
-        <span className="insp-row-label">Open in new tab</span>
-        <Switch label="Open in new tab" checked={!!step.newTab} disabled={locked} onChange={(on) => edit([{ field: 'newTab', value: String(on) }])} />
+        <span className="insp-row-label">{t('browser.openUrl.newTab')}</span>
+        <Switch label={t('browser.openUrl.newTab')} checked={!!step.newTab} disabled={locked} onChange={(on) => edit([{ field: 'newTab', value: String(on) }])} />
       </div>
-      <span className="insp-sublabel">After navigation</span>
-      <Section label="URL pattern" hint="Glob (*) or /regex/.">
-        <DraftField stepId={id} field="urlWaitPattern" label="URL pattern" kind="mono" placeholder="*/dashboard*" stored={step.urlWaitPattern ?? ''} disabled={locked} parse={(t) => t.trim()} />
+      <span className="insp-sublabel">{t('browser.openUrl.after')}</span>
+      <Section label={t('browser.openUrl.pattern')} hint={t('browser.openUrl.patternHint')}>
+        <DraftField stepId={id} field="urlWaitPattern" label={t('browser.openUrl.pattern')} kind="mono" placeholder={t('browser.openUrl.patternPlaceholder')} stored={step.urlWaitPattern ?? ''} disabled={locked} parse={trim} />
       </Section>
-      <Section label="Ready element">
-        <DraftField stepId={id} field="postNavigateSelector" label="Ready element" kind="mono" placeholder="#app-ready" stored={step.postNavigateSelector ?? ''} disabled={locked} parse={(t) => t.trim()} />
+      <Section label={t('browser.openUrl.ready')}>
+        <DraftField stepId={id} field="postNavigateSelector" label={t('browser.openUrl.ready')} kind="mono" placeholder={t('browser.openUrl.readyPlaceholder')} stored={step.postNavigateSelector ?? ''} disabled={locked} parse={trim} />
       </Section>
     </>
   );
@@ -119,7 +120,7 @@ function ElementFields({ step, locked, withText }: { step: ActionItem; locked: b
   const found = withText ? textOf(key) : null;
   return (
     <div className="insp-group">
-      <SelectorField step={step} locked={locked} stored={found ? '' : key} hint={found ? 'The Text Match below finds it.' : undefined} />
+      <SelectorField step={step} locked={locked} stored={found ? '' : key} hint={found ? t('browser.textMatch.foundBelow') : undefined} />
       {withText && <TextMatch step={step} locked={locked} found={found} />}
     </div>
   );
@@ -132,7 +133,6 @@ function ElementFields({ step, locked, withText }: { step: ActionItem; locked: b
  */
 function TextMatch({ step, locked, found }: { step: ActionItem; locked: boolean; found: ReturnType<typeof textOf> }) {
   const edit = useEdit(step);
-  const tt = useTt();
   const id = step.id ?? '';
   const key = step.key ?? '';
   const [mode, setMode] = useState<TextMode>(found?.mode ?? 'exact');
@@ -151,15 +151,15 @@ function TextMatch({ step, locked, found }: { step: ActionItem; locked: boolean;
   };
   return (
     <Section
-      label="Text Match"
+      label={t('browser.textMatch.label')}
       aside={found ? <Tier selector={key} /> : undefined}
-      hint={bad ? <span data-error="">Invalid regex: {bad}</span> : 'Filled, it finds the element by its text instead of the CSS selector.'}
+      hint={bad ? <span data-error="">{t('browser.textMatch.invalid', { error: bad })}</span> : t('browser.textMatch.hint')}
     >
       <Segmented<TextMode>
-        label="Text match mode"
+        label={t('browser.textMatch.mode')}
         value={mode}
         disabled={locked}
-        options={TEXT_MODES.map(m => (m.value === 'icontains' ? { ...m, tip: tt('Contains, in any case', 'Contém, sem ligar para maiúsculas') } : m))}
+        options={TEXT_MODES}
         onChange={(m) => {
           setMode(m);
           const raw = found?.raw ?? '';
@@ -169,12 +169,12 @@ function TextMatch({ step, locked, found }: { step: ActionItem; locked: boolean;
       <DraftField
         stepId={id}
         field="textMatch"
-        label="Text match"
+        label={t('browser.textMatch.field')}
         kind="mono"
-        placeholder={mode === 'regex' ? 'e.g. ^Sign in$' : 'e.g. Sign in'}
+        placeholder={mode === 'regex' ? t('browser.textMatch.regexPlaceholder') : t('browser.textMatch.placeholder')}
         stored={found?.raw ?? ''}
         disabled={locked}
-        parse={(t) => (mode === 'regex' && t.trim() && regexError(t.trim()) ? null : t.trim())}
+        parse={(text) => (mode === 'regex' && text.trim() && regexError(text.trim()) ? null : text.trim())}
         onText={setTyped}
         onApply={(raw) => send(mode, raw)}
       />
@@ -185,37 +185,36 @@ function TextMatch({ step, locked, found }: { step: ActionItem; locked: boolean;
 /** Type Text (editor-passo-140 to 144): the text, with tokens, and how it is typed. */
 function TypeFields({ step, locked }: { step: ActionItem; locked: boolean }) {
   const edit = useEdit(step);
-  const tt = useTt();
   const id = step.id ?? '';
   const paste = !!step.typePaste;
   return (
     <>
-      <Section label="Text to type" hint="The extension presses the key tokens like Send Text does: {enter}, {tab:2}, {space}, {home}, {delay:500}…">
+      <Section label={t('browser.typeText.text')} hint={t('browser.typeText.hint')}>
         {/* Keyed by the step: another step's text starts its own editor. */}
         <Suspense fallback={<div className="insp-text-wait" />}>
           <TypeTextField key={id} step={step} locked={locked} />
         </Suspense>
       </Section>
-      <span className="insp-sublabel">Typing</span>
+      <span className="insp-sublabel">{t('browser.typeText.typing')}</span>
       <div className="insp-row">
-        <span className="insp-row-label">Keep existing text</span>
-        <Switch label="Keep existing text" checked={!!step.typeAppend} disabled={locked} onChange={(on) => edit([{ field: 'typeAppend', value: String(on) }])} />
+        <span className="insp-row-label">{t('browser.typeText.keep')}</span>
+        <Switch label={t('browser.typeText.keep')} checked={!!step.typeAppend} disabled={locked} onChange={(on) => edit([{ field: 'typeAppend', value: String(on) }])} />
       </div>
       <div className="insp-row">
-        <span className="insp-row-label">Paste</span>
-        <Switch label="Paste" tip={tt('Instant, not key by key', 'Instantâneo, não tecla a tecla')} checked={paste} disabled={locked} onChange={(on) => edit([{ field: 'typePaste', value: String(on) }])} />
+        <span className="insp-row-label">{t('browser.typeText.paste')}</span>
+        <Switch label={t('browser.typeText.paste')} tip={t('browser.typeText.pasteTip')} checked={paste} disabled={locked} onChange={(on) => edit([{ field: 'typePaste', value: String(on) }])} />
       </div>
-      <Section label="Char delay" hint={paste ? 'Paste types nothing key by key.' : 'Empty = no pause between characters.'}>
+      <Section label={t('browser.typeText.charDelay')} hint={paste ? t('browser.typeText.pasteNoDelay') : t('browser.typeText.emptyNoPause')}>
         <DraftField
           stepId={id}
           field="typeDelay"
-          label="Char delay (ms)"
+          label={t('browser.typeText.charDelayField')}
           kind="int"
           min={0}
           max={60000}
           unit="ms"
           empty="clear"
-          placeholder="none"
+          placeholder={t('browser.typeText.none')}
           stored={step.typeDelay == null ? '' : String(step.typeDelay)}
           disabled={locked || paste}
         />
@@ -229,35 +228,34 @@ type MatchBy = 'text' | 'value' | 'index';
 /** Select Option (editor-passo-145 to 148): how the option is matched, then what to match. */
 function SelectFields({ step, locked }: { step: ActionItem; locked: boolean }) {
   const edit = useEdit(step);
-  const tt = useTt();
   const id = step.id ?? '';
   const by: MatchBy = step.selectMatchMode === 'value' || step.selectMatchMode === 'index' ? step.selectMatchMode : 'text';
   return (
     <>
-      <Section label="Match by" hint="Native <select> only.">
+      <Section label={t('browser.selectOption.matchBy')} hint={t('browser.selectOption.nativeOnly')}>
         <Segmented<MatchBy>
-          label="Option match mode"
+          label={t('browser.selectOption.mode')}
           value={by}
           disabled={locked}
           options={[
-            { value: 'text', label: 'Text', tip: tt('The visible label', 'O rótulo visível') },
-            { value: 'value', label: 'Value', tip: tt('The value attribute', 'O atributo value') },
-            { value: 'index', label: 'Index', tip: tt('0-based position', 'Posição (base 0)') },
+            { value: 'text', label: t('browser.selectOption.text'), tip: t('browser.selectOption.textTip') },
+            { value: 'value', label: t('browser.selectOption.value'), tip: t('browser.selectOption.valueTip') },
+            { value: 'index', label: t('browser.selectOption.index'), tip: t('browser.selectOption.indexTip') },
           ]}
           onChange={(v) => edit([{ field: 'selectMatchMode', value: v === 'text' ? '' : v }])}
         />
       </Section>
-      <Section label="Option">
+      <Section label={t('browser.selectOption.option')}>
         <DraftField
           stepId={id}
           field="browserText"
-          label="Option"
+          label={t('browser.selectOption.option')}
           kind={by === 'text' ? 'text' : 'mono'}
-          placeholder={by === 'index' ? '0' : by === 'value' ? 'option-value' : 'Option label'}
+          placeholder={by === 'index' ? '0' : by === 'value' ? t('browser.selectOption.valuePlaceholder') : t('browser.selectOption.labelPlaceholder')}
           stored={step.browserText ?? ''}
           disabled={locked}
-          filter={by === 'index' ? (t) => t.replace(/\D/g, '') : undefined}
-          parse={(t) => t.trim()}
+          filter={by === 'index' ? (text) => text.replace(/\D/g, '') : undefined}
+          parse={trim}
         />
       </Section>
     </>
@@ -273,7 +271,6 @@ type Condition = 'appears' | 'disappears' | 'enabled' | 'text-match';
  */
 function ConditionFields({ step, locked }: { step: ActionItem; locked: boolean }) {
   const edit = useEdit(step);
-  const tt = useTt();
   const assert = step.actionType === 'BrowserAssert';
   const cond: Condition = step.waitMode === 'disappears' || step.waitMode === 'enabled' || step.waitMode === 'text-match' ? step.waitMode : 'appears';
   const noText = cond === 'text-match' && !textOf(step.key ?? '');
@@ -281,38 +278,38 @@ function ConditionFields({ step, locked }: { step: ActionItem; locked: boolean }
   return (
     <>
       <Section
-        label="Condition"
-        hint={noText ? <span data-error="">{assert ? 'Text pattern is empty — this Assert will fail.' : 'Text pattern is empty — this Wait will time out.'}</span> : undefined}
+        label={t('browser.condition.label')}
+        hint={noText ? <span data-error="">{assert ? t('browser.condition.assertEmpty') : t('browser.condition.waitEmpty')}</span> : undefined}
       >
         <Segmented<Condition>
-          label={assert ? 'Assert condition' : 'Wait condition'}
+          label={assert ? t('browser.condition.assertMode') : t('browser.condition.waitMode')}
           value={cond}
           disabled={locked}
           wrap
           options={assert ? [
-            { value: 'appears', label: 'Is present' },
-            { value: 'disappears', label: 'Is NOT present' },
-            { value: 'enabled', label: 'Is enabled' },
-            { value: 'text-match', label: 'Text matches' },
+            { value: 'appears', label: t('browser.condition.present') },
+            { value: 'disappears', label: t('browser.condition.notPresent') },
+            { value: 'enabled', label: t('browser.condition.isEnabled') },
+            { value: 'text-match', label: t('browser.condition.textMatches') },
           ] : [
-            { value: 'appears', label: 'Appears' },
-            { value: 'disappears', label: 'Disappears' },
-            { value: 'enabled', label: 'Enabled' },
-            { value: 'text-match', label: 'Text matches' },
+            { value: 'appears', label: t('browser.condition.appears') },
+            { value: 'disappears', label: t('browser.condition.disappears') },
+            { value: 'enabled', label: t('browser.condition.enabled') },
+            { value: 'text-match', label: t('browser.condition.textMatches') },
           ]}
           onChange={(v) => edit([{ field: 'waitMode', value: v === 'appears' ? '' : v }])}
         />
       </Section>
       {assert && (
-        <Section label="On fail">
+        <Section label={t('browser.condition.onFail')}>
           <Segmented<'halt' | 'continue' | 'quiet'>
-            label="On assertion fail"
+            label={t('browser.condition.onFailMode')}
             value={fail}
             disabled={locked}
             options={[
-              { value: 'halt', label: 'Halt', tip: tt('The run stops with an error', 'A execução para com erro') },
-              { value: 'continue', label: 'Continue', tip: tt('Logged, and the run goes on', 'Registrado, e a execução segue') },
-              { value: 'quiet', label: 'Stop quietly', tip: tt('The run ends here, with no error', 'A execução termina aqui, sem erro') },
+              { value: 'halt', label: t('browser.condition.halt'), tip: t('browser.condition.haltTip') },
+              { value: 'continue', label: t('browser.condition.continue'), tip: t('browser.condition.continueTip') },
+              { value: 'quiet', label: t('browser.condition.quiet'), tip: t('browser.condition.quietTip') },
             ]}
             onChange={(v) => edit([{ field: 'assertOnFail', value: v === 'continue' ? 'Continue' : v === 'quiet' ? 'StopReplay' : '' }])}
           />
@@ -325,9 +322,9 @@ function ConditionFields({ step, locked }: { step: ActionItem; locked: boolean }
 const NO_RESPONSE = (requestId: string): BrowserTestResult => ({
   requestId,
   success: false,
-  error: { code: 'NO_RESPONSE', message: 'No response from the browser extension.', tip: 'Check that Chrome and the TrueReplayer extension are still running.' },
+  error: { code: 'NO_RESPONSE', message: t('browser.test.noResponse'), tip: t('browser.test.noResponseTip') },
 });
-const tierOf = (t: string): SelectorAlternative['tier'] => (t === 'S' || t === 'A' || t === 'B' ? t : 'C');
+const tierOf = (tier: string): SelectorAlternative['tier'] => (tier === 'S' || tier === 'A' || tier === 'B' ? tier : 'C');
 
 /**
  * Test action (editor-passo-156 and 157): the step done for real on the browser's tab — the click,
@@ -418,17 +415,17 @@ function TestAction({ step, locked }: { step: ActionItem; locked: boolean }) {
     <>
       <button type="button" className="insp-button" disabled={locked || waiting} onClick={run}>
         <span className="step-icon" data-icon="play" />
-        {waiting ? 'Running…' : 'Test action'}
+        {waiting ? t('browser.test.running') : t('browser.test.run')}
       </button>
       {result && !waiting && (
-        <ResultCard ok={result.success} title={result.success ? `Success in ${result.durationMs ?? 0} ms` : result.error?.code || 'Failed'}>
+        <ResultCard ok={result.success} title={result.success ? t('browser.test.success', { ms: fmtNum(result.durationMs ?? 0) }) : result.error?.code || t('browser.test.failed')}>
           {!result.success && result.error?.message && <span>{result.error.message}</span>}
           {!result.success && result.error?.tip && <span className="insp-test-tip">{result.error.tip}</span>}
-          {via && <span><Tier selector={via.selector} tier={tierOf(via.tier)} /> Primary selector failed — matched via fallback</span>}
+          {via && <span><Tier selector={via.selector} tier={tierOf(via.tier)} /> {t('browser.test.viaFallback')}</span>}
           {via && (
             <span className="insp-test-via">
               <span className="insp-mono">{via.selector}</span>
-              <button type="button" className="insp-link" disabled={locked} onClick={() => { edit([{ field: 'key', value: via.selector }]); setResult(null); }}>Use as primary</button>
+              <button type="button" className="insp-link" disabled={locked} onClick={() => { edit([{ field: 'key', value: via.selector }]); setResult(null); }}>{t('browser.test.usePrimary')}</button>
             </span>
           )}
         </ResultCard>
@@ -445,8 +442,8 @@ function dropNet(net: { current: ReturnType<typeof setTimeout> | null }) {
 function Timing({ step, locked }: { step: ActionItem; locked: boolean }) {
   const timeout = step.timeout > 0 ? step.timeout : DEFAULT_TIMEOUT_MS;
   return (
-    <Section label="Timeout">
-      <DraftField stepId={step.id ?? ''} field="timeout" label="Timeout in milliseconds" kind="int" step={1000} min={MIN_TIMEOUT_MS} max={MAX_TIMEOUT_MS} unit="ms" stored={String(timeout)} disabled={locked} />
+    <Section label={t('browser.timeout')}>
+      <DraftField stepId={step.id ?? ''} field="timeout" label={t('browser.timeoutField')} kind="int" step={1000} min={MIN_TIMEOUT_MS} max={MAX_TIMEOUT_MS} unit="ms" stored={String(timeout)} disabled={locked} />
     </Section>
   );
 }

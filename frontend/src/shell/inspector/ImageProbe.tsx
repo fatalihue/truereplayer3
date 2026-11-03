@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import type { ActionItem } from '../../bridge/messageTypes';
+import { fmtNum, t } from '../../i18n';
 import { useEditorTools } from '../../logic/useEditorTools';
 import { useSteps } from '../../logic/useSteps';
-import { useTt } from '../../state/LanguageContext';
 import { preload } from '../lazyModule';
 import { useShell } from '../store';
 import { openCrop } from '../ui';
@@ -10,7 +10,7 @@ import { useCheckTarget } from './checkTarget';
 import { Section } from './fields';
 import { applyEdits, loadReferenceCrop, type StepEdit } from './inspectorState';
 import { RailField, RegionField, ResultCard } from './probeKit';
-import { around, regionOf, regionValue, useAsk } from './probes';
+import { around, regionOf, regionValue, useAsk, VALUE_A, VALUE_B, withValues } from './probes';
 
 interface Match { found: boolean; score: number; x: number; y: number; w: number; h: number; error?: string }
 
@@ -28,7 +28,6 @@ export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: 
   const cmds = useSteps();
   const tools = useEditorTools();
   const target = useCheckTarget();
-  const tt = useTt();
   const id = step.id ?? '';
   const edit = (edits: StepEdit[]) => (target ? target.edit(edits) : applyEdits(cmds, id, edits));
   const region = regionOf(step);
@@ -43,20 +42,20 @@ export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: 
     setResult(r);
     setSnapped(false);
     if (r.found && !r.error && edit([{ field: 'waitImageSearchRegion', value: regionValue(around(r)) }])) setSnapped(true);
-  }, 8000, () => setResult({ found: false, score: 0, x: 0, y: 0, w: 0, h: 0, error: 'No answer from the app.' }));
+  }, 8000, () => setResult({ found: false, score: 0, x: 0, y: 0, w: 0, h: 0, error: t('probe.noAnswer') }));
   const indexNow = () => useShell.getState().app.actions.findIndex(s => s.id === id);
   const flipped = reads !== 'found';
 
   return (
     <>
-      <Section label="Reference image" hint={step.imageBase64 && known ? `${known.w} × ${known.h} px · press the image to crop it` : undefined}>
+      <Section label={t('probe.image.reference')} hint={step.imageBase64 && known ? t('probe.image.sizeHint', { w: known.w, h: known.h }) : undefined}>
         {step.imageBase64 ? (
           <button
             type="button"
             className="insp-image"
             data-crop-open=""
-            aria-label="Crop reference image"
-            data-tip={tt('Crop it to the part that matters', 'Recortar só a parte que importa')}
+            aria-label={t('probe.image.crop')}
+            data-tip={t('probe.image.cropTip')}
             disabled={locked}
             onPointerEnter={warm}
             onFocus={warm}
@@ -67,13 +66,13 @@ export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: 
           >
             <img
               src={`data:image/png;base64,${step.imageBase64}`}
-              alt="The reference image"
+              alt={t('probe.image.alt')}
               onLoad={(e) => setSize({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight, of: step.imagePath })}
             />
           </button>
         ) : (
           <div className="insp-image" data-none="">
-            <span>No image yet</span>
+            <span>{t('probe.image.none')}</span>
           </div>
         )}
         <div className="insp-pair">
@@ -81,7 +80,7 @@ export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: 
             type="button"
             className="insp-button"
             disabled={locked}
-            data-tip={tt('Capture the image again on the screen', 'Capturar a imagem de novo na tela')}
+            data-tip={t('probe.image.recaptureTip')}
             onClick={() => {
               if (target) { target.captureImage(); return; }
               const index = indexNow();
@@ -89,7 +88,7 @@ export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: 
             }}
           >
             <span className="step-icon" data-icon="refresh-cw" />
-            {step.imagePath ? 'Recapture' : 'Capture'}
+            {step.imagePath ? t('probe.image.recapture') : t('probe.image.capture')}
           </button>
           <button
             type="button"
@@ -104,7 +103,7 @@ export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: 
             }}
           >
             <span className="step-icon" data-icon="play" />
-            {test.waiting ? 'Testing…' : 'Test match'}
+            {test.waiting ? t('probe.testing') : t('probe.testMatch')}
           </button>
         </div>
         <div className="insp-pair">
@@ -112,7 +111,7 @@ export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: 
             type="button"
             className="insp-button"
             disabled={locked}
-            data-tip={tt('Use a picture from a file', 'Usar uma imagem de um arquivo')}
+            data-tip={t('probe.image.chooseFileTip')}
             onClick={() => {
               if (target) { target.chooseImage(); return; }
               const index = indexNow();
@@ -120,28 +119,32 @@ export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: 
             }}
           >
             <span className="step-icon" data-icon="folder-open" />
-            Choose file…
+            {t('probe.image.chooseFile')}
           </button>
           <button
             type="button"
             className="insp-button"
             disabled={!step.imagePath}
-            data-tip={tt('Save the image as a PNG file', 'Salvar a imagem num arquivo PNG')}
+            data-tip={t('probe.image.saveTip')}
             onClick={() => tools.saveImage({ imagePath: step.imagePath, ...(target ? { profile: target.profile } : {}) })}
           >
             <span className="step-icon" data-icon="download" />
-            Save image…
+            {t('probe.image.save')}
           </button>
         </div>
         {result && !test.waiting && (
           result.error ? <ResultCard ok={false} title={result.error} /> : (
             <ResultCard
               ok={result.found !== flipped}
-              title={<>Best match <span className="insp-mono">{Math.round(result.score * 100)}%</span> at <span className="insp-mono">{result.x}, {result.y}</span>{result.found ? '' : ' — below the tolerance'}</>}
+              title={withValues(
+                result.found ? t('probe.image.best', { score: VALUE_A, point: VALUE_B }) : t('probe.image.bestBelow', { score: VALUE_A, point: VALUE_B }),
+                <span className="insp-mono">{fmtNum(Math.round(result.score * 100))}%</span>,
+                <span className="insp-mono">{result.x}, {result.y}</span>,
+              )}
             >
-              {reads === 'not found' && (result.found ? 'Set to pass when not found: right now it does not pass.' : 'Set to pass when not found: right now it passes.')}
-              {reads === 'gone' && (result.found ? 'Still on the screen: the wait goes on.' : 'Not on the screen: the wait ends now.')}
-              {snapped && <span>Search region set around this match.</span>}
+              {reads === 'not found' && (result.found ? t('probe.image.notFoundFails') : t('probe.image.notFoundPasses'))}
+              {reads === 'gone' && (result.found ? t('probe.stillOnScreen') : t('probe.offScreen'))}
+              {snapped && <span>{t('probe.regionSet')}</span>}
             </ResultCard>
           )
         )}
@@ -149,15 +152,15 @@ export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: 
       <RegionField
         region={region}
         locked={locked}
-        wholeHint="The whole screen can match the wrong thing, and takes ~440 ms per check instead of ~4 ms."
-        drawTip={tt('Faster, and fewer false matches', 'Mais rápido, e com menos acertos falsos')}
+        wholeHint={t('probe.image.wholeHint')}
+        drawTip={t('probe.image.drawTip')}
         onRegion={(r) => edit([{ field: 'waitImageSearchRegion', value: regionValue(r) }])}
       />
-      <Section label="Tolerance" hint="Higher is stricter.">
+      <Section label={t('probe.tolerance')} hint={t('probe.image.toleranceHint')}>
         <RailField
           stepId={id}
           field="confidence"
-          label="Tolerance"
+          label={t('probe.tolerance')}
           value={tolerance}
           min={10}
           max={target ? 99 : 100}

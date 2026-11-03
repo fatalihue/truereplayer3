@@ -1,17 +1,18 @@
 import { useDeferredValue, useMemo } from 'react';
 import { PREVIEW_NOTE_TIP, PREVIEW_REASON_TIP, resolveMessagePreview, type PreviewPiece } from '../../components/lexical/messagePreview';
 import { normalizeToken, splitTokenSegments } from '../../components/lexical/tokenNormalize';
+import { fmtNum, LANG, t } from '../../i18n';
 import { useClipboardContent } from '../../logic/useClipboardContent';
 import { useRunState } from '../../logic/useRunState';
-import { useTt } from '../../state/LanguageContext';
 import { describeDelivery } from '../../utils/sendTextStatus';
 import type { SendMethod, SendMode } from '../../utils/sendTextTypes';
 import { useApp } from '../store';
 
 /** The name a value is known by, for the line under the preview: a variable's, a column's. */
 const nameOf = (token: string) => token.slice(1, -1).split(':')[1] ?? '';
-const joined = (names: string[]) =>
-  names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+// Made once, on first use, like the formatters of i18n.ts: "a, b, and c" / "a, b e c".
+let lista: Intl.ListFormat | undefined;
+const joined = (names: string[]) => (lista ??= new Intl.ListFormat(LANG, { type: 'conjunction' })).format(names);
 
 /**
  * Preview, with today's values (send-text-125): the message as it resolves now — the clipboard,
@@ -33,7 +34,6 @@ export function TextPreview({ text, mode, method, delay, hasFormatting, tokens, 
   tokens: number;
   richWillDegrade: boolean;
 }) {
-  const tt = useTt();
   const shown = useDeferredValue(text);
   const { clipRaw, clipReady } = useClipboardContent(/\{clipboard/i.test(shown));
   const table = useApp(a => a.dataTable);
@@ -68,49 +68,47 @@ export function TextPreview({ text, mode, method, delay, hasFormatting, tokens, 
     const name = normalizeToken(seg.value).slice(1, -1);
     if (!names.includes(name)) names.push(name);
   }
-  const tokensLine = names.length === 0 ? 'None'
-    : `${names.slice(0, 8).join(', ')}${names.length > 8 ? ` +${names.length - 8} more` : ''} · filled in at replay`;
+  // The tokens as the chips write them, up to 8, joined by commas: names of the glossary, not a sentence.
+  const tokensLine = names.length === 0 ? t('sendText.preview.noTokens')
+    : names.length > 8 ? t('sendText.preview.tokensLineMore', { names: names.slice(0, 8).join(', '), n: fmtNum(names.length - 8) })
+    : t('sendText.preview.tokensLine', { names: names.join(', ') });
 
   return (
     <div className="insp-section stx-preview">
-      <span className="insp-label">Preview, with today's values</span>
+      <span className="insp-label">{t('sendText.preview.title')}</span>
       <div className="stx-bubble" data-empty={shown.trim() === '' || undefined}>
-        {shown.trim() === '' ? 'Nothing to send yet' : pieces.map((p, i) => (
+        {shown.trim() === '' ? t('sendText.preview.empty') : pieces.map((p, i) => (
           p.kind === 'text' ? <span key={i}>{p.text}</span>
             : p.kind === 'resolved' ? (
-              <span key={i} className="stx-value" data-tip={p.note ? tt(PREVIEW_NOTE_TIP[p.note][0], PREVIEW_NOTE_TIP[p.note][1]) : undefined}>{p.text}</span>
+              <span key={i} className="stx-value" data-tip={p.note ? PREVIEW_NOTE_TIP[p.note] : undefined}>{p.text}</span>
             ) : (
-              <span key={i} className="stx-pending" data-tip={`${tt(PREVIEW_REASON_TIP[p.reason][0], PREVIEW_REASON_TIP[p.reason][1])} — ${p.token}`}>{p.label}</span>
+              <span key={i} className="stx-pending" data-tip={`${PREVIEW_REASON_TIP[p.reason]} — ${p.token}`}>{p.label}</span>
             )
         ))}
       </div>
       {(mode === 'markdown' || mode === 'discord') && hasFormatting && (
-        <span className="insp-hint">Formatting marks (*bold*) are added on send.</span>
+        <span className="insp-hint">{t('sendText.preview.marksAdded')}</span>
       )}
       {fromRun.length > 0 && (
-        <span className="insp-hint">
-          {joined(fromRun)} {fromRun.length === 1 ? 'comes' : 'come'} from the last run, in Live Variables. The real run fills in the value it has at that moment.
-        </span>
+        <span className="insp-hint">{t('sendText.preview.fromRun', { count: fromRun.length, names: joined(fromRun) })}</span>
       )}
       {fromRow.length > 0 && (
-        <span className="insp-hint">
-          {joined(fromRow)} {fromRow.length === 1 ? 'is' : 'are'} the Data Loop table’s first row; a run uses the row it is on.
-        </span>
+        <span className="insp-hint">{t('sendText.preview.fromRow', { count: fromRow.length, names: joined(fromRow) })}</span>
       )}
-      {clock && <span className="insp-hint">Dates and times are now’s; the run uses the moment it sends.</span>}
+      {clock && <span className="insp-hint">{t('sendText.preview.clock')}</span>}
       <dl className="stx-facts">
-        <dt>Transport</dt>
+        <dt>{t('sendText.preview.transport')}</dt>
         <dd>{facts.transport}</dd>
-        <dt>Flavor</dt>
+        <dt>{t('sendText.preview.flavor')}</dt>
         <dd>{facts.flavor}</dd>
-        <dt>Formatting</dt>
+        <dt>{t('sendText.preview.formatting')}</dt>
         <dd data-tone={facts.formatting.tone}>
           {/* A warning in two channels, the glyph and the ink, as today's. */}
-          {facts.formatting.tone === 'warn' && <span className="step-icon stx-facts-warn" data-icon="triangle-alert" role="img" aria-label="Warning" />}
+          {facts.formatting.tone === 'warn' && <span className="step-icon stx-facts-warn" data-icon="triangle-alert" role="img" aria-label={t('sendText.preview.warning')} />}
           {facts.formatting.verdict}
           {facts.formatting.why && <span className="stx-facts-why">{facts.formatting.why}</span>}
         </dd>
-        <dt>Tokens</dt>
+        <dt>{t('sendText.preview.tokens')}</dt>
         <dd>{tokensLine}</dd>
       </dl>
     </div>

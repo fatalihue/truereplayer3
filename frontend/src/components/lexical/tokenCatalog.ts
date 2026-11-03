@@ -7,6 +7,12 @@
 // Direct chips insert their seed string; prompt chips (Variable…, Row column…) have no seed —
 // the palette opens a name prompt for them, the autocomplete inserts the OPEN half (`{var:`)
 // and lets the finished token chip through the typing transform. Never a literal placeholder.
+//
+// The labels: a chip named after its token (Date, Enter, Delay, Counter…) is the label the chip
+// shows in the editor once inserted, so it stays as written in every language (the glossary's
+// tokens); a chip that says it in other words (Variable…, Clip slot…, Data row #) and the group
+// names come from the catalog (i18n/<language>/tokens.ts), put in at compile time.
+import { t } from '../../i18n';
 
 export interface PaletteChip {
   label: string;
@@ -68,39 +74,39 @@ export const MORE_KEY_CHIPS: PaletteChip[] = [
 // Clip slot stays inline: it is the consumer end of the Copy to Slot action and the
 // capture hotkey, so hiding it here would hide half of that feature.
 export const CLIPBOARD_CHIPS: PaletteChip[] = [
-  { label: 'Clip slot…', prompt: 'clip' },
+  { label: t('tokens.chips.clipSlot'), prompt: 'clip' },
 ];
 
 // Collapsed: {clipboard:next} is a niche auto-advancing read, and {winclip:N} depends
 // on a Windows setting being on and can surface anything recently copied.
 export const MORE_CLIPBOARD_CHIPS: PaletteChip[] = [
-  { label: 'Clipboard line (next)', insert: '{clipboard:next}' },
-  { label: 'Clipboard history', insert: '{winclip:1}' },
+  { label: t('tokens.chips.clipboardNext'), insert: '{clipboard:next}' },
+  { label: t('tokens.chips.clipboardHistory'), insert: '{winclip:1}' },
 ];
 
 export const RUN_STATE_CHIPS: PaletteChip[] = [
-  { label: 'Variable…', prompt: 'var' },
+  { label: t('tokens.chips.variable'), prompt: 'var' },
   { label: 'Counter', insert: '{counter}' },
   // The block iteration (While / For Each) — inline next to Counter, its run-level twin.
   { label: 'Loop', insert: '{loop}' },
-  { label: 'Ask input…', prompt: 'input' },
+  { label: t('tokens.chips.askInput'), prompt: 'input' },
 ];
 
 // Collapsed: every one of these is row-addressed, and the two data-table ones only
 // resolve to anything in a profile that loops over data. They also carry the longest
 // labels in the palette, so parking them keeps Run state to a single line.
 export const MORE_ROW_CHIPS: PaletteChip[] = [
-  { label: 'Data row #', insert: '{datarow}' },
-  { label: 'Action row #', insert: '{row}' },
-  { label: 'Row column…', prompt: 'row' },
-  { label: 'Row column (next)…', prompt: 'rownext' },
+  { label: t('tokens.chips.dataRow'), insert: '{datarow}' },
+  { label: t('tokens.chips.actionRow'), insert: '{row}' },
+  { label: t('tokens.chips.rowColumn'), prompt: 'row' },
+  { label: t('tokens.chips.rowColumnNext'), prompt: 'rownext' },
 ];
 
 // ── The flat list the `{` autocomplete filters ─────────────────────────────────────────────
 export interface CatalogEntry {
-  /** The palette's label, verbatim ("DateTime", "Variable…"). */
+  /** The palette's label, verbatim ("DateTime", "Variable…"), in the build's language. */
   label: string;
-  /** The palette section it comes from — the list's group header when unfiltered. */
+  /** The palette section it comes from — the list's group header when unfiltered (the catalog's text). */
   group: string;
   /** The token NAME, lower case, for matching ("datetime", "var"). */
   name: string;
@@ -118,8 +124,8 @@ function entries(group: string, chips: PaletteChip[]): CatalogEntry[] {
 // The palette's order, palette's groups, plus the bare {clipboard} the palette draws inline
 // beside "Advanced…" (the chain builder needs its own surface and is not a list entry).
 export const TOKEN_CATALOG: CatalogEntry[] = [
-  ...entries('Keys & timing', [...KEY_CHIPS, ...MORE_KEY_CHIPS]),
-  ...entries('Values', [...VALUE_CHIPS, ...MORE_VALUE_CHIPS]),
-  ...entries('Clipboard', [{ label: 'Clipboard', insert: '{clipboard}' }, ...CLIPBOARD_CHIPS, ...MORE_CLIPBOARD_CHIPS]),
-  ...entries('Run state', [...RUN_STATE_CHIPS, ...MORE_ROW_CHIPS]),
+  ...entries(t('tokens.groups.keysTiming'), [...KEY_CHIPS, ...MORE_KEY_CHIPS]),
+  ...entries(t('tokens.groups.values'), [...VALUE_CHIPS, ...MORE_VALUE_CHIPS]),
+  ...entries(t('tokens.groups.clipboard'), [{ label: 'Clipboard', insert: '{clipboard}' }, ...CLIPBOARD_CHIPS, ...MORE_CLIPBOARD_CHIPS]),
+  ...entries(t('tokens.groups.runState'), [...RUN_STATE_CHIPS, ...MORE_ROW_CHIPS]),
 ];

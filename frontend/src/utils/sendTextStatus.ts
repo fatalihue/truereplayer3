@@ -53,11 +53,9 @@ export interface StatusInputs {
   richWillDegrade: boolean;
 }
 
-// `_tt`, the old pairs' function, is no longer read: the text comes from the catalog (the cleanup
-// drops the parameter).
+// The text comes from the catalog.
 export function pickStatusNote(
   { sendMode, sendMethod, hasFormatting, tokenCount, richWillDegrade }: StatusInputs,
-  _tt?: (en: string, ptBr: string) => string,
 ): StatusNote | null {
   // RUNG 1 — the silent one. The engine attaches the HTML flavor only when the resolved payload
   // is EXACTLY ONE text run (ActionExecution.cs:7163), so a key or delay token with text on both

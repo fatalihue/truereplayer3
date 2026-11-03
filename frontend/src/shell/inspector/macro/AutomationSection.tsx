@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Zap } from 'lucide-react';
+import { t } from '../../../i18n';
 import { useAutomations } from '../../../logic/useAutomations';
-import { useTt } from '../../../state/LanguageContext';
 import { cardWords, statusOf } from '../../pages/automations/automationModel';
 import { useApp } from '../../store';
 import { useUi } from '../../ui';
@@ -14,7 +14,6 @@ import { Switch } from '../fields';
  * macro's settings: Ctrl+Z undoes it with the rest, as the engine keeps it in the macro's history.
  */
 export function AutomationSection({ name }: { name: string }) {
-  const tt = useTt();
   const entry = useApp(a => a.automation.entries.find(e => e.profile === name));
   const runAutomations = useApp(a => a.automation.enabled);
   const automations = useAutomations();
@@ -32,13 +31,13 @@ export function AutomationSection({ name }: { name: string }) {
   if (!entry) {
     return (
       <div className="mset-group">
-        <span className="mset-title">Automation</span>
+        <span className="mset-title">{t('macroSettings.automation.title')}</span>
         <div className="mset-target" data-none="">
           <span className="mset-target-text">
-            <span className="mset-target-name">None</span>
-            <span className="mset-target-sub">Runs it by itself: every so often, at a time, or when something shows up.</span>
+            <span className="mset-target-name">{t('macroSettings.automation.none')}</span>
+            <span className="mset-target-sub">{t('macroSettings.automation.noneSub')}</span>
           </span>
-          <button type="button" className="insp-link" onClick={() => ask('create')}>Add</button>
+          <button type="button" className="insp-link" onClick={() => ask('create')}>{t('common.actions.add')}</button>
         </div>
       </div>
     );
@@ -49,7 +48,7 @@ export function AutomationSection({ name }: { name: string }) {
   const blocked = entry.isDisabled && !on;
   return (
     <div className="mset-group">
-      <span className="mset-title">Automation</span>
+      <span className="mset-title">{t('macroSettings.automation.title')}</span>
       <div className="mset-target mset-auto">
         <span className="mset-auto-icon" data-tone={status.tone} aria-hidden="true"><Zap /></span>
         <span className="mset-target-text">
@@ -58,12 +57,12 @@ export function AutomationSection({ name }: { name: string }) {
             {status.group === 'attention' ? status.text : words.sub}
           </span>
         </span>
-        <button type="button" className="insp-link" onClick={() => ask('open')}>Edit</button>
+        <button type="button" className="insp-link" onClick={() => ask('open')}>{t('common.actions.edit')}</button>
         <Switch
-          label="Automation on"
+          label={t('macroSettings.automation.on')}
           checked={on}
           disabled={blocked}
-          tip={blocked ? tt('The macro is disabled — enable it in the library first', 'O macro está desativado — reative na biblioteca antes') : undefined}
+          tip={blocked ? t('macroSettings.automation.disabledTip') : undefined}
           onChange={(v) => {
             setSent(v);
             automations.setArmed(name, v);

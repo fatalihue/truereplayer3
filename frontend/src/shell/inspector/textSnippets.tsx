@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type MutableRefObject } from 'react';
 import type { LexicalEditorHandle } from '../../components/lexical/LexicalTokenEditor';
 import {
-  buildSnippetExport, mergeSnippets, newSnippetId, parseSnippetImport, snippetExportFilename, type Snippet,
+  buildSnippetExport, mergeSnippets, newSnippetId, parseSnippetImport, snippetExportFilename, type ImportFailure, type Snippet,
 } from '../../components/lexical/snippetTransfer';
 import { normalizeToken, splitTokenSegments } from '../../components/lexical/tokenNormalize';
+import { fmtNum, t } from '../../i18n';
 import { useEditorTools } from '../../logic/useEditorTools';
-import { useTt } from '../../state/LanguageContext';
 import { useAsk } from './probes';
 
 // The library of today, in the same place (send-text-106): the snippets survive the swap. A
@@ -26,12 +26,12 @@ const matches = (s: Snippet, query: string) => {
   return !q || s.name.toLowerCase().includes(q) || s.text.toLowerCase().includes(q);
 };
 
-const IMPORT_ERRORS = {
-  'not-json': 'That file is not valid JSON',
-  'not-a-snippet-file': 'That is not a snippets file',
-  'unsupported-version': 'That file is from a newer version',
-  'no-snippets': 'No usable snippets in that file',
-} as const;
+const IMPORT_ERRORS: Record<ImportFailure, string> = {
+  'not-json': t('sendText.snippets.notJson'),
+  'not-a-snippet-file': t('sendText.snippets.notSnippets'),
+  'unsupported-version': t('sendText.snippets.newerVersion'),
+  'no-snippets': t('sendText.snippets.noSnippets'),
+};
 
 /**
  * Insert › Snippets: texts kept to use again, in this machine's library (the same as today's). A
@@ -45,7 +45,6 @@ export function SnippetsTab({ api, hasText, locked }: {
   hasText: boolean;
   locked: boolean;
 }) {
-  const tt = useTt();
   const [snippets, setSnippets] = useState<Snippet[]>(loadSnippets);
   const [filter, setFilter] = useState('');
   const [saving, setSaving] = useState(false);
@@ -54,7 +53,7 @@ export function SnippetsTab({ api, hasText, locked }: {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
-  const needsText = hasText ? undefined : tt('Type something first', 'Digite algo primeiro');
+  const needsText = hasText ? undefined : t('sendText.snippets.needsText');
 
   const store = (next: Snippet[]) => { setSnippets(next); saveSnippets(next); };
   // A form or the delete's question that closes gives the keyboard back to the message, with its
@@ -95,14 +94,14 @@ export function SnippetsTab({ api, hasText, locked }: {
   const tools = useEditorTools();
   const exported = useRef(0);
   const exporting = useAsk('dialog:saveFileResult', (r) => {
-    if (r.error) setNote('Could not save the file');
-    else if (r.path) setNote(`Saved ${exported.current} snippet${exported.current === 1 ? '' : 's'}`);
+    if (r.error) setNote(t('sendText.snippets.saveFailed'));
+    else if (r.path) setNote(t('sendText.snippets.saved', { count: exported.current, n: fmtNum(exported.current) }));
   });
   const exportAll = () => {
     if (snippets.length === 0) return;
     exported.current = snippets.length;
     const text = JSON.stringify(buildSnippetExport(snippets), null, 2);
-    exporting.ask(requestId => tools.saveFile({ requestId, name: snippetExportFilename(new Date()), text, title: 'Export snippets' }));
+    exporting.ask(requestId => tools.saveFile({ requestId, name: snippetExportFilename(new Date()), text, title: t('sendText.snippets.export') }));
   };
   const importFile = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -110,7 +109,7 @@ export function SnippetsTab({ api, hasText, locked }: {
     e.target.value = '';
     if (!file) return;
     const reader = new FileReader();
-    reader.onerror = () => setNote('Could not read that file');
+    reader.onerror = () => setNote(t('sendText.snippets.readFailed'));
     reader.onload = () => {
       const result = parseSnippetImport(String(reader.result ?? ''));
       if (!result.ok) { setNote(IMPORT_ERRORS[result.reason]); return; }
@@ -122,7 +121,9 @@ export function SnippetsTab({ api, hasText, locked }: {
         return merged;
       });
       const n = result.snippets.length;
-      setNote(result.skipped > 0 ? `Added ${n}, skipped ${result.skipped} incomplete` : `Added ${n} snippet${n === 1 ? '' : 's'}`);
+      setNote(result.skipped > 0
+        ? t('sendText.snippets.addedSkipped', { n: fmtNum(n), skipped: fmtNum(result.skipped) })
+        : t('sendText.snippets.added', { count: n, n: fmtNum(n) }));
     };
     reader.readAsText(file);
   };
@@ -150,20 +151,20 @@ export function SnippetsTab({ api, hasText, locked }: {
           <input
             className="stx-search"
             type="search"
-            aria-label="Search snippets"
-            placeholder="Search snippets…"
+            aria-label={t('sendText.snippets.search')}
+            placeholder={t('sendText.snippets.searchHint')}
             value={filter}
             spellCheck={false}
             onChange={(e) => onFilter(e.target.value)}
           />
-        ) : <span className="stx-snippets-title">Snippets</span>}
-        <button type="button" className="insp-icon-button" aria-label="Export snippets" data-tip={tt('Export snippets', 'Exportar snippets')} disabled={snippets.length === 0 || exporting.waiting} onClick={exportAll}>
+        ) : <span className="stx-snippets-title">{t('sendText.snippets.title')}</span>}
+        <button type="button" className="insp-icon-button" aria-label={t('sendText.snippets.export')} data-tip={t('sendText.snippets.export')} disabled={snippets.length === 0 || exporting.waiting} onClick={exportAll}>
           <span className="step-icon" data-icon="download" />
         </button>
-        <button type="button" className="insp-icon-button" aria-label="Import snippets" data-tip={tt('Import snippets (added to yours)', 'Importar snippets (somados aos seus)')} onClick={() => fileRef.current?.click()}>
+        <button type="button" className="insp-icon-button" aria-label={t('sendText.snippets.import')} data-tip={t('sendText.snippets.importTip')} onClick={() => fileRef.current?.click()}>
           <span className="step-icon" data-icon="upload" />
         </button>
-        <button type="button" className="insp-icon-button" aria-label="Save as snippet" data-tip={needsText ?? tt('Save as snippet', 'Salvar como snippet')} disabled={!hasText} onClick={() => setSaving(true)}>
+        <button type="button" className="insp-icon-button" aria-label={t('sendText.snippets.saveAs')} data-tip={needsText ?? t('sendText.snippets.saveAs')} disabled={!hasText} onClick={() => setSaving(true)}>
           <span className="step-icon" data-icon="bookmark-plus" />
         </button>
         <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={importFile} />
@@ -175,8 +176,8 @@ export function SnippetsTab({ api, hasText, locked }: {
           <input
             className="stx-input"
             type="text"
-            aria-label="Snippet name"
-            placeholder="Snippet name…"
+            aria-label={t('sendText.snippets.name')}
+            placeholder={t('sendText.snippets.nameHint')}
             autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -187,24 +188,24 @@ export function SnippetsTab({ api, hasText, locked }: {
             }}
           />
           <div className="stx-form-actions">
-            <button type="button" className="insp-button" onClick={closeSaving}>Cancel</button>
-            <button type="button" className="insp-primary" disabled={!name.trim() || !hasText} onClick={save}>Save snippet</button>
+            <button type="button" className="insp-button" onClick={closeSaving}>{t('common.actions.cancel')}</button>
+            <button type="button" className="insp-primary" disabled={!name.trim() || !hasText} onClick={save}>{t('sendText.snippets.save')}</button>
           </div>
         </div>
       )}
       <div className="stx-snippet-list">
         {snippets.length === 0 ? (
           <div className="stx-empty">
-            <span>No saved snippets yet</span>
+            <span>{t('sendText.snippets.none')}</span>
             <button type="button" className="insp-button" disabled={!hasText} data-tip={needsText} onClick={() => setSaving(true)}>
               <span className="step-icon" data-icon="bookmark-plus" />
-              Save current text as a snippet
+              {t('sendText.snippets.saveCurrent')}
             </button>
           </div>
         ) : shown.length === 0 ? (
-          <div className="stx-empty">No snippets match “{filter}”</div>
+          <div className="stx-empty">{t('sendText.snippets.noMatch', { query: filter })}</div>
         ) : shown.map(s => editing === s.id ? (
-          <SnippetForm key={s.id} snippet={s} onSave={(n, t) => update(s.id, n, t)} onCancel={closeEditing} />
+          <SnippetForm key={s.id} snippet={s} onSave={(nextName, nextText) => update(s.id, nextName, nextText)} onCancel={closeEditing} />
         ) : (
           <div key={s.id} className="stx-snippet" data-deleting={deleting === s.id || undefined}>
             <button type="button" className="stx-snippet-insert" disabled={locked || deleting === s.id} data-tip={s.text} onMouseDown={(e) => e.preventDefault()} onClick={() => insert(s)}>
@@ -213,20 +214,20 @@ export function SnippetsTab({ api, hasText, locked }: {
             </button>
             {deleting === s.id ? (
               <span className="stx-snippet-ask" onKeyDown={escTo(closeDeleting)}>
-                <span>Delete snippet?</span>
-                <button type="button" className="insp-icon-button" data-danger="" aria-label="Delete snippet" data-tip={tt('Delete', 'Excluir')} autoFocus onClick={() => remove(s.id)}>
+                <span>{t('sendText.snippets.confirmDelete')}</span>
+                <button type="button" className="insp-icon-button" data-danger="" aria-label={t('sendText.snippets.delete')} data-tip={t('common.actions.delete')} autoFocus onClick={() => remove(s.id)}>
                   <span className="step-icon" data-icon="check" />
                 </button>
-                <button type="button" className="insp-icon-button" aria-label="Cancel" data-tip={tt('Cancel (Esc)', 'Cancelar (Esc)')} onClick={closeDeleting}>
+                <button type="button" className="insp-icon-button" aria-label={t('common.actions.cancel')} data-tip={t('sendText.snippets.cancelTip')} onClick={closeDeleting}>
                   <span className="step-icon" data-icon="x" />
                 </button>
               </span>
             ) : (
               <span className="stx-snippet-tools">
-                <button type="button" className="insp-icon-button" aria-label="Edit snippet" data-tip={tt('Edit snippet', 'Editar snippet')} onClick={() => setEditing(s.id)}>
+                <button type="button" className="insp-icon-button" aria-label={t('sendText.snippets.edit')} data-tip={t('sendText.snippets.edit')} onClick={() => setEditing(s.id)}>
                   <span className="step-icon" data-icon="pencil" />
                 </button>
-                <button type="button" className="insp-icon-button" aria-label="Delete snippet" data-tip={tt('Delete snippet', 'Excluir snippet')} onClick={() => setDeleting(s.id)}>
+                <button type="button" className="insp-icon-button" aria-label={t('sendText.snippets.delete')} data-tip={t('sendText.snippets.delete')} onClick={() => setDeleting(s.id)}>
                   <span className="step-icon" data-icon="trash-2" />
                 </button>
               </span>
@@ -264,12 +265,12 @@ function SnippetForm({ snippet, onSave, onCancel }: { snippet: Snippet; onSave: 
   };
   return (
     <div className="stx-form" data-edit="" onKeyDown={onKeyDown}>
-      <span className="stx-form-title">Edit snippet</span>
-      <input ref={nameRef} className="stx-input" type="text" aria-label="Snippet name" placeholder="Snippet name…" value={name} onChange={(e) => setName(e.target.value)} />
-      <textarea className="stx-input" aria-label="Snippet text" placeholder="Snippet text…" rows={5} value={text} onChange={(e) => setText(e.target.value)} />
+      <span className="stx-form-title">{t('sendText.snippets.edit')}</span>
+      <input ref={nameRef} className="stx-input" type="text" aria-label={t('sendText.snippets.name')} placeholder={t('sendText.snippets.nameHint')} value={name} onChange={(e) => setName(e.target.value)} />
+      <textarea className="stx-input" aria-label={t('sendText.snippets.text')} placeholder={t('sendText.snippets.textHint')} rows={5} value={text} onChange={(e) => setText(e.target.value)} />
       <div className="stx-form-actions">
-        <button type="button" className="insp-button" onClick={onCancel}>Cancel</button>
-        <button type="button" className="insp-primary" disabled={!ok} onClick={() => { if (ok) onSave(name, text); }}>Save snippet</button>
+        <button type="button" className="insp-button" onClick={onCancel}>{t('common.actions.cancel')}</button>
+        <button type="button" className="insp-primary" disabled={!ok} onClick={() => { if (ok) onSave(name, text); }}>{t('sendText.snippets.save')}</button>
       </div>
     </div>
   );

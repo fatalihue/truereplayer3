@@ -1,16 +1,18 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type MutableRefObject } from 'react';
 import type { ActionItem } from '../../bridge/messageTypes';
 import { LexicalTokenEditor, type LexicalEditorHandle } from '../../components/lexical/LexicalTokenEditor';
+import { t } from '../../i18n';
 import { useSteps } from '../../logic/useSteps';
 import { applyEdits, focusList, pendingEdits } from './inspectorState';
 
 // The typing has stopped: what was typed goes to the engine.
 const IDLE_MS = 600;
 // The three tokens a Type Text uses most, put at the caret (editor-passo-141); any other is typed.
+// Their labels are the tokens' chip labels (glossary), the same in both languages.
 const CHIPS = [
-  { token: '{Clipboard}', label: 'Clipboard' },
-  { token: '{Enter}', label: 'Enter' },
-  { token: '{DateTime}', label: 'DateTime' },
+  { token: '{Clipboard}', label: t('browser.typeText.chips.clipboard') },
+  { token: '{Enter}', label: t('browser.typeText.chips.enter') },
+  { token: '{DateTime}', label: t('browser.typeText.chips.dateTime') },
 ];
 
 interface Field {
@@ -101,8 +103,8 @@ export default function TypeTextField({ step, locked }: { step: ActionItem; lock
           placeholderClassName="insp-text-placeholder"
           tokenAutocomplete
           tokenScope="browser"
-          ariaLabel="Text to type"
-          placeholder={<>Text to type…<span className="insp-text-placeholder-tip">Type {'{'} for tokens, like {'{enter}'}</span></>}
+          ariaLabel={t('browser.typeText.text')}
+          placeholder={<>{t('browser.typeText.placeholder')}<span className="insp-text-placeholder-tip">{t('browser.typeText.placeholderTip')}</span></>}
         />
       </div>
       <div className="insp-chips">

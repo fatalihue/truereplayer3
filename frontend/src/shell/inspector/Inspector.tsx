@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type RefObject } from 'react';
+import { t } from '../../i18n';
 import { useEditorClaim } from '../../logic/useEditorClaim';
 import { preload, useLoaded } from '../lazyModule';
 import { clickerOnNote } from '../library/model';
@@ -136,8 +137,8 @@ export function Inspector() {
 
   const note = clicker
     ? clickerOnNote(modeKey)
-    : status === 'recording' ? 'Read-only while recording'
-    : status === 'replaying' ? 'Read-only while it runs'
+    : status === 'recording' ? t('inspector.frame.readOnlyRecording')
+    : status === 'replaying' ? t('inspector.frame.readOnlyRunning')
     : null;
 
   const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
@@ -172,12 +173,12 @@ export function Inspector() {
       {dataTab ? dataAsked && (band === 'single' || band === 'compact') && (
         <button type="button" className="insp-back" onClick={() => { useUi.setState({ dataSettings: false }); focusList(); }}>
           <span className="step-icon" data-icon="chevron-right" />
-          Table
+          {t('inspector.frame.backToTable')}
         </button>
       ) : (showing || settingsOpen) && (band === 'single' || band === 'compact') && (
         <button type="button" className="insp-back" onClick={() => { cancelDraft(); selection.clear(); closeMacroSettings(); focusList(); }}>
           <span className="step-icon" data-icon="chevron-right" />
-          Steps
+          {t('inspector.frame.backToSteps')}
         </button>
       )}
       {dataTab ? (
@@ -187,12 +188,12 @@ export function Inspector() {
           <div className="insp-head">
             {/* With no macro open (every launch, and a macro closed by hand, D29), it says so. */}
             <div className="insp-title">
-              <span className="insp-name">{open ? 'Macro settings' : 'No macro open'}</span>
-              {open && <span className="insp-sub">No step selected</span>}
+              <span className="insp-name">{open ? t('inspector.frame.macroSettings') : t('inspector.frame.noMacro')}</span>
+              {open && <span className="insp-sub">{t('inspector.frame.noStep')}</span>}
             </div>
             {/* 760–1023 px: asked for, the settings lie over the list until closed. */}
             {settingsOpen && band === 'over' && (
-              <button type="button" className="insp-close" aria-label="Close macro settings" onClick={() => { closeMacroSettings(); focusList(); }}>
+              <button type="button" className="insp-close" aria-label={t('inspector.frame.closeSettings')} onClick={() => { closeMacroSettings(); focusList(); }}>
                 <span className="step-icon" data-icon="x" />
               </button>
             )}
@@ -259,7 +260,7 @@ function Grip({ asideRef, range, cssVar, width, onWidth }: {
       className="insp-grip"
       role="separator"
       aria-orientation="vertical"
-      aria-label="Inspector width"
+      aria-label={t('inspector.frame.width')}
       aria-valuemin={range.min * 16}
       aria-valuemax={range.max * 16}
       aria-valuenow={Math.round(width * 16)}

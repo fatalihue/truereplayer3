@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { t } from '../../i18n';
 import { Clear } from './fields';
 
 // The list shows at least this many rows (room for "No macro matches") and at most this many, then it
@@ -74,7 +75,7 @@ export function MacroPicker({ names, value, onPick, autoFocus = false, disabled,
             aria-expanded="true"
             aria-controls={`${base}-list`}
             aria-activedescendant={shown.length > 0 ? `${base}-${at}` : undefined}
-            placeholder="Search macros…"
+            placeholder={t('inspector.picker.search')}
             value={query}
             disabled={disabled}
             spellCheck={false}
@@ -82,11 +83,11 @@ export function MacroPicker({ names, value, onPick, autoFocus = false, disabled,
             onKeyDown={onKeyDown}
           />
         </div>
-        {query && <Clear label="Clear search" labelPt="Limpar a busca" disabled={disabled} onClear={() => { reveal.current = true; setQuery(''); }} />}
+        {query && <Clear label={t('common.actions.clearSearch')} disabled={disabled} onClear={() => { reveal.current = true; setQuery(''); }} />}
       </div>
       <div ref={listRef} id={`${base}-list`} className="insp-picker-list" role="listbox" aria-label={label} style={{ height: `${rows * ROW_REM}rem` }}>
         {shown.length === 0 ? (
-          <span className="insp-picker-none">{names.length === 0 ? 'No macro to choose' : 'No macro matches'}</span>
+          <span className="insp-picker-none">{names.length === 0 ? t('inspector.picker.empty') : t('inspector.picker.noMatch')}</span>
         ) : shown.map((name, i) => (
           <button
             key={name}

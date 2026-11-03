@@ -46,10 +46,14 @@ if (qps) process.exit(0);
 // ── Each build holds its own language only.
 const { catalogo, formasDe } = await import(pathToFileURL(path.join(front, '..', 'tools', 'i18n-lib.mjs')).href);
 const [en, pt] = [await catalogo('en-US'), await catalogo('pt-BR')];
+// The emoji picker's own chunks are a package's text, not the app's: its default English names (the
+// category titles the app replaces through its props) and, in pt-BR, the package's Portuguese emoji
+// names. They are not searched.
+const TERCEIROS = /^(emoji-picker-react\.|emojis-pt-)/;
 const lerBuild = (lang) => {
   const dir = path.join(dist, lang);
   const arquivos = [];
-  const andar = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) andar(p); else if (/\.(js|html)$/.test(e.name)) arquivos.push(p); } };
+  const andar = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) andar(p); else if (/\.(js|html)$/.test(e.name) && !TERCEIROS.test(e.name)) arquivos.push(p); } };
   andar(dir);
   return arquivos.map((a) => fs.readFileSync(a, 'utf8')).join('\n');
 };
@@ -63,7 +67,10 @@ const textoPt = lerBuild('pt-BR');
 // The fixed pieces of a text, between its blanks, as a build writes them in a string literal; short
 // ones ("Off", "s") could be anything else's and are not searched.
 const pedacos = (t) => t.split(/\{\{[^}]*\}\}/).map((p) => p.trim()).filter((p) => p.length >= 8);
-const naoAcha = (alvo, p) => !alvo.includes(p) && !alvo.includes(JSON.stringify(p).slice(1, -1));
+// A whole piece, not part of a longer word: "incomplete" inside React's incompleteTransitions is code.
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, (c) => '\\' + c);
+const inteiro = (p) => new RegExp(`(?<![\\p{L}\\p{N}_$])${esc(p)}(?![\\p{L}\\p{N}_$])`, 'u');
+const naoAcha = (alvo, p) => !inteiro(p).test(alvo) && !inteiro(JSON.stringify(p).slice(1, -1)).test(alvo);
 const problemas = [];
 const aindaNoCodigo = new Set();
 for (const [chave, e] of en.entradas) {

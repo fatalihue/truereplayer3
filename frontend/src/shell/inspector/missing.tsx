@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { Languages, Unplug } from 'lucide-react';
 import { APP_NAME } from '../../appIdentity';
 import { useBridge } from '../../bridge/BridgeContext';
+import { t } from '../../i18n';
 import { useOcrLanguages, useSettings } from '../../logic/useSettings';
 import { useToast } from '../../state/ToastContext';
 import { ocrLanguageNote, ocrLanguageOptions, ocrPickerLanguages } from '../../utils/ocrLanguages';
@@ -34,8 +35,8 @@ export function ExtensionMissing() {
   const connection = useExtension(s => s.connection);
   if (connection !== 'disconnected') return null;
   return (
-    <Missing icon={<Unplug aria-hidden="true" />} title="The browser extension isn't connected" text="Browser steps run through it, in Chrome or Edge.">
-      <button type="button" className="insp-button insp-missing-action" onClick={() => openSettings('browser')}>Set up the extension</button>
+    <Missing icon={<Unplug aria-hidden="true" />} title={t('inspector.missing.extension')} text={t('inspector.missing.extensionText')}>
+      <button type="button" className="insp-button insp-missing-action" onClick={() => openSettings('browser')}>{t('inspector.missing.setUp')}</button>
     </Missing>
   );
 }
@@ -56,9 +57,12 @@ export function OcrMissing() {
     if (m.type !== 'ocr:installResult' || asked.current?.toLowerCase() !== m.payload.tag.toLowerCase()) return;
     asked.current = null;
     const r = m.payload;
-    if (r.ok) showToast(r.restartApp ? `Installed — restart ${APP_NAME} to use it.` : r.restartWindows ? 'Installed — restart Windows to finish.' : 'Text reading installed.', 'success');
-    else if (r.canceled) showToast('Install canceled — Windows needs your permission to add the pack.', 'info');
-    else showToast(`Couldn't install it: ${r.error ?? 'unknown error'}`, 'error');
+    if (r.ok) {
+      showToast(r.restartApp ? t('inspector.missing.doneRestartApp', { app: APP_NAME })
+        : r.restartWindows ? t('inspector.missing.doneRestartWindows')
+        : t('inspector.missing.done'), 'success');
+    } else if (r.canceled) showToast(t('inspector.missing.canceled'), 'info');
+    else showToast(t('inspector.missing.failed', { error: r.error ?? t('inspector.missing.unknownError') }), 'error');
   }), [subscribe, showToast]);
   if (!langs) return null;
   const note = ocrLanguageNote(pick, langs);
@@ -67,28 +71,30 @@ export function OcrMissing() {
   const options = ocrLanguageOptions(picker);
   const name = (tag: string) => options.find(o => o.value.toLowerCase() === tag.toLowerCase())?.label ?? tag;
   const icon = <Languages aria-hidden="true" />;
-  const screenText = <button type="button" className="insp-button insp-missing-action" onClick={() => openSettings('screen')}>Open Screen Text</button>;
+  const screenText = <button type="button" className="insp-button insp-missing-action" onClick={() => openSettings('screen')}>{t('inspector.missing.openScreenText')}</button>;
 
   if (note.kind !== 'missing') {
     return note.kind === 'installing'
-      ? <Missing icon={icon} title={`Installing ${name(pick)} text reading…`} text="Windows is adding it. Reads use it once it is in." />
-      : <Missing icon={icon} title={`${name(pick)} text reading is installed`} text={`Restart ${APP_NAME} to use it.`} />;
+      ? <Missing icon={icon} title={t('inspector.missing.installing', { name: name(pick) })} text={t('inspector.missing.installingText')} />
+      : <Missing icon={icon} title={t('inspector.missing.installed', { name: name(pick) })} text={t('inspector.missing.restart', { app: APP_NAME })} />;
   }
-  if (!pick) return <Missing icon={icon} title="No text reading on this PC" text="Windows reads the screen with a language pack. Choose one in Settings › Screen Text.">{screenText}</Missing>;
-  const until = langs.effective ? ` Until then, reads use ${name(langs.effective)}.` : '';
+  if (!pick) return <Missing icon={icon} title={t('inspector.missing.none')} text={t('inspector.missing.noneText')}>{screenText}</Missing>;
+  const text = langs.effective
+    ? t('inspector.missing.notInstalledUntil', { effective: name(langs.effective) })
+    : t('inspector.missing.notInstalledText');
   const install = note.install;
   return (
-    <Missing icon={icon} title={`${name(pick)} text reading isn't installed`} text={`Windows reads the screen with it. It installs once, for every macro.${until}`}>
+    <Missing icon={icon} title={t('inspector.missing.notInstalled', { name: name(pick) })} text={text}>
       {install
         ? (
           <button
             type="button"
             className="insp-button insp-missing-action"
             disabled={!!langs.installing}
-            data-tip="Windows asks for permission; the download comes from Windows Update."
+            data-tip={t('inspector.missing.installTip')}
             onClick={() => { asked.current = install.tag; settings.installOcrLanguage(install.tag); }}
           >
-            Install
+            {t('inspector.missing.install')}
           </button>
         )
         : screenText}

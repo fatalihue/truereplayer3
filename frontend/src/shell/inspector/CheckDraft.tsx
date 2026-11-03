@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { t } from '../../i18n';
 import { useSteps } from '../../logic/useSteps';
 import { getActionTypeColors } from '../../utils/displayUtils';
 import { arrival } from '../list/selection';
@@ -58,7 +59,7 @@ export function CheckDraft({ draft, locked }: { draft: CheckDraftT; locked: bool
 
   const colors = getActionTypeColors(openerType(draft.opener));
   return (
-    <div ref={listRef} className="insp-checks" role="group" aria-label="Checks" onKeyDown={onArrows}>
+    <div ref={listRef} className="insp-checks" role="group" aria-label={t('conditions.list')} onKeyDown={onArrows}>
       {checksFor(draft.opener).map(c => (
         <button
           key={c.type}
@@ -72,8 +73,8 @@ export function CheckDraft({ draft, locked }: { draft: CheckDraftT; locked: bool
             <span className="step-icon" data-icon={c.icon} />
           </span>
           <span className="insp-check-text">
-            <span className="insp-check-name">{c.name}</span>
-            <span className="insp-check-desc">{picked === c.type ? 'Adding…' : c.desc}</span>
+            <span className="insp-check-name" data-glossary="">{c.name}</span>
+            <span className="insp-check-desc">{picked === c.type ? t('conditions.adding') : c.desc}</span>
           </span>
         </button>
       ))}

@@ -7,16 +7,21 @@ import {
 } from '../../components/lexical/tokenCatalog';
 import { tokenTip } from '../../components/lexical/tokenDescriptions';
 import { normalizeToken } from '../../components/lexical/tokenNormalize';
-import { useTt } from '../../state/LanguageContext';
+import { t } from '../../i18n';
 import { preload, useLoaded } from '../lazyModule';
 import { anchorBelow, type MenuAnchor } from '../menuAnchor';
 import { Popover } from '../Popover';
 import { useApp } from '../store';
-import { appIsLight, loadEmojiPicker } from './inspectorState';
+import { emojiCategories, loadEmojiPicker } from './emoji';
+import { appIsLight } from './inspectorState';
 import { SnippetsTab } from './textSnippets';
 
 type Tab = 'tokens' | 'snippets' | 'emoji';
-const TABS: { id: Tab; label: string }[] = [{ id: 'tokens', label: 'Tokens' }, { id: 'snippets', label: 'Snippets' }, { id: 'emoji', label: 'Emoji' }];
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'tokens', label: t('sendText.insert.tabs.tokens') },
+  { id: 'snippets', label: t('sendText.insert.tabs.snippets') },
+  { id: 'emoji', label: t('sendText.insert.tabs.emoji') },
+];
 // The tab last used, for the next expansion in this session.
 let lastTab: Tab = 'tokens';
 
@@ -58,9 +63,9 @@ export function InsertPanel({ api, hasText, locked, onTransform }: {
   onTransform: (head: ChainHead) => void;
 }) {
   const [tab, setTab] = useState<Tab>(lastTab);
-  const choose = (t: Tab) => { lastTab = t; setTab(t); };
+  const choose = (next: Tab) => { lastTab = next; setTab(next); };
   const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    const i = TABS.findIndex(t => t.id === tab);
+    const i = TABS.findIndex(x => x.id === tab);
     const next = e.key === 'ArrowRight' ? (i + 1) % TABS.length : e.key === 'ArrowLeft' ? (i + TABS.length - 1) % TABS.length
       : e.key === 'Home' ? 0 : e.key === 'End' ? TABS.length - 1 : -1;
     if (next < 0) return;
@@ -70,21 +75,21 @@ export function InsertPanel({ api, hasText, locked, onTransform }: {
   };
   return (
     <div className="stx-insert">
-      <div role="tablist" aria-label="Insert" className="stx-tabs" onKeyDown={onTabKey}>
-        {TABS.map(t => (
+      <div role="tablist" aria-label={t('sendText.insert.panel')} className="stx-tabs" onKeyDown={onTabKey}>
+        {TABS.map(x => (
           <button
-            key={t.id}
+            key={x.id}
             type="button"
             role="tab"
-            id={`stx-tab-${t.id}`}
-            aria-selected={tab === t.id}
+            id={`stx-tab-${x.id}`}
+            aria-selected={tab === x.id}
             aria-controls="stx-tabpanel"
-            tabIndex={tab === t.id ? 0 : -1}
+            tabIndex={tab === x.id ? 0 : -1}
             className="stx-tab"
-            onPointerEnter={t.id === 'emoji' ? () => { void preload(loadEmojiPicker); } : undefined}
-            onClick={() => choose(t.id)}
+            onPointerEnter={x.id === 'emoji' ? () => { void preload(loadEmojiPicker); } : undefined}
+            onClick={() => choose(x.id)}
           >
-            {t.label}
+            {x.label}
           </button>
         ))}
       </div>
@@ -107,7 +112,6 @@ function TokensTab({ api, locked, onTransform }: {
   locked: boolean;
   onTransform: (head: ChainHead) => void;
 }) {
-  const tt = useTt();
   const headers = useApp(a => a.dataTable.headers);
   const [more, setMore] = useState<MoreOpen>(loadMore);
   const [prompt, setPrompt] = useState<{ kind: PromptKind; anchor: MenuAnchor; button: HTMLElement; serial: number } | null>(null);
@@ -123,14 +127,14 @@ function TokensTab({ api, locked, onTransform }: {
     else if (chip.insert) api.current?.insertText(chip.insert);
   };
   const chip = (c: PaletteChip) => (
-    <Chip key={c.label} label={c.label} disabled={locked} tip={tokenTip(paletteToken(c), tt, { palette: true, withRaw: false, skipKeys: true })} onPress={(b) => pick(c, b)} />
+    <Chip key={c.label} label={c.label} named={!!c.insert} disabled={locked} tip={tokenTip(paletteToken(c), { palette: true, withRaw: false, skipKeys: true })} onPress={(b) => pick(c, b)} />
   );
   const columns = [...new Set(headers)];
 
   return (
     <div className="stx-tokens">
-      <Group label="From the Data Loop table">
-        {columns.length === 0 && <span className="stx-group-none">This macro has no Data Loop table yet.</span>}
+      <Group label={t('tokens.groups.dataTable')}>
+        {columns.length === 0 && <span className="stx-group-none">{t('sendText.insert.noTable')}</span>}
         {columns.map(h => (
           <Chip
             key={h}
@@ -138,38 +142,39 @@ function TokensTab({ api, locked, onTransform }: {
             tone="data"
             disabled={locked || !tokenName(h)}
             tip={tokenName(h)
-              ? tokenTip(`{row:${h}}`, tt, { palette: true, withRaw: false })
-              : tt('Not a valid token name ({ } : not allowed)', 'Não é um nome de token válido ({ } : não são aceitos)')}
+              ? tokenTip(`{row:${h}}`, { palette: true, withRaw: false })
+              : t('sendText.insert.badColumn')}
             onPress={() => api.current?.insertToken(`{row:${h}}`)}
           />
         ))}
         {columns.length === 0 ? TABLE_PROMPTS.map(chip) : <More open={more.table} onToggle={() => toggle('table')}>{TABLE_PROMPTS.map(chip)}</More>}
       </Group>
-      <Group label="Values">
+      <Group label={t('tokens.groups.values')}>
         {VALUE_CHIPS.map(chip)}
         <More open={more.values} onToggle={() => toggle('values')}>{MORE_VALUE_CHIPS.map(chip)}</More>
       </Group>
-      <Group label="Keys">
+      <Group label={t('tokens.groups.keys')}>
         {KEY_CHIPS.map(chip)}
         <More open={more.keys} onToggle={() => toggle('keys')}>{MORE_KEY_CHIPS.map(chip)}</More>
       </Group>
-      <Group label="Clipboard">
+      <Group label={t('tokens.groups.clipboard')}>
+        {/* Named after its token, like the chip it becomes: the same in every language. */}
         {chip({ label: 'Clipboard', insert: '{clipboard}' })}
         {CLIPBOARD_CHIPS.map(chip)}
         <Chip
-          label="Transform…"
+          label={t('sendText.actions.transform')}
           icon="wand-sparkles"
           disabled={locked}
-          tip={tt('Build a {clipboard:...} transform: trim, split, lines, case…', 'Montar uma transformação {clipboard:...}: trim, corte, linhas, maiúsculas…')}
+          tip={t('sendText.insert.transformTip')}
           onPress={() => onTransform({ kind: 'clipboard' })}
         />
         <More open={more.clipboard} onToggle={() => toggle('clipboard')}>{MORE_CLIPBOARD_CHIPS.map(chip)}</More>
       </Group>
-      <Group label="Run state">
+      <Group label={t('tokens.groups.runState')}>
         {RUN_STATE_CHIPS.map(chip)}
         <More open={more.rows} onToggle={() => toggle('rows')}>{MORE_RUN_CHIPS.map(chip)}</More>
       </Group>
-      <span className="insp-hint">A token goes in where the cursor is. Click a token in the message to change it.</span>
+      <span className="insp-hint">{t('sendText.insert.hint')}</span>
       {prompt && (
         <NamePrompt
           key={prompt.serial}
@@ -196,9 +201,15 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** A chip of the palette. The press keeps the focus where it was, so the caret stays put. */
-function Chip({ label, tip, disabled, tone, icon, onPress }: {
+/**
+ * A chip of the palette. The press keeps the focus where it was, so the caret stays put. A chip
+ * `named` after its token (Date, Enter, Counter…) shows the label the token's chip has in the
+ * editor, the same in every language (the glossary's tokens): data-glossary says so to the
+ * language checks.
+ */
+function Chip({ label, named, tip, disabled, tone, icon, onPress }: {
   label: string;
+  named?: boolean;
   tip?: string;
   disabled?: boolean;
   tone?: 'data';
@@ -209,6 +220,7 @@ function Chip({ label, tip, disabled, tone, icon, onPress }: {
     <button
       type="button"
       className="stx-chip"
+      data-glossary={named ? '' : undefined}
       data-tone={tone}
       data-tip={tip || undefined}
       disabled={disabled}
@@ -227,22 +239,33 @@ function More({ open, onToggle, children }: { open: boolean; onToggle: () => voi
     <>
       {open && children}
       <button type="button" className="stx-chip" data-more="" aria-expanded={open} onMouseDown={(e) => e.preventDefault()} onClick={onToggle}>
-        {open ? 'Less' : 'More…'}
+        {open ? t('sendText.insert.less') : t('sendText.insert.more')}
       </button>
     </>
   );
 }
 
 const PROMPT_FIELD: Record<PromptKind, string> = {
-  var: 'Variable name', row: 'Data column', rownext: 'Data column', clip: 'Slot name', input: 'Prompt label', env: 'Environment variable',
+  var: t('sendText.prompt.field.var'),
+  row: t('sendText.prompt.field.row'),
+  rownext: t('sendText.prompt.field.row'),
+  clip: t('sendText.prompt.field.clip'),
+  input: t('sendText.prompt.field.input'),
+  env: t('sendText.prompt.field.env'),
 };
+// A slot's "1" and an environment variable's "USERNAME" are values, the same in every language.
 const PROMPT_PLACEHOLDER: Record<PromptKind, string> = {
-  var: 'name', row: 'column', rownext: 'column', clip: '1', input: 'What to ask', env: 'USERNAME',
+  var: t('sendText.prompt.example.var'),
+  row: t('sendText.prompt.example.row'),
+  rownext: t('sendText.prompt.example.row'),
+  clip: '1',
+  input: t('sendText.prompt.example.input'),
+  env: 'USERNAME',
 };
 const PROMPT_HINT: Partial<Record<PromptKind, string>> = {
-  input: 'Click the chip afterwards to add dropdown options.',
-  clip: 'The capture hotkey fills slots 1–9.',
-  env: 'Read from this machine when the macro runs — USERNAME, USERPROFILE, TEMP…',
+  input: t('sendText.prompt.hints.input'),
+  clip: t('sendText.prompt.hints.clip'),
+  env: t('sendText.prompt.hints.env'),
 };
 // What a name may hold, by the engine's rule for each token (send-text-102): a variable's and a
 // slot's letters, digits and _; an environment variable's, those and parentheses; a column's,
@@ -265,7 +288,6 @@ function NamePrompt({ kind, anchor, toggle, onInsert, onTransform, onClose }: {
   onTransform: (head: ChainHead) => void;
   onClose: () => void;
 }) {
-  const tt = useTt();
   const [name, setName] = useState('');
   const n = name.trim();
   const shown = normalizeToken(`{${kind}:${name || 'x'}}`);
@@ -283,7 +305,7 @@ function NamePrompt({ kind, anchor, toggle, onInsert, onTransform, onClose }: {
     <Popover anchor={anchor} label={PROMPT_FIELD[kind]} toggle={toggle} focusFirst restoreFocus={false} onClose={onClose}>
       <div className="stx-prompt">
         <span className="stx-prompt-token">{token}</span>
-        <span className="stx-prompt-what">{tokenTip(`{${kind}:x}`, (en) => en, { withRaw: false })}</span>
+        <span className="stx-prompt-what">{tokenTip(`{${kind}:x}`, { withRaw: false })}</span>
         <input
           className="stx-input"
           type="text"
@@ -306,15 +328,15 @@ function NamePrompt({ kind, anchor, toggle, onInsert, onTransform, onClose }: {
         {PROMPT_HINT[kind] && <span className="insp-hint">{PROMPT_HINT[kind]}</span>}
         <div className="stx-prompt-actions">
           {kind !== 'input' && (
-            <button type="button" className="insp-button" disabled={!n} data-tip={tt('Transforms: trim, split, lines, case…', 'Transformações: trim, corte, linhas, maiúsculas…')} onClick={transform}>
+            <button type="button" className="insp-button" disabled={!n} data-tip={t('sendText.prompt.transformTip')} onClick={transform}>
               <span className="step-icon" data-icon="wand-sparkles" />
-              Transform…
+              {t('sendText.actions.transform')}
             </button>
           )}
-          <button type="button" className="insp-primary" disabled={!n} onClick={insert}>Insert</button>
+          <button type="button" className="insp-primary" disabled={!n} onClick={insert}>{t('sendText.actions.insert')}</button>
         </div>
         {/* In the corner, but last in the order: the field is what takes the keyboard first. */}
-        <button type="button" className="insp-close stx-prompt-close" aria-label="Close" data-tip={tt('Close (Esc)', 'Fechar (Esc)')} onClick={onClose}>
+        <button type="button" className="insp-close stx-prompt-close" aria-label={t('common.actions.close')} data-tip={t('sendText.prompt.closeTip')} onClick={onClose}>
           <span className="step-icon" data-icon="x" />
         </button>
       </div>
@@ -325,11 +347,12 @@ function NamePrompt({ kind, anchor, toggle, onInsert, onTransform, onClose }: {
 /** Insert › Emoji: the macro icon's picker (its chunk), filling the panel. A press puts the emoji at
  *  the caret and leaves the picker where it was. */
 function EmojiTab({ api, locked }: { api: MutableRefObject<LexicalEditorHandle | null>; locked: boolean }) {
-  const picker = useLoaded(loadEmojiPicker);
+  const loaded = useLoaded(loadEmojiPicker);
   useEffect(() => {
-    if (!picker) void preload(loadEmojiPicker);
-  }, [picker]);
-  if (!picker) return <div className="stx-emoji" />;
+    if (!loaded) void preload(loadEmojiPicker);
+  }, [loaded]);
+  if (!loaded) return <div className="stx-emoji" />;
+  const picker = loaded.module;
   const Picker = picker.default;
   return (
     <div className="stx-emoji" inert={locked || undefined}>
@@ -340,7 +363,10 @@ function EmojiTab({ api, locked }: { api: MutableRefObject<LexicalEditorHandle |
         width="100%"
         height="100%"
         previewConfig={{ showPreview: false }}
-        searchPlaceholder="Search emoji…"
+        searchPlaceholder={t('sendText.insert.searchEmoji')}
+        searchClearButtonLabel={t('common.actions.clear')}
+        categories={emojiCategories(picker.Categories)}
+        emojiData={loaded.emojiData}
         skinTonesDisabled
         lazyLoadEmojis
         style={{

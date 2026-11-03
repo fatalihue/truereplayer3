@@ -780,6 +780,11 @@ export interface AppState {
   };
   buttonStates: ButtonStates;
   /**
+   * The machine's culture name (CultureInfo.CurrentCulture, e.g. "pt-BR"): {date}/{time} print
+   * month and day names in it at replay. Only in state:init; read through utils/machineLocale.
+   */
+  machineCulture?: string;
+  /**
    * Stack of sub-profile names currently active because of nested RunProfile
    * actions. Empty when not in a chain. Used by the status bar to render
    * "Running A → B" while a sub-profile executes.

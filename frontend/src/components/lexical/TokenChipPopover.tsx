@@ -24,11 +24,13 @@ import { NumInput, PopoverHeader, RadioGroup, RadioRow, Section } from './popove
 import { normalizeToken, SEGMENTING_TOKEN_NAMES } from './tokenNormalize';
 import { DEFAULT_DATE_FORMAT, parseDateTokenArgs, resolveDateToken, type DateHead, type DateUnit } from './dateFormat';
 import { tokenTip } from './tokenDescriptions';
+import { fmtNum, t } from '../../i18n';
 import { Callout } from '../common/Callout';
 import { tryParseInt32 } from '../../utils/int32';
 import { useAppState } from '../../state/AppStateContext';
 import { useDialogLayer } from '../common/dialogLayer';
 import { uiZoom, rectToLayout, viewportInLayout } from '../../utils/zoomSpace';
+import { machineLocale } from '../../utils/machineLocale';
 
 // Tokens that accept a `:N` repeat count (e.g. {enter:5}) — the key tokens, taken from the list
 // tokenNormalize ports key-for-key from the engine, not from a third hand-written copy. The copy
@@ -216,9 +218,9 @@ export function TokenChipPopover({
   // Esc. The next Ctrl+Enter confirms the dialog, with the edit in it.
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (popRef.current?.contains(t)) return;
-      if (anchor.contains(t)) return;
+      const target = e.target as Node;
+      if (popRef.current?.contains(target)) return;
+      if (anchor.contains(target)) return;
       onClose();
     };
     const onKey = (e: KeyboardEvent) => {
@@ -275,7 +277,7 @@ export function TokenChipPopover({
           than collapsing the row. withRaw:false because the header already prints the raw token. */}
       <PopoverHeader
         token={liveToken}
-        description={tokenTip(liveToken, (en) => en, { withRaw: false }) || 'Token substituted while replaying.'}
+        description={tokenTip(liveToken, { withRaw: false }) || t('tokenEditor.chip.noDescription')}
         onClose={onClose}
       />
 
@@ -315,7 +317,7 @@ function Footer({ onDelete }: { onDelete: () => void }) {
         className="flex items-center gap-1 h-7 px-2 text-caption rounded text-[color:var(--color-recording-fg)] hover:bg-[color-mix(in_srgb,var(--color-recording)_15%,transparent)] border border-transparent hover:border-[color-mix(in_srgb,var(--color-recording)_30%,transparent)] transition-colors"
       >
         <Trash2 size={12} />
-        Delete token
+        {t('tokenEditor.chip.deleteToken')}
       </button>
     </div>
   );
@@ -333,7 +335,7 @@ function ClipboardEditor({
   onChange,
 }: {
   token: string;
-  onChange: (t: string) => void;
+  onChange: (next: string) => void;
 }) {
   const [state, setState] = useState<TransformState>(() => parseClipboardToken(token));
   const { clipRaw, clipReady } = useClipboardContent();
@@ -374,7 +376,7 @@ function ClipboardEditor({
   );
 }
 
-function DelayEditor({ token, onChange }: { token: string; onChange: (t: string) => void }) {
+function DelayEditor({ token, onChange }: { token: string; onChange: (next: string) => void }) {
   const initial = parseDelay(token);
   const [ms, setMs] = useState(initial.ms);
 
@@ -385,7 +387,7 @@ function DelayEditor({ token, onChange }: { token: string; onChange: (t: string)
   const update = (v: number) => { const c = Math.min(60000, v); setMs(c); onChange(`{delay:${c}}`); };
 
   return (
-    <Section label="Delay">
+    <Section label={t('tokenEditor.delay.label')}>
       <div className="flex items-center gap-2 py-1">
         {/* width here is the TOTAL span (input + the two 24px steppers), unlike the dialogs'
             inputWidth which sizes the input alone — so it needs extra room to fit "60.000 ms". */}
@@ -401,7 +403,7 @@ function RepeatableEditor({
   onChange,
 }: {
   token: string;
-  onChange: (t: string) => void;
+  onChange: (next: string) => void;
 }) {
   const initial = parseRepeatable(token);
   const [n, setN] = useState(initial.n);
@@ -418,23 +420,23 @@ function RepeatableEditor({
   };
 
   return (
-    <Section label="Repeat">
+    <Section label={t('tokenEditor.repeat.label')}>
       <div className="flex items-center gap-2 py-1">
         <NumInput value={n} onChange={update} min={1} width={70} />
         <span className="text-caption text-text-tertiary">
-          time{n === 1 ? '' : 's'}
+          {t('tokenEditor.repeat.times', { count: n })}
         </span>
       </div>
       {n >= MAX_KEY_REPEAT && (
         <div className="text-caption text-text-tertiary mt-1">
-          {`${MAX_KEY_REPEAT} presses is the engine's limit for one token.`}
+          {t('tokenEditor.repeat.limit', { n: fmtNum(MAX_KEY_REPEAT) })}
         </div>
       )}
     </Section>
   );
 }
 
-function RandomEditor({ token, onChange }: { token: string; onChange: (t: string) => void }) {
+function RandomEditor({ token, onChange }: { token: string; onChange: (next: string) => void }) {
   const initial = parseRandom(token);
   const [min, setMin] = useState(initial.min);
   const [max, setMax] = useState(initial.max);
@@ -448,16 +450,16 @@ function RandomEditor({ token, onChange }: { token: string; onChange: (t: string
   };
 
   return (
-    <Section label="Random number">
+    <Section label={t('tokenEditor.random.label')}>
       <div className="flex items-center gap-2 py-1">
         <NumInput value={min} onChange={(v) => update(v, max)} min={0} width={86} thousands />
-        <span className="text-caption text-text-tertiary">to</span>
+        <span className="text-caption text-text-tertiary">{t('tokenEditor.random.to')}</span>
         <NumInput value={max} onChange={(v) => update(min, v)} min={0} width={86} thousands />
       </div>
       {/* The header already says "fresh each run"; the bounds are what the control needs
           explained — a plain range reads as exclusive at the top to many people. */}
       <div className="text-caption text-text-tertiary mt-1">
-        Inclusive.
+        {t('tokenEditor.random.inclusive')}
       </div>
     </Section>
   );
@@ -467,7 +469,7 @@ function RandomEditor({ token, onChange }: { token: string; onChange: (t: string
 // newest first (1 = the last thing copied). Emits only on real input (same open-then-
 // close guard as the others). The note carries the two things a user must know: the
 // history has to be enabled, and it can hold anything recently copied — passwords too.
-function WinClipEditor({ token, onChange }: { token: string; onChange: (t: string) => void }) {
+function WinClipEditor({ token, onChange }: { token: string; onChange: (next: string) => void }) {
   const [index, setIndex] = useState(() => parseWinClipToken(token).index);
   const [state, setState] = useState<TransformState>(() => parseWinClipToken(token).state);
   const [displayToken, setDisplayToken] = useState(() => normalizeToken(token));
@@ -477,9 +479,9 @@ function WinClipEditor({ token, onChange }: { token: string; onChange: (t: strin
   // index alone, so a hand-typed {winclip:2:trim} lost its chain the moment the chip was touched.
   const emit = (i: number, s: TransformState) => {
     if (s.unmodeled) return;
-    const t = buildWinClipToken(i, s);
-    setDisplayToken(t);
-    onChange(t);
+    const built = buildWinClipToken(i, s);
+    setDisplayToken(built);
+    onChange(built);
   };
 
   const update = (v: number) => {
@@ -497,18 +499,18 @@ function WinClipEditor({ token, onChange }: { token: string; onChange: (t: strin
 
   return (
     <>
-      <Section label="Clipboard history">
+      <Section label={t('tokenEditor.winclip.label')}>
         <div className="flex items-center gap-2 py-1">
-          <span className="text-caption text-text-tertiary">item</span>
+          <span className="text-caption text-text-tertiary">{t('tokenEditor.winclip.item')}</span>
           <NumInput value={index} onChange={update} min={1} width={70} disabled={state.unmodeled} />
-          <span className="text-caption text-text-tertiary">1 = most recent</span>
+          <span className="text-caption text-text-tertiary">{t('tokenEditor.winclip.mostRecent')}</span>
         </div>
         {/* The header already says what the token is (Win+V history, 1 = most recent, must be
             enabled); the one fact the header does not carry — and the one the user must know
             before pasting an arbitrary history item — is this. Read-only is said once, by the
             body's Callout below. */}
         <div className="text-caption text-text-tertiary mt-1 leading-relaxed">
-          May hold anything any app copied — passwords too.
+          {t('tokenEditor.winclip.warning')}
         </div>
       </Section>
       <ClipboardModifierBody
@@ -520,7 +522,7 @@ function WinClipEditor({ token, onChange }: { token: string; onChange: (t: strin
         token={displayToken}
         // "Item text", not "History item": that name belongs to the field above that picks WHICH
         // item — the same split ClipboardSurface makes.
-        sourceLabel="Item text"
+        sourceLabel={t('tokenEditor.winclip.source')}
       />
     </>
   );
@@ -539,12 +541,12 @@ function NameEditor({
 }: {
   token: string;
   tokenName: 'var' | 'clip' | 'env';
-  onChange: (t: string) => void;
+  onChange: (next: string) => void;
 }) {
   const [name, setName] = useState(() => parseNameToken(token, tokenName).name);
   const [state, setState] = useState<TransformState>(() => parseNameToken(token, tokenName).state);
   const [displayToken, setDisplayToken] = useState(() => normalizeToken(token));
-  const label = tokenName === 'var' ? 'Variable name' : tokenName === 'clip' ? 'Slot name' : 'Environment variable';
+  const label = tokenName === 'var' ? t('tokenEditor.name.variable') : tokenName === 'clip' ? t('tokenEditor.name.slot') : t('tokenEditor.name.env');
   // The typing grammar's [A-Za-z0-9_], plus the parentheses an environment variable name can
   // carry (ProgramFiles(x86)) — EnvTokenRegex's charset, so the token never un-chips on round-trip.
   const nameFilter = tokenName === 'env' ? /[^A-Za-z0-9_()]/g : /[^A-Za-z0-9_]/g;
@@ -555,9 +557,9 @@ function NameEditor({
   // rebuild what we could not represent is what closes that.
   const emit = (n: string, s: TransformState) => {
     if (!n || s.unmodeled) return;
-    const t = buildNameToken(tokenName, n, s);
-    setDisplayToken(t);
-    onChange(t);
+    const built = buildNameToken(tokenName, n, s);
+    setDisplayToken(built);
+    onChange(built);
   };
 
   const update = (raw: string) => {
@@ -586,7 +588,7 @@ function NameEditor({
             readOnly={state.unmodeled}
             autoFocus={!state.unmodeled}
             spellCheck={false}
-            placeholder={tokenName === 'var' ? 'name' : tokenName === 'clip' ? '1' : 'USERNAME'}
+            placeholder={tokenName === 'var' ? t('tokenEditor.name.variableExample') : tokenName === 'clip' ? '1' : t('tokenEditor.name.envExample')}
             className={`h-7 w-full px-2 text-minor font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none placeholder:text-text-disabled ${
               state.unmodeled ? 'opacity-60 cursor-not-allowed' : 'focus:border-accent-solid'
             }`}
@@ -602,7 +604,7 @@ function NameEditor({
         clipReady
         sourceUnknown
         token={displayToken}
-        sourceLabel={tokenName === 'clip' ? 'Slot text' : 'Variable value'}
+        sourceLabel={tokenName === 'clip' ? t('tokenEditor.name.slotSource') : t('tokenEditor.name.variableSource')}
       />
     </>
   );
@@ -611,7 +613,7 @@ function NameEditor({
 // {timestamp[:ms][:mods]} — Unix time. One identity (the unit) above the shared ladder, and a
 // source the editor DOES know: the clock, read once when the chip opens, the way the date chip
 // says "Resolves now to". Same emit discipline as the other chain editors.
-function TimestampEditor({ token, onChange }: { token: string; onChange: (t: string) => void }) {
+function TimestampEditor({ token, onChange }: { token: string; onChange: (next: string) => void }) {
   const parsed = parseChainToken(token);
   const [ms, setMs] = useState(() => (parsed?.head.kind === 'timestamp' ? parsed.head.ms : false));
   const [state, setState] = useState<TransformState>(() => parsed?.state ?? { ...DEFAULT_TRANSFORM });
@@ -621,9 +623,9 @@ function TimestampEditor({ token, onChange }: { token: string; onChange: (t: str
 
   const emit = (unitMs: boolean, s: TransformState) => {
     if (s.unmodeled) return;
-    const t = buildChainToken({ kind: 'timestamp', ms: unitMs }, s);
-    setDisplayToken(t);
-    onChange(t);
+    const built = buildChainToken({ kind: 'timestamp', ms: unitMs }, s);
+    setDisplayToken(built);
+    onChange(built);
   };
   const setUnit = (unitMs: boolean) => {
     if (state.unmodeled) return;
@@ -638,11 +640,11 @@ function TimestampEditor({ token, onChange }: { token: string; onChange: (t: str
 
   return (
     <>
-      <Section label="Unit">
-        <RadioGroup label="Unit">
+      <Section label={t('tokenEditor.timestamp.unit')}>
+        <RadioGroup label={t('tokenEditor.timestamp.unit')}>
           <div className="grid grid-cols-2 gap-x-3">
-            <RadioRow checked={!ms} onChange={() => setUnit(false)} label="Seconds" />
-            <RadioRow checked={ms} onChange={() => setUnit(true)} label="Milliseconds" />
+            <RadioRow checked={!ms} onChange={() => setUnit(false)} label={t('tokenEditor.timestamp.seconds')} />
+            <RadioRow checked={ms} onChange={() => setUnit(true)} label={t('tokenEditor.timestamp.milliseconds')} />
           </div>
         </RadioGroup>
       </Section>
@@ -652,7 +654,7 @@ function TimestampEditor({ token, onChange }: { token: string; onChange: (t: str
         clipRaw={nowValue}
         clipReady
         token={displayToken}
-        sourceLabel="Now"
+        sourceLabel={t('tokenEditor.timestamp.source')}
       />
     </>
   );
@@ -664,7 +666,7 @@ function TimestampEditor({ token, onChange }: { token: string; onChange: (t: str
 // transform effects are visible while editing; header match is case-insensitive
 // + trimmed, mirroring the backend BuildRowDict lookup. Emits only with a
 // non-empty column (clearing the field never emits a broken `{row:}`).
-function RowColEditor({ token, onChange, head = 'row' }: { token: string; onChange: (t: string) => void; head?: 'row' | 'rownext' }) {
+function RowColEditor({ token, onChange, head = 'row' }: { token: string; onChange: (next: string) => void; head?: 'row' | 'rownext' }) {
   const isNext = head === 'rownext';
   const parse = isNext ? parseRowNextToken : parseRowToken;
   const build = isNext ? buildRowNextToken : buildRowToken;
@@ -702,9 +704,9 @@ function RowColEditor({ token, onChange, head = 'row' }: { token: string; onChan
     // represent must never be rebuilt, because the rebuild is where the unrepresented part
     // disappears — and it disappears into the saved profile.
     if (s.unmodeled) return;
-    const t = build(col, s);
-    setDisplayToken(t);
-    onChange(t);
+    const built = build(col, s);
+    setDisplayToken(built);
+    onChange(built);
   };
 
   const updateColumn = (raw: string) => {
@@ -733,7 +735,7 @@ function RowColEditor({ token, onChange, head = 'row' }: { token: string; onChan
 
   return (
     <>
-      <Section label="Data column">
+      <Section label={t('tokenEditor.column.label')}>
         <div className="py-1">
           <input
             type="text"
@@ -745,7 +747,7 @@ function RowColEditor({ token, onChange, head = 'row' }: { token: string; onChan
             readOnly={state.unmodeled}
             autoFocus={!state.unmodeled}
             spellCheck={false}
-            placeholder="column"
+            placeholder={t('tokenEditor.column.example')}
             className={`h-7 w-full px-2 text-minor font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none placeholder:text-text-disabled ${
               state.unmodeled ? 'opacity-60 cursor-not-allowed' : 'focus:border-accent-solid'
             }`}
@@ -760,7 +762,7 @@ function RowColEditor({ token, onChange, head = 'row' }: { token: string; onChan
         clipRaw={cellRaw}
         clipReady
         token={displayToken}
-        sourceLabel="Cell (first row)"
+        sourceLabel={t('tokenEditor.column.source')}
       />
     </>
   );
@@ -779,7 +781,7 @@ function parseInputArg(token: string): { label: string; menu: string } {
 // spaces (unlike variable/column names); a non-empty menu CSV turns the runtime prompt into a
 // dropdown. '{', '}' and '|' are stripped from both fields since they'd break the token grammar.
 // An empty label never emits (would produce a broken {input:}).
-function InputEditor({ token, onChange }: { token: string; onChange: (t: string) => void }) {
+function InputEditor({ token, onChange }: { token: string; onChange: (next: string) => void }) {
   const parsed = parseInputArg(token);
   const [label, setLabel] = useState(parsed.label);
   const [menu, setMenu] = useState(parsed.menu);
@@ -803,7 +805,7 @@ function InputEditor({ token, onChange }: { token: string; onChange: (t: string)
 
   return (
     <>
-      <Section label="Prompt label">
+      <Section label={t('tokenEditor.input.label')}>
         <div className="py-1">
           <input
             type="text"
@@ -811,7 +813,7 @@ function InputEditor({ token, onChange }: { token: string; onChange: (t: string)
             onChange={(e) => onLabel(e.target.value)}
             autoFocus
             spellCheck={false}
-            placeholder="What to ask"
+            placeholder={t('tokenEditor.input.example')}
             className="input-inline font-sans px-2"
           />
         </div>
@@ -822,23 +824,23 @@ function InputEditor({ token, onChange }: { token: string; onChange: (t: string)
             token that stays literal in the message. */}
         <div className="text-caption text-text-tertiary mt-1">
           {/^[A-Za-z0-9_]+$/.test(label.trim())
-            ? <>Answer also readable as {`{var:${label.trim()}}`}.</>
-            : <>To reuse the answer as {'{var:…}'}, use letters, digits and _ only.</>}
+            ? t('tokenEditor.input.answerAs', { token: `{var:${label.trim()}}` })
+            : t('tokenEditor.input.reuseHint')}
         </div>
       </Section>
-      <Section label="Menu options (optional)">
+      <Section label={t('tokenEditor.input.menu')}>
         <div className="py-1">
           <input
             type="text"
             value={menu}
             onChange={(e) => onMenu(e.target.value)}
             spellCheck={false}
-            placeholder="Yes,No,Maybe"
+            placeholder={t('tokenEditor.input.menuExample')}
             className="input-inline font-sans px-2"
           />
         </div>
         <div className="text-caption text-text-tertiary mt-1">
-          Comma-separated → shown as a dropdown.
+          {t('tokenEditor.input.menuHint')}
         </div>
       </Section>
     </>
@@ -850,7 +852,7 @@ function InputEditor({ token, onChange }: { token: string; onChange: (t: string)
 // are stripped per line: braces end the token, and a '|' inside a line would silently split it
 // into two options. Empty lines are dropped; zero non-empty options never emits (InputEditor's
 // empty-label rule — a broken {pick:} must not be written).
-function PickEditor({ token, onChange }: { token: string; onChange: (t: string) => void }) {
+function PickEditor({ token, onChange }: { token: string; onChange: (next: string) => void }) {
   const [text, setText] = useState(() => parseNameArg(token).split('|').join('\n'));
   // An option that already holds a line break — a hand-edited or imported profile; this textarea
   // never makes one, since Enter always starts a new option — cannot be shown one per line without
@@ -871,7 +873,7 @@ function PickEditor({ token, onChange }: { token: string; onChange: (t: string) 
   return (
     // The label names the thing; the instruction lives in the hint line like every other
     // Section — "Options — one per line" was the one label carrying a sentence.
-    <Section label="Options">
+    <Section label={t('tokenEditor.pick.label')}>
       <div className="py-1">
         <textarea
           value={text}
@@ -880,7 +882,7 @@ function PickEditor({ token, onChange }: { token: string; onChange: (t: string) 
           autoFocus={!unmodeled}
           spellCheck={false}
           rows={5}
-          placeholder={'Olá! Tudo bem?\nOi, como posso ajudar?\nBom dia!'}
+          placeholder={t('tokenEditor.pick.example')}
           className={`w-full px-2 py-1.5 text-minor bg-bg-input border border-border-default rounded text-text-primary outline-none placeholder:text-text-disabled resize-none font-mono leading-relaxed ${
             unmodeled ? 'opacity-60 cursor-not-allowed' : 'focus:border-accent-solid'
           }`}
@@ -890,11 +892,11 @@ function PickEditor({ token, onChange }: { token: string; onChange: (t: string) 
           is left for the control. */}
       {unmodeled ? (
         <Callout tone="warn" still role="status">
-          Read-only: an option holds a line break, which one option per line can’t show. It still runs; edit the token text in the editor to change it.
+          {t('tokenEditor.pick.readOnly')}
         </Callout>
       ) : (
         <div className="text-caption text-text-tertiary mt-1">
-          One per line.
+          {t('tokenEditor.pick.hint')}
         </div>
       )}
     </Section>
@@ -909,17 +911,18 @@ function PickEditor({ token, onChange }: { token: string; onChange: (t: string) 
 // Preview tab uses (lexical/dateFormat), with the machine's locale for names. Emits only on real
 // input, the DelayEditor rule.
 const DATE_UNITS: { unit: DateUnit; label: string }[] = [
-  { unit: 'd', label: 'days' },
-  { unit: 'w', label: 'weeks' },
-  { unit: 'mo', label: 'months' },
-  { unit: 'y', label: 'years' },
-  { unit: 'h', label: 'hours' },
-  { unit: 'min', label: 'minutes' },
+  { unit: 'd', label: t('tokenEditor.date.units.days') },
+  { unit: 'w', label: t('tokenEditor.date.units.weeks') },
+  { unit: 'mo', label: t('tokenEditor.date.units.months') },
+  { unit: 'y', label: t('tokenEditor.date.units.years') },
+  { unit: 'h', label: t('tokenEditor.date.units.hours') },
+  { unit: 'min', label: t('tokenEditor.date.units.minutes') },
 ];
+// The HH:mm preset is named by its own pattern, the same in every language.
 const DATE_PRESETS: Record<DateHead, { label: string; format: string }[]> = {
-  date: [{ label: 'Default', format: '' }, { label: 'ISO', format: 'yyyy-MM-dd' }, { label: 'Long', format: 'D' }],
-  time: [{ label: 'Default', format: '' }, { label: 'HH:mm', format: 'HH:mm' }, { label: '12-hour', format: 'h:mm tt' }],
-  datetime: [{ label: 'Default', format: '' }, { label: 'ISO', format: 'yyyy-MM-dd HH:mm' }, { label: 'Long', format: 'F' }],
+  date: [{ label: t('tokenEditor.date.presets.default'), format: '' }, { label: t('tokenEditor.date.presets.iso'), format: 'yyyy-MM-dd' }, { label: t('tokenEditor.date.presets.long'), format: 'D' }],
+  time: [{ label: t('tokenEditor.date.presets.default'), format: '' }, { label: 'HH:mm', format: 'HH:mm' }, { label: t('tokenEditor.date.presets.twelveHour'), format: 'h:mm tt' }],
+  datetime: [{ label: t('tokenEditor.date.presets.default'), format: '' }, { label: t('tokenEditor.date.presets.iso'), format: 'yyyy-MM-dd HH:mm' }, { label: t('tokenEditor.date.presets.long'), format: 'F' }],
 };
 // Two channels for the chosen option (fill and ink), never a hue alone.
 const PILL = 'h-6 px-1.5 text-caption rounded border transition-colors disabled:opacity-40';
@@ -933,7 +936,7 @@ function buildDateToken(head: DateHead, n: number, unit: DateUnit, format: strin
   return `{${parts.join(':')}}`;
 }
 
-function DateEditor({ token, onChange }: { token: string; onChange: (t: string) => void }) {
+function DateEditor({ token, onChange }: { token: string; onChange: (next: string) => void }) {
   const inner = token.slice(1, -1);
   const head = inner.split(':')[0].toLowerCase() as DateHead;
   const args = parseDateTokenArgs(inner.split(':').slice(1));
@@ -947,30 +950,30 @@ function DateEditor({ token, onChange }: { token: string; onChange: (t: string) 
 
   const emit = (mag: number, isBack: boolean, u: DateUnit, f: string) => {
     if (several) return;
-    const t = buildDateToken(head, isBack ? -mag : mag, u, f);
-    setLive(t);
-    onChange(t);
+    const built = buildDateToken(head, isBack ? -mag : mag, u, f);
+    setLive(built);
+    onChange(built);
   };
-  const preview = resolveDateToken(live, new Date(), typeof navigator !== 'undefined' ? navigator.language : 'en-US');
+  const preview = resolveDateToken(live, new Date(), machineLocale());
 
   return (
     <>
-      <Section label="Shift">
+      <Section label={t('tokenEditor.date.shift')}>
         {several ? (
-          <div className="text-caption text-text-tertiary py-1">Several offsets in this token — edit it by hand.</div>
+          <div className="text-caption text-text-tertiary py-1">{t('tokenEditor.date.several')}</div>
         ) : (
           <>
             <div className="flex items-center gap-2 py-1">
               <NumInput value={magnitude} onChange={(v) => { setMagnitude(v); emit(v, back, unit, format); }} min={0} max={MAX_DATE_OFFSET} width={70} />
               <div className="flex gap-1">
-                <button type="button" onClick={() => { setBack(true); emit(magnitude, true, unit, format); }} className={`${PILL} ${back ? PILL_ON : PILL_OFF}`}>back</button>
-                <button type="button" onClick={() => { setBack(false); emit(magnitude, false, unit, format); }} className={`${PILL} ${!back ? PILL_ON : PILL_OFF}`}>ahead</button>
+                <button type="button" onClick={() => { setBack(true); emit(magnitude, true, unit, format); }} className={`${PILL} ${back ? PILL_ON : PILL_OFF}`}>{t('tokenEditor.date.back')}</button>
+                <button type="button" onClick={() => { setBack(false); emit(magnitude, false, unit, format); }} className={`${PILL} ${!back ? PILL_ON : PILL_OFF}`}>{t('tokenEditor.date.ahead')}</button>
               </div>
-              {magnitude === 0 && <span className="text-caption text-text-tertiary">now</span>}
+              {magnitude === 0 && <span className="text-caption text-text-tertiary">{t('tokenEditor.date.now')}</span>}
             </div>
             {magnitude >= MAX_DATE_OFFSET && (
               <div className="text-caption text-text-tertiary">
-                {`${MAX_DATE_OFFSET} is the engine's limit for one shift.`}
+                {t('tokenEditor.date.limit', { n: fmtNum(MAX_DATE_OFFSET) })}
               </div>
             )}
             <div className="flex flex-wrap gap-1 py-1">
@@ -983,7 +986,7 @@ function DateEditor({ token, onChange }: { token: string; onChange: (t: string) 
           </>
         )}
       </Section>
-      <Section label="Format">
+      <Section label={t('tokenEditor.date.format')}>
         <div className="flex flex-wrap gap-1 py-1">
           {DATE_PRESETS[head].map((p) => (
             <button key={p.label} type="button" disabled={several} onClick={() => { setFormat(p.format); emit(magnitude, back, unit, p.format); }} className={`${PILL} ${format === p.format ? PILL_ON : PILL_OFF}`}>
@@ -1000,12 +1003,12 @@ function DateEditor({ token, onChange }: { token: string; onChange: (t: string) 
           spellCheck={false}
           className="input-inline font-mono px-2 disabled:opacity-40"
         />
-        <div className="text-caption text-text-tertiary mt-1">.NET pattern. MM = month, mm = minutes.</div>
+        <div className="text-caption text-text-tertiary mt-1">{t('tokenEditor.date.pattern')}</div>
       </Section>
-      <Section label="Resolves now to">
+      <Section label={t('tokenEditor.date.result')}>
         <div className="py-1">
           {preview === null ? (
-            <div className="text-minor text-warning-ink">Invalid format — the token is typed as text.</div>
+            <div className="text-minor text-warning-ink">{t('tokenEditor.date.invalid')}</div>
           ) : (
             <div className="text-minor font-mono text-text-primary bg-bg-input border border-border-subtle rounded px-2 py-1 break-all">{preview}</div>
           )}
@@ -1020,7 +1023,7 @@ function DateEditor({ token, onChange }: { token: string; onChange: (t: string) 
 // counter exists only inside a run and an id is drawn there, and previewing a chain against ""
 // would claim it yields nothing. Same emit discipline as ClipboardEditor: only on real input,
 // never for a chain the parser could not represent.
-function HeadOnlyEditor({ token, onChange }: { token: string; onChange: (t: string) => void }) {
+function HeadOnlyEditor({ token, onChange }: { token: string; onChange: (next: string) => void }) {
   const parsed = parseChainToken(token);
   const head: ChainHead = parsed?.head ?? { kind: 'counter' };
   const [state, setState] = useState<TransformState>(() => parsed?.state ?? { ...DEFAULT_TRANSFORM });
@@ -1032,9 +1035,9 @@ function HeadOnlyEditor({ token, onChange }: { token: string; onChange: (t: stri
       ? (action as (prev: TransformState) => TransformState)(state)
       : action;
     setState(next);
-    const t = buildChainToken(head, next);
-    setDisplayToken(t);
-    onChange(t);
+    const built = buildChainToken(head, next);
+    setDisplayToken(built);
+    onChange(built);
   };
 
   return (
@@ -1044,7 +1047,7 @@ function HeadOnlyEditor({ token, onChange }: { token: string; onChange: (t: stri
       clipRaw=""
       clipReady
       token={displayToken}
-      sourceLabel="Value"
+      sourceLabel={t('tokenEditor.value.source')}
       sourceUnknown
     />
   );
@@ -1055,7 +1058,7 @@ function HeadOnlyEditor({ token, onChange }: { token: string; onChange: (t: stri
 function StaticInfo() {
   return (
     <div className="px-3.5 py-3 text-caption text-text-tertiary">
-      No editable parameters.
+      {t('tokenEditor.chip.noParameters')}
     </div>
   );
 }

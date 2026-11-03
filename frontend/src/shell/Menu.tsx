@@ -26,6 +26,8 @@ export interface MenuItem {
   confirm?: string;
   /** The label drawn in this monospace font: the choice is the font (Settings › Appearance's Font for data). */
   font?: string;
+  /** The label is a name of the glossary (a condition, a step), the same in every language. */
+  named?: boolean;
 }
 export type MenuEntry = MenuItem | 'separator';
 
@@ -241,7 +243,7 @@ function MenuList({ entries, label, place, focusFirst, onClose, onBack, panel }:
               }}
             >
               <span className="shell-menu-icon" style={entry.iconColor ? { color: entry.iconColor } : undefined}>{Icon && <Icon aria-hidden="true" />}</span>
-              <span className="shell-menu-label" style={entry.font ? { fontFamily: `'${entry.font}', monospace` } : undefined}>
+              <span className="shell-menu-label" data-glossary={entry.named || undefined} style={entry.font ? { fontFamily: `'${entry.font}', monospace` } : undefined}>
                 {entry.notBuilt ? t('shell.notBuilt', { what: entry.label }) : armed === i ? entry.confirm : entry.label}
               </span>
               {entry.shortcut && <kbd className="kbd shell-menu-kbd" aria-hidden="true">{entry.shortcut}</kbd>}

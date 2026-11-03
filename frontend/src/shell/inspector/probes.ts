@@ -1,10 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
+import { createElement, Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useBridge } from '../../bridge/BridgeContext';
 import type { IncomingMessage } from '../../bridge/messageTypes';
 import { newRequestId } from '../../logic/useEditorTools';
 
-// What the probes' editors share that is not drawn: the request that waits for its answer, and the
-// forms a region and a colour take on their way to the engine.
+// What the probes' editors share: the request that waits for its answer, the forms a region and a
+// colour take on their way to the engine, and the sentence of a test's answer with values in it.
+
+// A test's answer is a sentence of the catalog with some values in the monospaced face ("Best match
+// 92% at 640, 512"). t() is handed a private-use mark in each such value's place, and the sentence is
+// cut at the marks, so each value sits wherever the language puts it (as the tips cut theirs at the
+// key cap). No text has these characters.
+export const VALUE_A = '';
+export const VALUE_B = '';
+/** The sentence, with `a` drawn in place of VALUE_A and `b` in place of VALUE_B. */
+export function withValues(sentence: string, a: ReactNode, b?: ReactNode): ReactNode {
+  return createElement(Fragment, null, ...sentence.split(/([])/).map(p => (p === VALUE_A ? a : p === VALUE_B ? b : p)));
+}
 
 type Reply = IncomingMessage['type'];
 type PayloadOf<T extends Reply> = Extract<IncomingMessage, { type: T }>['payload'];

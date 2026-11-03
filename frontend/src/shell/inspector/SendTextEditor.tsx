@@ -3,8 +3,8 @@ import type { ActionItem } from '../../bridge/messageTypes';
 import { countKnownTokens, LexicalTokenEditor, type LexicalEditorHandle } from '../../components/lexical/LexicalTokenEditor';
 import type { ClipboardChipEditRequest } from '../../components/lexical/TokenChip';
 import { parseSendTextSegments, richFlavorSurvives } from '../../components/lexical/tokenNormalize';
+import { fmtNum, t } from '../../i18n';
 import { useSteps } from '../../logic/useSteps';
-import { useTt } from '../../state/LanguageContext';
 import { pickStatusNote } from '../../utils/sendTextStatus';
 import type { SendMethod, SendMode } from '../../utils/sendTextTypes';
 import { useLoaded } from '../lazyModule';
@@ -46,16 +46,17 @@ const sigOf = (p: Payload) => JSON.stringify([
   p.method === 'type' && p.delay > 0 ? p.delay : null,
 ]);
 
-type Tt = (en: string, pt: string) => string;
-const modes = (tt: Tt): { value: SendMode; label: string; tip: string }[] => [
-  { value: 'rich', label: 'Rich', tip: tt('Real formatting (Gmail, Crisp, Word)', 'Formatação real (Gmail, Crisp, Word)') },
-  { value: 'markdown', label: 'Markdown', tip: tt('*bold* / _italic_ as text — for WhatsApp', '*negrito* / _itálico_ como texto — para WhatsApp') },
-  { value: 'discord', label: 'Discord', tip: tt('**bold** / ~~strike~~ as text — for Discord', '**negrito** / ~~tachado~~ como texto — para Discord') },
-  { value: 'plain', label: 'Plain', tip: tt('Only the text: the formatting stays with the step, unsent', 'Só o texto: a formatação fica no passo, sem ser enviada') },
+// The options keep the names list.sendText gives them (Rich, Plain, Paste, Type — Formatado,
+// Simples, Colar, Digitar in pt-BR), from the catalog.
+const MODES: { value: SendMode; label: string; tip: string }[] = [
+  { value: 'rich', label: t('sendText.formats.rich'), tip: t('sendText.formatTips.rich') },
+  { value: 'markdown', label: t('sendText.formats.markdown'), tip: t('sendText.formatTips.markdown') },
+  { value: 'discord', label: t('sendText.formats.discord'), tip: t('sendText.formatTips.discord') },
+  { value: 'plain', label: t('sendText.formats.plain'), tip: t('sendText.formatTips.plain') },
 ];
-const methods = (tt: Tt): { value: SendMethod; label: string; tip: string }[] => [
-  { value: 'paste', label: 'Paste', tip: tt('Ctrl+V — the only way that sends formatting', 'Ctrl+V — o único jeito que envia a formatação') },
-  { value: 'type', label: 'Type', tip: tt('Key by key — for apps that ignore Ctrl+V', 'Tecla a tecla — para apps que ignoram o Ctrl+V') },
+const METHODS: { value: SendMethod; label: string; tip: string }[] = [
+  { value: 'paste', label: t('sendText.methods.paste'), tip: t('sendText.methodTips.paste') },
+  { value: 'type', label: t('sendText.methods.type'), tip: t('sendText.methodTips.type') },
 ];
 
 interface Editor {
@@ -86,7 +87,6 @@ interface Editor {
  */
 export default function SendTextEditor({ step, draft, locked }: { step: ActionItem | null; draft: TextDraft | null; locked: boolean }) {
   const cmds = useSteps();
-  const tt = useTt();
   const apiRef = useRef<LexicalEditorHandle | null>(null);
   const slots = useInspectorSlots();
   const expanded = useLoaded(loadTextExpanded);
@@ -245,16 +245,16 @@ export default function SendTextEditor({ step, draft, locked }: { step: ActionIt
   const note = pickStatusNote({
     sendMode: mode, sendMethod: method, hasFormatting, tokenCount: tokens,
     richWillDegrade: hasFormatting && mode === 'rich' && !richFlavorSurvives(text),
-  }, tt);
+  });
 
   return (
     <>
-      <Section label="Message">
+      <Section label={t('sendText.message')}>
         <Segmented<SendMode>
-          label="Message"
+          label={t('sendText.message')}
           value={mode}
           disabled={locked}
-          options={modes(tt)}
+          options={MODES}
           onChange={(v) => { setMode(v); commit({ mode: v }); }}
         />
       </Section>
@@ -268,7 +268,7 @@ export default function SendTextEditor({ step, draft, locked }: { step: ActionIt
           // The formatting reaches the target unless the mode drops it (Plain) or the transport
           // cannot carry it (Type has no clipboard, so Rich arrives as plain text).
           formattingDelivered={mode !== 'plain' && !(method === 'type' && mode === 'rich')}
-          onChange={(t) => { setText(t); typed(); }}
+          onChange={(next) => { setText(next); typed(); }}
           onFormattingChange={(f) => { setHasFormatting(f); typed(); }}
           // Ctrl+Enter in the message: the editor keeps the key, so the Inspector's own "done"
           // (D12) is done here — the text goes, the expanded editor collapses, the list takes over.
@@ -279,12 +279,12 @@ export default function SendTextEditor({ step, draft, locked }: { step: ActionIt
           placeholderClassName="insp-text-placeholder"
           tokenAutocomplete
           onClipboardChipEdit={wide ? routeChipEdit : undefined}
-          placeholder={<>Type the text to send…<span className="insp-text-placeholder-tip">Type {'{'} for tokens, like {'{enter}'} or {'{date}'}</span></>}
+          placeholder={<>{t('sendText.placeholder')}<span className="insp-text-placeholder-tip">{t('sendText.placeholderTip')}</span></>}
         />
       </div>
       <div className="insp-text-status">
         <span className="insp-text-counts">
-          {text.length} chars · {tokens} token{tokens === 1 ? '' : 's'} · {lines} line{lines === 1 ? '' : 's'}
+          {t('sendText.counts.chars', { count: text.length, n: fmtNum(text.length) })} · {t('sendText.counts.tokens', { count: tokens, n: fmtNum(tokens) })} · {t('sendText.counts.lines', { count: lines, n: fmtNum(lines) })}
         </span>
         {note && <span className="insp-text-note" data-tone={note.tone} data-tip={note.tip}>{note.text}</span>}
       </div>
@@ -306,22 +306,22 @@ export default function SendTextEditor({ step, draft, locked }: { step: ActionIt
         />
       )}
       <Section
-        label="Delivery"
-        hint={method === 'type' ? 'Type sends key by key, for apps that block pasting.' : 'Paste goes through the clipboard and puts it back after.'}
+        label={t('sendText.delivery')}
+        hint={method === 'type' ? t('sendText.typeHint') : t('sendText.pasteHint')}
       >
         <div className="insp-text-delivery">
           <Segmented<SendMethod>
-            label="Delivery"
+            label={t('sendText.delivery')}
             value={method}
             disabled={locked}
-            options={methods(tt)}
+            options={METHODS}
             onChange={(v) => { setMethod(v); commit({ method: v }); }}
           />
           {method === 'type' && (
             <DraftField
               stepId={stepId ?? 'new-text'}
               field="sendCharDelay"
-              label="Per-character delay in milliseconds"
+              label={t('sendText.charDelay')}
               kind="int"
               min={0}
               max={MAX_CHAR_DELAY_MS}

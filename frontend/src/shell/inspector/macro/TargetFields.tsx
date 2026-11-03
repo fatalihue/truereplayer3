@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useBridge } from '../../../bridge/BridgeContext';
+import { t } from '../../../i18n';
 import { newRequestId, useEditorTools } from '../../../logic/useEditorTools';
 import { useMacro } from '../../../logic/useMacro';
-import { useTt } from '../../../state/LanguageContext';
 import { Clear, DraftField, Section, Segmented } from '../fields';
 import { ProcessPicker, ResultCard } from '../probeKit';
 import { compiles, targetProblem, type TargetValue } from './target';
@@ -13,6 +13,13 @@ import './macro.css';
 const asTyped = (text: string) => text.trim();
 
 type TestResult = { matches: boolean; foregroundProcess: string; foregroundTitle: string; error?: string };
+
+/** The Test's answer: "Matches — chrome.exe / Inbox", "No match — nothing in front". */
+function verdict(r: TestResult): string {
+  const front = [r.foregroundProcess, r.foregroundTitle].filter(Boolean).join(' / ');
+  if (!front) return r.matches ? t('macroSettings.fields.matchesNothing') : t('macroSettings.fields.noMatchNothing');
+  return r.matches ? t('macroSettings.fields.matches', { window: front }) : t('macroSettings.fields.noMatch', { window: front });
+}
 
 /**
  * Which window, for the macro's target (Macro settings › Window target) and a folder's (its dialog):
@@ -32,7 +39,6 @@ export function TargetFields({ id, value, disabled, onChange }: {
 }) {
   const tools = useEditorTools();
   const macro = useMacro();
-  const tt = useTt();
   const { subscribe } = useBridge();
   const regex = value.titleMatchMode === 'regex';
   const problem = targetProblem(value);
@@ -114,50 +120,53 @@ export function TargetFields({ id, value, disabled, onChange }: {
   const result = test.result;
   return (
     <>
-      <Section label="Process" hint={problem === 'empty' ? 'Fill in a process, a title or both.' : undefined}>
+      <Section label={t('macroSettings.fields.process')} hint={problem === 'empty' ? t('macroSettings.fields.fillIn') : undefined}>
         <div className="insp-line">
           <DraftField
             stepId={id}
             field="targetProcess"
-            label="Process"
+            label={t('macroSettings.fields.process')}
             kind="mono"
-            placeholder="notepad.exe"
+            placeholder={t('macroSettings.fields.processPlaceholder')}
             stored={value.processName}
             disabled={disabled}
             parse={asTyped}
             onApply={(processName) => change({ processName })}
           />
-          {value.processName && <Clear label="Clear the process" labelPt="Limpar o processo" disabled={disabled} onClear={() => change({ processName: '' })} />}
+          {value.processName && <Clear label={t('macroSettings.fields.clearProcess')} disabled={disabled} onClear={() => change({ processName: '' })} />}
           <ProcessPicker disabled={disabled} onPick={(processName) => change({ processName })} />
         </div>
       </Section>
       <Section
-        label="Title"
+        label={t('macroSettings.fields.title')}
         hint={badPattern
-          ? <span data-error="">This does not look like a valid regular expression.</span>
-          : 'Case-insensitive.'}
+          ? <span data-error="">{t('macroSettings.fields.badRegex')}</span>
+          : t('macroSettings.fields.caseInsensitive')}
       >
         <Segmented<'contains' | 'regex'>
-          label="Title match mode"
+          label={t('macroSettings.fields.titleMode')}
           value={value.titleMatchMode}
           disabled={disabled}
-          options={[{ value: 'contains', label: 'Contains' }, { value: 'regex', label: 'Regex', tip: tt('.NET regular expression', 'Expressão regular .NET') }]}
+          options={[
+            { value: 'contains', label: t('macroSettings.fields.contains') },
+            { value: 'regex', label: t('macroSettings.fields.regex'), tip: t('macroSettings.fields.regexTip') },
+          ]}
           onChange={(titleMatchMode) => change({ titleMatchMode })}
         />
         <div className="insp-line">
           <DraftField
             stepId={id}
             field="targetTitle"
-            label="Title"
+            label={t('macroSettings.fields.title')}
             kind="text"
-            placeholder={regex ? 'e.g. (Chrome|Firefox)' : 'Part of the window title'}
+            placeholder={regex ? t('macroSettings.fields.titleRegexPlaceholder') : t('macroSettings.fields.titlePlaceholder')}
             stored={value.windowTitle}
             disabled={disabled}
             parse={parseTitle}
             onText={setTypedTitle}
             onApply={(windowTitle) => change({ windowTitle })}
           />
-          {value.windowTitle && <Clear label="Clear the title" labelPt="Limpar o título" disabled={disabled} onClear={() => change({ windowTitle: '' })} />}
+          {value.windowTitle && <Clear label={t('macroSettings.fields.clearTitle')} disabled={disabled} onClear={() => change({ windowTitle: '' })} />}
         </div>
       </Section>
       <div className="insp-pair">
@@ -165,9 +174,7 @@ export function TargetFields({ id, value, disabled, onChange }: {
           type="button"
           className="insp-button"
           data-armed={detecting ? '' : undefined}
-          data-tip={detecting
-            ? tt('Click the window to target. Click here or press Esc to cancel.', 'Clique na janela-alvo. Clique aqui ou aperte Esc para cancelar.')
-            : tt('The next window you click fills the process and the title', 'A próxima janela que você clicar preenche o processo e o título')}
+          data-tip={detecting ? t('macroSettings.fields.detectingTip') : t('macroSettings.fields.detectTip')}
           disabled={disabled}
           onClick={() => {
             if (detecting) { stopDetecting(); return; }
@@ -179,12 +186,12 @@ export function TargetFields({ id, value, disabled, onChange }: {
           }}
         >
           <span className="step-icon" data-icon="crosshair" />
-          {detecting ? 'Click the target window…' : 'Detect window'}
+          {detecting ? t('macroSettings.fields.detecting') : t('macroSettings.fields.detect')}
         </button>
         <button
           type="button"
           className="insp-button"
-          data-tip={tt('Checks the window in FRONT right now against these fields.', 'Confere a janela que está em PRIMEIRO PLANO agora contra estes campos.')}
+          data-tip={t('macroSettings.fields.testTip')}
           disabled={disabled || problem !== null || test.waiting}
           onClick={() => {
             live.current.asked = live.current.seq;
@@ -193,13 +200,13 @@ export function TargetFields({ id, value, disabled, onChange }: {
           }}
         >
           <span className="step-icon" data-icon="play" />
-          {test.waiting ? 'Testing…' : 'Test'}
+          {test.waiting ? t('macroSettings.fields.testing') : t('common.actions.test')}
         </button>
       </div>
       {result && (
         <ResultCard
           ok={!result.error && result.matches}
-          title={result.error || `${result.matches ? 'Matches' : 'No match'} — ${[result.foregroundProcess, result.foregroundTitle].filter(Boolean).join(' / ') || 'nothing in front'}`}
+          title={result.error || verdict(result)}
         />
       )}
     </>

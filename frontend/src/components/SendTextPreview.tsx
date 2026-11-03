@@ -12,6 +12,7 @@
 // screen told the two apart until the macro ran and pasted the braces. The preview and the
 // Insert Text editor now ask the SAME walker (grammar ported from the engine's own matchers)
 // instead of each keeping a private copy of the rule.
+import { t, tn } from '../i18n';
 import { normalizeToken, splitTokenSegments } from './lexical/tokenNormalize';
 import type { DeliveryBadge, DeliveryBadgeTip } from './lexical/deliveryBadge';
 
@@ -22,8 +23,8 @@ interface SendTextPreviewProps {
   /**
    * Portal tooltips for a DEGRADED badge, keyed by REASON — a row can be degraded because the
    * payload splits (rich-split) or because typing cannot carry formatting at all
-   * (type-drops-rich), and the two need different advice. Built at the call site because tt()
-   * is a hook.
+   * (type-drops-rich), and the two need different advice. The call site picks them from the
+   * catalog (list.sendText), next to the step it draws.
    */
   badgeTips?: Partial<Record<DeliveryBadgeTip, string>>;
 }
@@ -56,10 +57,11 @@ export function SendTextPreview({ text, badge = null, badgeTips }: SendTextPrevi
           data-tip={badge.degraded && badge.tip ? badgeTips?.[badge.tip] : undefined}
         >
           {badge.degraded && <span aria-hidden="true">!</span>}
-          {badge.label}
+          {/* The badge's words, the editor's names for the format and the method (the catalog). */}
+          {tn('sendText.badge')[badge.label]}
           {/* The "!" is hidden from assistive tech and the explanation lives in the portal tip,
               so a degraded badge read as a plain "rich". Say it in words, off screen. */}
-          {badge.degraded && <span className="sr-only normal-case"> (degraded)</span>}
+          {badge.degraded && <span className="sr-only normal-case"> {t('sendText.badge.degraded')}</span>}
         </span>
       )}
       {segments.map((segment, idx) =>

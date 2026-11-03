@@ -4478,7 +4478,12 @@ namespace TrueReplayer
                     profileName = CurrentProfileName == "No Profile" ? (string?)null : CurrentProfileName,
                     actionCount = actions.Count
                 },
-                buttonStates = ProjectButtonStates()
+                buttonStates = ProjectButtonStates(),
+                // The machine's culture (the regional format): {date} and {time} print their month and
+                // day names in it (ActionExecution.TokenCulture), whatever the interface language is.
+                // The page's previews of those tokens read it here; the WebView2's own language now
+                // follows the interface, so navigator.language no longer stands for the machine.
+                machineCulture = System.Globalization.CultureInfo.CurrentCulture.Name
             });
 
             // "Always on top" is not applied: the new interface has no switch for it (Compact view takes

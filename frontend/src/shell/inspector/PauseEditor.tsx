@@ -1,4 +1,5 @@
 import type { ActionItem } from '../../bridge/messageTypes';
+import { t } from '../../i18n';
 import { useSteps } from '../../logic/useSteps';
 import { useLanguage } from '../../state/LanguageContext';
 import { formatMs } from '../../utils/displayUtils';
@@ -21,24 +22,24 @@ export function PauseEditor({ step, locked }: { step: ActionItem; locked: boolea
   const id = step.id ?? '';
   const setKey = (key: string) => applyEdits(cmds, id, [{ field: 'key', value: key }]);
   const timeout = step.timeout ?? 0;
-  const ms = `${formatMs(timeout, language)} ms`;
+  const ms = formatMs(timeout, language);
   const key = step.key ? keycaps(step.key) : '';
-  const summary = key && timeout > 0 ? `Resumes on ${key} or after ${ms} — whichever comes first.`
-    : key ? `Waits until ${key} is pressed.`
-    : timeout > 0 ? `Waits ${ms}, then continues.`
-    : 'No resume key and no timeout — this Pause is skipped.';
+  const summary = key && timeout > 0 ? t('editors.pause.summary.either', { key, ms })
+    : key ? t('editors.pause.summary.key', { key })
+    : timeout > 0 ? t('editors.pause.summary.time', { ms })
+    : t('editors.pause.summary.none');
 
   return (
     <>
-      <Section label="Resume key">
-        <KeyCapture value={step.key} label="Capture the resume key" onCapture={setKey} disabled={locked} />
+      <Section label={t('editors.pause.resumeKey')}>
+        <KeyCapture value={step.key} label={t('editors.pause.captureField')} onCapture={setKey} disabled={locked} />
         <div className="insp-pair">
-          <DraftField stepId={id} field="key" label="Type the resume key" kind="mono" placeholder="F8 · Esc · Ctrl+R" stored={step.key} disabled={locked} />
-          <button type="button" className="insp-button" disabled={locked || !step.key} onClick={() => setKey('')}>Clear</button>
+          <DraftField stepId={id} field="key" label={t('editors.pause.typeField')} kind="mono" placeholder={t('editors.pause.placeholder')} stored={step.key} disabled={locked} />
+          <button type="button" className="insp-button" disabled={locked || !step.key} onClick={() => setKey('')}>{t('common.actions.clear')}</button>
         </div>
       </Section>
-      <Section label="Timeout">
-        <DraftField stepId={id} field="timeout" label="Pause timeout in milliseconds" kind="int" step={1000} min={0} max={MAX_TIMEOUT_MS} unit="ms" stored={String(timeout)} disabled={locked} />
+      <Section label={t('inspector.wait.timeout')}>
+        <DraftField stepId={id} field="timeout" label={t('editors.pause.timeoutField')} kind="int" step={1000} min={0} max={MAX_TIMEOUT_MS} unit="ms" stored={String(timeout)} disabled={locked} />
         <Chips values={TIMEOUT_CHIPS} current={timeout} forever onPick={(v) => applyEdits(cmds, id, [{ field: 'timeout', value: String(v) }])} disabled={locked} />
       </Section>
       <p className="insp-summary" aria-live="polite" data-error={!key && timeout <= 0 ? '' : undefined}>{summary}</p>

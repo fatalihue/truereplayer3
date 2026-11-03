@@ -9,6 +9,10 @@ import type { SendMode, SendMethod } from '../../utils/sendTextTypes';
 
 /** Which explanation the `degraded` tint is carrying — the caller owns the copy. */
 export type DeliveryBadgeTip = 'rich-split' | 'type-drops-rich';
+/**
+ * `label` says WHICH badge, not its words: the renderer (components/SendTextPreview) reads them from
+ * the catalog (i18n/<language>/sendText.ts, badge), the same names the editor's options have.
+ */
 export type DeliveryBadge = { label: 'rich' | 'md' | 'type'; degraded: boolean; tip?: DeliveryBadgeTip };
 
 /**

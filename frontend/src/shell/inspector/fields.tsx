@@ -3,7 +3,8 @@ import { flushSync } from 'react-dom';
 import { splitCombo } from '../../components/common/KbdTag';
 import { isPureModifier, SINGLE_KEY_CAPTURE_IDLE_MS, useKeyCapture } from '../../logic/useKeyCapture';
 import { useSteps } from '../../logic/useSteps';
-import { useLanguage, useTt } from '../../state/LanguageContext';
+import { fmtNum, t } from '../../i18n';
+import { useLanguage } from '../../state/LanguageContext';
 import { formatMs } from '../../utils/displayUtils';
 import { compactKey } from '../../utils/keyNames';
 import { useCheckTarget, type CheckTarget } from './checkTarget';
@@ -55,15 +56,15 @@ export function Switch({ label, checked, onChange, disabled, tip }: { label: str
   );
 }
 
-/** The × at the end of a field that clears it, and gives the focus back to the field. */
-export function Clear({ label, labelPt, onClear, disabled }: { label: string; labelPt: string; onClear: () => void; disabled?: boolean }) {
-  const tt = useTt();
+/** The × at the end of a field that clears it, and gives the focus back to the field. Its label, from
+ *  the catalog, is the name and the tip. */
+export function Clear({ label, onClear, disabled }: { label: string; onClear: () => void; disabled?: boolean }) {
   return (
     <button
       type="button"
       className="insp-icon-button"
       aria-label={label}
-      data-tip={tt(label, labelPt)}
+      data-tip={label}
       disabled={disabled}
       onClick={(e) => {
         onClear();
@@ -78,14 +79,13 @@ export function Clear({ label, labelPt, onClear, disabled }: { label: string; la
 /** Quick durations under a field (DurationChips): the current one lit; ∞ is "no timeout" (0). */
 export function Chips({ values, current, onPick, disabled, forever }: { values: number[]; current: number; onPick: (ms: number) => void; disabled?: boolean; forever?: boolean }) {
   const { language } = useLanguage();
-  const tt = useTt();
   return (
     <div className="insp-chips">
       {values.map(v => (
         <button key={v} type="button" aria-pressed={v === current} disabled={disabled} onClick={() => onPick(v)}>{formatMs(v, language)} ms</button>
       ))}
       {forever && (
-        <button type="button" aria-pressed={current === 0} disabled={disabled} data-tip={tt('Wait for the resume key, with no time limit', 'Esperar a tecla de retomada, sem limite de tempo')} onClick={() => onPick(0)}>∞ No timeout</button>
+        <button type="button" aria-pressed={current === 0} disabled={disabled} data-tip={t('inspector.fields.noTimeoutTip')} onClick={() => onPick(0)}>{t('inspector.fields.noTimeout')}</button>
       )}
     </div>
   );
@@ -170,16 +170,11 @@ export interface DraftFieldProps {
   multiline?: boolean;
   /** Told what is being typed (null when nothing is), for a hint that judges the text as it goes. */
   onText?: (text: string | null) => void;
-  /** The field's tooltip (bilingual, from tt). */
+  /** The field's tooltip (from the catalog). */
   tip?: string;
   /** Sends the value; one edit of `field` when absent (of the step, or of what the check edits: checkTarget). */
   onApply?: (value: string) => void;
 }
-
-const GROUPED = {
-  en: new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }),
-  'pt-BR': new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }),
-} as const;
 
 interface Latest {
   props: DraftFieldProps;
@@ -206,7 +201,6 @@ export function DraftField(props: DraftFieldProps) {
   const { stored, stepId, field, kind, disabled } = props;
   const cmds = useSteps();
   const target = useCheckTarget();
-  const { language } = useLanguage();
   const [focused, setFocused] = useState(false);
   const [typing, setTyping] = useState<Typed | null>(null);
   const [sent, setSent] = useState<{ value: string; over: string } | null>(null);
@@ -289,7 +283,7 @@ export function DraftField(props: DraftFieldProps) {
   // coordinate, a percent or a number of times reads as typed.
   const grouped = kind === 'int' && (props.unit === 'ms' || props.unit === '×');
   const shown = typing ? typing.text
-    : grouped && !focused && /^-?\d+$/.test(base) ? GROUPED[language].format(Number(base))
+    : grouped && !focused && /^-?\d+$/.test(base) ? fmtNum(Number(base))
     : base;
   const box = {
     ref: inputRef,
@@ -336,8 +330,8 @@ export function DraftField(props: DraftFieldProps) {
       {props.unit && <span className="insp-box-unit">{props.unit}</span>}
       {numeric && !disabled && (
         <span className="insp-steppers">
-          <button type="button" tabIndex={-1} aria-label="Increase" disabled={props.max !== undefined && at >= props.max} onMouseDown={(e) => e.preventDefault()} onClick={() => stepBy(1)} />
-          <button type="button" tabIndex={-1} aria-label="Decrease" disabled={!Number.isFinite(at) || (props.min !== undefined && at <= props.min)} onMouseDown={(e) => e.preventDefault()} onClick={() => stepBy(-1)} />
+          <button type="button" tabIndex={-1} aria-label={t('inspector.fields.increase')} disabled={props.max !== undefined && at >= props.max} onMouseDown={(e) => e.preventDefault()} onClick={() => stepBy(1)} />
+          <button type="button" tabIndex={-1} aria-label={t('inspector.fields.decrease')} disabled={!Number.isFinite(at) || (props.min !== undefined && at <= props.min)} onMouseDown={(e) => e.preventDefault()} onClick={() => stepBy(-1)} />
         </span>
       )}
     </label>
@@ -358,8 +352,8 @@ function parseValue(text: string, p: DraftFieldProps): string | null {
   if (p.parse) return p.parse(text);
   if (p.kind === 'text') return text;
   if (p.kind === 'mono') {
-    const t = text.trim();
-    return t === '' ? null : t;
+    const trimmed = text.trim();
+    return trimmed === '' ? null : trimmed;
   }
   if (text === '') return p.empty === 'clear' ? '' : null;
   if (text === '-') return null;
@@ -479,13 +473,13 @@ export function KeyCapture({ value, single, mouse, label, onCapture, onCancel, a
       onClick={() => { setHeld(null); setListening(on => !on); }}
       onBlur={() => { setListening(false); setHeld(null); }}
     >
-      {shown ? <Keys combo={shown} /> : <span className="insp-capture-none">No key yet</span>}
+      {shown ? <Keys combo={shown} /> : <span className="insp-capture-none">{t('inspector.fields.noKey')}</span>}
       <span className="insp-capture-hint">
         {listening
-          ? (single ? 'Listening — press a key · Esc cancels'
-            : mouse ? 'Listening — press a key, a combo, a side button or the wheel · Esc cancels'
-            : 'Listening — press a key or a combo · Esc cancels')
-          : 'Click to capture a key'}
+          ? (single ? t('inspector.fields.listening')
+            : mouse ? t('inspector.fields.listeningMouse')
+            : t('inspector.fields.listeningCombo'))
+          : t('inspector.fields.capture')}
       </span>
     </button>
   );

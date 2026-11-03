@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { ActionItem, ProfileEntry } from '../../bridge/messageTypes';
+import { t, tn } from '../../i18n';
 import { useEditorTools } from '../../logic/useEditorTools';
 import { useMacro } from '../../logic/useMacro';
 import { useSteps } from '../../logic/useSteps';
-import { useLanguage, useTt } from '../../state/LanguageContext';
+import { useLanguage } from '../../state/LanguageContext';
 import { formatMs } from '../../utils/displayUtils';
 import { arrival } from '../list/selection';
 import { useApp, useShell } from '../store';
@@ -26,6 +27,20 @@ const COORD = 2_000_000;
 // A text whose empty is a real value (it clears the field): every typed text goes as it is.
 const asTyped = (text: string) => text.trim();
 
+/** What Activate or Maximize does to the window, besides bringing it to the front. */
+type Placed = 'plain' | 'maximize' | 'place' | 'move' | 'resize';
+const FRONT = tn('editors.window.summary.front');
+/** The first sentence of the summary with a program to open when no window matches: one per case. */
+function frontOpening(placed: Placed, path: string): string {
+  switch (placed) {
+    case 'maximize': return t('editors.window.summary.frontOpening.maximize', { path });
+    case 'place': return t('editors.window.summary.frontOpening.place', { path });
+    case 'move': return t('editors.window.summary.frontOpening.move', { path });
+    case 'resize': return t('editors.window.summary.frontOpening.resize', { path });
+    default: return t('editors.window.summary.frontOpening.plain', { path });
+  }
+}
+
 /**
  * ⑧ Activate Window (editor-passo-170 to 189): what to do with the window — bring it to the front,
  * maximize, minimize or close it —, which window (the If's window fields, with which match it is,
@@ -37,7 +52,6 @@ export function ActivateWindowEditor({ step, locked }: { step: ActionItem; locke
   const cmds = useSteps();
   const tools = useEditorTools();
   const { language } = useLanguage();
-  const tt = useTt();
   const id = step.id ?? '';
   const edit = (edits: StepEdit[]) => applyEdits(cmds, id, edits);
   const verb: Verb = step.windowVerb === 'maximize' || step.windowVerb === 'minimize' || step.windowVerb === 'close' ? step.windowVerb : 'activate';
@@ -54,42 +68,44 @@ export function ActivateWindowEditor({ step, locked }: { step: ActionItem; locke
   // both turn on: a read that nothing applies would look like nothing happened.
   const [readError, setReadError] = useState<string | null>(null);
   const read = useAsk('window:captureGeometryResult', (r) => {
-    if (!r.found) { setReadError(r.error || 'Could not read the window.'); return; }
+    if (!r.found) { setReadError(r.error || t('editors.window.readFailed')); return; }
     const arm = !position && !size ? [{ field: 'restorePosition', value: 'true' }, { field: 'restoreSize', value: 'true' }] : [];
     edit([
       { field: 'windowX', value: String(r.x) }, { field: 'windowY', value: String(r.y) },
       { field: 'windowWidth', value: String(r.width) }, { field: 'windowHeight', value: String(r.height) },
       ...arm,
     ]);
-  }, 5000, () => setReadError('No answer from the app.'));
+  }, 5000, () => setReadError(t('editors.window.noAnswer')));
   // Browse…: the system's file picker; a file chosen becomes the path.
   const browse = useAsk('dialog:pickFileResult', (r) => {
     if (r.path) edit([{ field: 'launchPath', value: r.path }]);
   });
 
-  const upTo = `${formatMs(timeout, language)} ms`;
-  const then = `the run ${goesOn(step) ? 'goes on' : 'stops'}`;
-  const placed = verb === 'maximize' ? ' and maximizes it'
-    : verb !== 'activate' ? ''
-    : position && size ? ' and places it' : position ? ' and moves it' : size ? ' and resizes it' : '';
+  const upTo = formatMs(timeout, language);
+  const placed: Placed = verb === 'maximize' ? 'maximize'
+    : verb !== 'activate' ? 'plain'
+    : position && size ? 'place' : position ? 'move' : size ? 'resize' : 'plain';
   const summary = !matcher
-    ? (waits && path ? `Opens ${path}, with no window to wait for.` : 'No window yet: fill in a process or a title.')
-    : verb === 'minimize' ? 'Minimizes the window, when one matches. With none, nothing happens.'
-    : verb === 'close' ? 'Closes the window, when one matches. With none, nothing happens.'
-    : `Brings the window to the front${placed}${path ? `, opening ${path} when none matches` : ''}. Waits up to ${upTo}; if the window never shows, ${then}.`;
+    ? (waits && path ? t('editors.window.summary.opens', { path }) : t('editors.window.summary.noWindow'))
+    : verb === 'minimize' ? t('editors.window.summary.minimize')
+    : verb === 'close' ? t('editors.window.summary.close')
+    // Two sentences: what happens to the window, then what a timeout does.
+    : `${path ? frontOpening(placed, path) : FRONT[placed]} ${goesOn(step)
+      ? t('editors.window.summary.waitsGoesOn', { ms: upTo })
+      : t('editors.window.summary.waitsStops', { ms: upTo })}`;
 
   return (
     <>
-      <Section label="Action">
+      <Section label={t('editors.action')}>
         <Segmented<Verb>
-          label="Window action"
+          label={t('editors.window.actionField')}
           value={verb}
           disabled={locked}
           options={[
-            { value: 'activate', label: 'Activate', tip: tt('Brings it to the front, or opens it', 'Traz para a frente, ou abre') },
-            { value: 'maximize', label: 'Maximize' },
-            { value: 'minimize', label: 'Minimize', tip: tt('Only a window already open', 'Só uma janela já aberta') },
-            { value: 'close', label: 'Close', tip: tt('Only a window already open', 'Só uma janela já aberta') },
+            { value: 'activate', label: t('editors.window.activate'), tip: t('editors.window.activateTip') },
+            { value: 'maximize', label: t('editors.window.maximize') },
+            { value: 'minimize', label: t('editors.window.minimize'), tip: t('editors.window.openOnlyTip') },
+            { value: 'close', label: t('editors.window.close'), tip: t('editors.window.openOnlyTip') },
           ]}
           onChange={(v) => edit([{ field: 'windowVerb', value: v === 'activate' ? '' : v }])}
         />
@@ -97,34 +113,34 @@ export function ActivateWindowEditor({ step, locked }: { step: ActionItem; locke
       <WindowCheck step={step} locked={locked} activate />
       {waits && (
         <>
-          <Section label="Launch" hint="Opened only when no window matches.">
+          <Section label={t('editors.window.launch')} hint={t('editors.window.launchHint')}>
             <div className="insp-line">
-              <DraftField stepId={id} field="launchPath" label="Path" kind="mono" placeholder="notepad.exe · https://… · C:\path\app.exe" stored={step.launchPath ?? ''} disabled={locked} parse={asTyped} />
+              <DraftField stepId={id} field="launchPath" label={t('editors.window.path')} kind="mono" placeholder={t('editors.window.pathPlaceholder')} stored={step.launchPath ?? ''} disabled={locked} parse={asTyped} />
               <button
                 type="button"
                 className="insp-button"
                 disabled={locked || browse.waiting}
-                data-tip={tt('Choose a program on the disk', 'Escolher um programa no disco')}
+                data-tip={t('editors.window.browseTip')}
                 onClick={() => browse.ask(requestId => tools.pickFile({ requestId, kind: 'executable' }))}
               >
                 <span className="step-icon" data-icon="folder-open" />
-                Browse…
+                {t('editors.window.browse')}
               </button>
             </div>
           </Section>
-          <Section label="Args">
-            <DraftField stepId={id} field="launchArgs" label="Args" kind="mono" placeholder={path ? '' : 'Set a path first'} stored={step.launchArgs ?? ''} disabled={locked || !path} parse={asTyped} />
+          <Section label={t('editors.window.args')}>
+            <DraftField stepId={id} field="launchArgs" label={t('editors.window.args')} kind="mono" placeholder={path ? '' : t('editors.window.argsPlaceholder')} stored={step.launchArgs ?? ''} disabled={locked || !path} parse={asTyped} />
           </Section>
         </>
       )}
       {/* Maximize places the window itself; Minimize and Close do not place it. */}
       {verb === 'activate' && (
-        <Section label="Placement">
+        <Section label={t('editors.window.placement')}>
           <button
             type="button"
             className="insp-button"
             disabled={locked || read.waiting || !matcher}
-            data-tip={tt('Reads where the matching window is now, and its size', 'Lê onde a janela está agora, e o tamanho dela')}
+            data-tip={t('editors.window.readTip')}
             onClick={() => {
               setReadError(null);
               read.ask(requestId => tools.captureWindowGeometry({
@@ -133,30 +149,30 @@ export function ActivateWindowEditor({ step, locked }: { step: ActionItem; locke
             }}
           >
             <span className="step-icon" data-icon="frame" />
-            {read.waiting ? 'Reading…' : 'Read from window'}
+            {read.waiting ? t('editors.window.reading') : t('editors.window.read')}
           </button>
           {readError && !read.waiting && <ResultCard ok={false} title={readError} />}
           {/* Off, a pair keeps its numbers, dimmed: they come back with it. */}
           <div className="insp-row">
-            <span className="insp-row-label">Position</span>
-            <Switch label="Position" checked={position} disabled={locked} onChange={(on) => edit([{ field: 'restorePosition', value: String(on) }])} />
+            <span className="insp-row-label">{t('editors.window.position')}</span>
+            <Switch label={t('editors.window.position')} checked={position} disabled={locked} onChange={(on) => edit([{ field: 'restorePosition', value: String(on) }])} />
           </div>
           <div className="insp-pair">
-            <DraftField stepId={id} field="windowX" label="Window X" kind="int" signed min={-COORD} max={COORD} prefix="X" stored={String(step.windowX ?? 0)} disabled={locked || !position} />
-            <DraftField stepId={id} field="windowY" label="Window Y" kind="int" signed min={-COORD} max={COORD} prefix="Y" stored={String(step.windowY ?? 0)} disabled={locked || !position} />
+            <DraftField stepId={id} field="windowX" label={t('editors.window.x')} kind="int" signed min={-COORD} max={COORD} prefix="X" stored={String(step.windowX ?? 0)} disabled={locked || !position} />
+            <DraftField stepId={id} field="windowY" label={t('editors.window.y')} kind="int" signed min={-COORD} max={COORD} prefix="Y" stored={String(step.windowY ?? 0)} disabled={locked || !position} />
           </div>
           <div className="insp-row">
-            <span className="insp-row-label">Size</span>
-            <Switch label="Size" checked={size} disabled={locked} onChange={(on) => edit([{ field: 'restoreSize', value: String(on) }])} />
+            <span className="insp-row-label">{t('editors.window.size')}</span>
+            <Switch label={t('editors.window.size')} checked={size} disabled={locked} onChange={(on) => edit([{ field: 'restoreSize', value: String(on) }])} />
           </div>
           <div className="insp-pair">
-            <DraftField stepId={id} field="windowWidth" label="Window W" kind="int" min={0} max={COORD} prefix="W" stored={String(step.windowWidth ?? 0)} disabled={locked || !size} />
-            <DraftField stepId={id} field="windowHeight" label="Window H" kind="int" min={0} max={COORD} prefix="H" stored={String(step.windowHeight ?? 0)} disabled={locked || !size} />
+            <DraftField stepId={id} field="windowWidth" label={t('editors.window.w')} kind="int" min={0} max={COORD} prefix={t('editors.window.prefixW')} stored={String(step.windowWidth ?? 0)} disabled={locked || !size} />
+            <DraftField stepId={id} field="windowHeight" label={t('editors.window.h')} kind="int" min={0} max={COORD} prefix={t('editors.window.prefixH')} stored={String(step.windowHeight ?? 0)} disabled={locked || !size} />
           </div>
         </Section>
       )}
-      {waits && <WaitTiming step={step} locked={locked} timeout={timeout} label="Wait-for-window timeout in milliseconds" />}
-      {targeted && <p className="insp-callout">Clicks still follow the macro’s Window target, not this window.</p>}
+      {waits && <WaitTiming step={step} locked={locked} timeout={timeout} label={t('editors.window.timeoutField')} />}
+      {targeted && <p className="insp-callout">{t('editors.window.targetNote')}</p>}
       <p className="insp-summary" aria-live="polite">{summary}</p>
     </>
   );
@@ -174,7 +190,6 @@ const callable = (profiles: ProfileEntry[], open: string | null, called: string)
 export function RunMacroEditor({ step, locked }: { step: ActionItem; locked: boolean }) {
   const cmds = useSteps();
   const macro = useMacro();
-  const tt = useTt();
   const id = step.id ?? '';
   const open = useApp(a => a.activeProfile);
   const profiles = useApp(a => a.profiles);
@@ -192,21 +207,21 @@ export function RunMacroEditor({ step, locked }: { step: ActionItem; locked: boo
   return (
     <>
       <Section
-        label="Macro to run"
-        hint={!entry ? <span data-error="">{called ? `“${called}” is not in the library: choose another.` : 'Choose the macro to run.'}</span>
-          : entry.isDisabled ? `“${called}” is disabled: the run skips it.`
+        label={t('editors.runMacro.macro')}
+        hint={!entry ? <span data-error="">{called ? t('editors.runMacro.notInLibrary', { name: called }) : t('editors.runMacro.choose')}</span>
+          : entry.isDisabled ? t('editors.runMacro.disabled', { name: called })
           : undefined}
       >
-        <MacroPicker names={callable(profiles, open, called)} value={called || null} onPick={(name) => edit({ profileName: name })} disabled={locked} label="Macro to run" />
+        <MacroPicker names={callable(profiles, open, called)} value={called || null} onPick={(name) => edit({ profileName: name })} disabled={locked} label={t('editors.runMacro.macro')} />
       </Section>
-      <Section label="Repeat" aside="per call">
-        <DraftField stepId={id} field="repeat" label="Repeat count" kind="int" min={1} max={999} unit="×" stored={String(repeat)} disabled={locked || overData} />
+      <Section label={t('editors.repeat')} aside={t('editors.runMacro.perCall')}>
+        <DraftField stepId={id} field="repeat" label={t('editors.runMacro.repeatField')} kind="int" min={1} max={999} unit="×" stored={String(repeat)} disabled={locked || overData} />
       </Section>
       <div className="insp-row">
-        <span className="insp-row-label">Run once per data row</span>
+        <span className="insp-row-label">{t('editors.runMacro.perRow')}</span>
         <Switch
-          label="Run once per data row"
-          tip={tt('Once per row of the called macro’s table. Overrides Repeat.', 'Uma vez por linha da tabela do macro chamado. Substitui o Repeat.')}
+          label={t('editors.runMacro.perRow')}
+          tip={t('editors.runMacro.perRowTip')}
           checked={overData}
           disabled={locked}
           onChange={(on) => edit({ runOverData: on })}
@@ -214,9 +229,9 @@ export function RunMacroEditor({ step, locked }: { step: ActionItem; locked: boo
       </div>
       <button type="button" className="insp-button" disabled={locked || !entry} onClick={() => macro.open(called)}>
         <span className="step-icon" data-icon="square-arrow-out-up-right" />
-        Open macro
+        {t('list.menu.openMacro')}
       </button>
-      <p className="insp-callout">Runs the called macro’s steps inline; its own loop and interval are ignored (use Repeat). Disabled macros are skipped; up to 5 levels deep.</p>
+      <p className="insp-callout">{t('editors.runMacro.note')}</p>
     </>
   );
 }
@@ -237,19 +252,19 @@ export function RunMacroDraft({ draft, locked }: { draft: MacroDraft; locked: bo
   // The step lands and is selected (which ends the draft); if it never does, the draft goes anyway.
   useEffect(() => {
     if (!picked) return;
-    const t = setTimeout(() => drafts.end(), ARRIVAL_MS);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => drafts.end(), ARRIVAL_MS);
+    return () => clearTimeout(timer);
   }, [picked]);
   const names = callable(profiles, draft.macro, '');
-  if (names.length === 0) return <p className="insp-summary">No other macro to call. Create one first.</p>;
+  if (names.length === 0) return <p className="insp-summary">{t('editors.runMacro.noOther')}</p>;
   return (
-    <Section label="Macro to run" hint={picked ? 'Adding…' : '↑ ↓ choose, Enter takes it.'}>
+    <Section label={t('editors.runMacro.macro')} hint={picked ? t('editors.runMacro.adding') : t('editors.runMacro.keysHint')}>
       <MacroPicker
         names={names}
         value={picked}
         autoFocus
         disabled={locked || picked !== null}
-        label="Macro to run"
+        label={t('editors.runMacro.macro')}
         onPick={(name) => {
           arrival.expect(draft.at, draft.macro);
           cmds.addRunProfile({ profileName: name, repeatCount: 1, insertIndex: draft.at });

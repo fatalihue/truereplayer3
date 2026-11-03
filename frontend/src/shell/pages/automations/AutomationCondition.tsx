@@ -38,7 +38,7 @@ const KINDS: { type: Kind; Icon: LucideIcon }[] = [
 ];
 /** The check of the If's list a condition is, by name, icon and description; the clipboard's is its own. */
 const look = (type: Kind) => (type === 'ClipboardChanged'
-  ? { name: 'Clipboard', icon: 'clipboard', desc: 'The copied text changes', descPt: 'O texto copiado muda' }
+  ? { name: 'Clipboard', icon: 'clipboard', desc: 'The copied text changes' }
   : CHECKS.find(c => c.type === type)!);
 const kindOf = (t: TriggerConfig): Kind => KINDS.find(k => k.type === t.conditionType)?.type ?? 'WindowOpen';
 /** The three conditions with a point or a region, which can follow a window. */
@@ -186,7 +186,7 @@ export function Condition({ name, t, never, change, cmds }: { name: string; t: T
           onClose={() => setMenu(null)}
           entries={KINDS.map(({ type, Icon }) => {
             const c = look(type);
-            return { label: c.name, icon: Icon, checked: type === kind, tip: tt(c.desc, c.descPt), onSelect: () => choose(type) };
+            return { label: c.name, icon: Icon, checked: type === kind, tip: c.desc, onSelect: () => choose(type) };
           })}
         />
       )}

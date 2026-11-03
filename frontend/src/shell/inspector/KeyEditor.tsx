@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { splitCombo } from '../../components/common/KbdTag';
 import type { ActionItem } from '../../bridge/messageTypes';
+import { t } from '../../i18n';
 import { useSteps } from '../../logic/useSteps';
-import { useLanguage, useTt } from '../../state/LanguageContext';
+import { useLanguage } from '../../state/LanguageContext';
 import { formatMs } from '../../utils/displayUtils';
 import { keycaps } from '../library/model';
 import { arrival } from '../list/selection';
@@ -22,20 +23,20 @@ const lastKey = (combo: string) => {
 /** The key, captured in the panel or typed beside it (tokens like {var:name} are typed). */
 function KeyInput({ step, single, locked, onKey }: { step: ActionItem; single?: boolean; locked: boolean; onKey: (key: string) => void }) {
   return (
-    <Section label="Key">
-      <KeyCapture value={step.key} single={single} label="Capture a key" onCapture={onKey} disabled={locked} />
-      <span className="insp-sublabel">Or type it</span>
+    <Section label={t('editors.key.key')}>
+      <KeyCapture value={step.key} single={single} label={t('editors.key.capture')} onCapture={onKey} disabled={locked} />
+      <span className="insp-sublabel">{t('editors.key.orType')}</span>
       <DraftField
         stepId={step.id ?? ''}
         field="key"
-        label="Type the key"
+        label={t('editors.key.typeField')}
         kind="mono"
-        placeholder={single ? 'F5 · Ctrl · Space' : 'F5 · Ctrl+S · {var:name}'}
+        placeholder={single ? t('editors.key.placeholderSingle') : t('editors.key.placeholder')}
         stored={step.key}
         disabled={locked}
         onApply={onKey}
       />
-      {!single && <span className="insp-hint">{'Typed keys accept tokens, like {var:name}.'}</span>}
+      {!single && <span className="insp-hint">{t('editors.key.tokensHint')}</span>}
     </Section>
   );
 }
@@ -47,7 +48,6 @@ function KeyInput({ step, single, locked, onKey }: { step: ActionItem; single?: 
  */
 export function KeyEditor({ step, locked }: { step: ActionItem; locked: boolean }) {
   const cmds = useSteps();
-  const tt = useTt();
   const { language } = useLanguage();
   const id = step.id ?? '';
   const hold = step.actionType === 'HoldKey';
@@ -72,48 +72,48 @@ export function KeyEditor({ step, locked }: { step: ActionItem; locked: boolean 
   };
 
   const gap = step.repeatDelayMs ?? DEFAULT_KEY_GAP_MS;
-  const summary = !step.key ? 'Press a key or combo, or type one.'
-    : hold ? `Holds ${keycaps(step.key)} for ${formatMs(step.holdDurationMs || DEFAULT_HOLD_MS, language)} ms.`
-    : repeat > 1 ? `Presses ${keycaps(step.key)} ${repeat} times, ${formatMs(gap, language)} ms apart.`
-    : `Presses ${keycaps(step.key)}.`;
+  const summary = !step.key ? t('editors.key.summary.none')
+    : hold ? t('editors.key.summary.hold', { key: keycaps(step.key), ms: formatMs(step.holdDurationMs || DEFAULT_HOLD_MS, language) })
+    : repeat > 1 ? t('editors.key.summary.repeat', { key: keycaps(step.key), n: repeat, ms: formatMs(gap, language) })
+    : t('editors.key.summary.press', { key: keycaps(step.key) });
 
   return (
     <>
       <KeyInput step={step} locked={locked} onKey={setKey} />
       <Section
-        label="Action"
-        hint={combo ? `Hold takes one key: switching keeps ${lastKey(step.key)} and drops ${modifiers}.` : undefined}
+        label={t('editors.action')}
+        hint={combo ? t('editors.key.comboHint', { key: lastKey(step.key), modifiers }) : undefined}
       >
         <Segmented<'press' | 'hold'>
-          label="Keystroke mode"
+          label={t('editors.key.modeField')}
           value={hold ? 'hold' : 'press'}
-          options={[{ value: 'press', label: 'Press' }, { value: 'hold', label: 'Hold' }]}
+          options={[{ value: 'press', label: t('editors.key.press') }, { value: 'hold', label: t('editors.key.hold') }]}
           onChange={setAction}
           disabled={locked}
         />
       </Section>
       {hold ? (
         <Section
-          label="Hold"
-          hint={droppedHere ? `Hold takes a single key: this saved ${droppedHere.kept} and dropped ${droppedHere.modifiers}. For a combo, add a Hold row for the modifier above this one.` : undefined}
+          label={t('editors.holdLabel')}
+          hint={droppedHere ? t('editors.key.droppedHint', { key: droppedHere.kept, modifiers: droppedHere.modifiers }) : undefined}
         >
-          <DraftField stepId={id} field="holdDurationMs" label="Hold duration in milliseconds" kind="int" min={10} max={60000} step={durationStep} unit="ms" stored={String(step.holdDurationMs || DEFAULT_HOLD_MS)} disabled={locked} />
+          <DraftField stepId={id} field="holdDurationMs" label={t('editors.holdField')} kind="int" min={10} max={60000} step={durationStep} unit="ms" stored={String(step.holdDurationMs || DEFAULT_HOLD_MS)} disabled={locked} />
           <Chips values={HOLD_CHIPS} current={step.holdDurationMs || DEFAULT_HOLD_MS} onPick={(ms) => edit([{ field: 'holdDurationMs', value: String(ms) }])} disabled={locked} />
         </Section>
       ) : (
         <>
           <div className="insp-pair">
-            <Section label="Times">
-              <DraftField stepId={id} field="repeat" label="Times to repeat" kind="int" min={1} max={999} unit="×" stored={String(repeat)} disabled={locked} />
+            <Section label={t('editors.key.times')}>
+              <DraftField stepId={id} field="repeat" label={t('editors.timesField')} kind="int" min={1} max={999} unit="×" stored={String(repeat)} disabled={locked} />
             </Section>
-            <Section label="Gap">
-              <DraftField stepId={id} field="repeatDelayMs" label="Gap between presses" kind="int" min={0} max={5000} empty="clear" unit="ms" placeholder={String(DEFAULT_KEY_GAP_MS)} stored={step.repeatDelayMs == null ? '' : String(step.repeatDelayMs)} disabled={locked || repeat <= 1} />
+            <Section label={t('editors.key.gap')}>
+              <DraftField stepId={id} field="repeatDelayMs" label={t('editors.key.gapField')} kind="int" min={0} max={5000} empty="clear" unit="ms" placeholder={String(DEFAULT_KEY_GAP_MS)} stored={step.repeatDelayMs == null ? '' : String(step.repeatDelayMs)} disabled={locked || repeat <= 1} />
             </Section>
           </div>
           <Vary
-            label="Vary the gap"
-            fieldLabel="Gap jitter (%)"
-            tip={tt('Random ±% on each gap — less robotic.', 'Variação ±% aleatória em cada intervalo — menos robótico.')}
+            label={t('editors.varyGap')}
+            fieldLabel={t('editors.key.gapJitter')}
+            tip={t('editors.varyGapTip')}
             stepId={id}
             field="repeatDelayJitterPct"
             value={step.repeatDelayJitterPct ?? 0}
@@ -152,15 +152,15 @@ export function DraftKeyEditor({ draft, locked }: { draft: Draft; locked: boolea
   };
   return (
     <>
-      <Section label="Key">
-        <KeyCapture value="" label="Capture a key" autoListen onCapture={add} onCancel={cancel} disabled={locked} />
-        <span className="insp-sublabel">Or type it</span>
+      <Section label={t('editors.key.key')}>
+        <KeyCapture value="" label={t('editors.key.capture')} autoListen onCapture={add} onCancel={cancel} disabled={locked} />
+        <span className="insp-sublabel">{t('editors.key.orType')}</span>
         <label className="insp-box">
           <input
             type="text"
             className="insp-mono"
-            aria-label="Type the key"
-            placeholder="F5 · Ctrl+S · {var:name}"
+            aria-label={t('editors.key.typeField')}
+            placeholder={t('editors.key.placeholder')}
             spellCheck={false}
             autoComplete="off"
             value={typed}
@@ -173,7 +173,7 @@ export function DraftKeyEditor({ draft, locked }: { draft: Draft; locked: boolea
             }}
           />
         </label>
-        <span className="insp-hint">{'Typed keys accept tokens, like {var:name}. Enter adds the step.'}</span>
+        <span className="insp-hint">{t('editors.key.tokensHintDraft')}</span>
       </Section>
     </>
   );
@@ -187,18 +187,20 @@ export function KeyHalfEditor({ step, locked }: { step: ActionItem; locked: bool
   const down = step.actionType === 'KeyDown';
   return (
     <>
-      <Section label="Action type">
+      <Section label={t('editors.key.actionType')}>
         <Segmented<'KeyDown' | 'KeyUp'>
-          label="Action type"
+          label={t('editors.key.actionType')}
           value={down ? 'KeyDown' : 'KeyUp'}
-          options={[{ value: 'KeyDown', label: 'Key Down' }, { value: 'KeyUp', label: 'Key Up' }]}
+          options={[{ value: 'KeyDown', label: t('editors.key.keyDown') }, { value: 'KeyUp', label: t('editors.key.keyUp') }]}
           onChange={(v) => edit([{ field: 'actionType', value: v }])}
           disabled={locked}
         />
       </Section>
       <KeyInput step={step} single locked={locked} onKey={(key) => edit([{ field: 'key', value: lastKey(key) }])} />
       <p className="insp-summary" aria-live="polite">
-        {!step.key ? 'Press a key, or type one.' : down ? `Presses ${keycaps(step.key)} and keeps it down.` : `Releases ${keycaps(step.key)}.`}
+        {!step.key ? t('editors.key.summary.noneHalf')
+          : down ? t('editors.key.summary.down', { key: keycaps(step.key) })
+          : t('editors.key.summary.up', { key: keycaps(step.key) })}
       </p>
     </>
   );

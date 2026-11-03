@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
 import type { ActionItem } from '../../bridge/messageTypes';
-import { useTt } from '../../state/LanguageContext';
+import { fmtNum, t, tn } from '../../i18n';
 import { getActionTypeColors, isCoordinateClick } from '../../utils/displayUtils';
 import { preload, useLoaded } from '../lazyModule';
 import { arrival, selection } from '../list/selection';
@@ -34,16 +34,7 @@ const SIMPLE_STEPS = new Set(['ScrollUp', 'ScrollDown', 'SetVariable', 'CopyToSl
 const WINDOW_STEPS = new Set(['ActivateWindow', 'RunProfile']);
 // The markers of a block say where their settings live (editor-passo-059), and the loop's jumps,
 // its rows and the two endings what they do (editor-passo-060): there is nothing else to set.
-const MARKER_NOTES: Record<string, string> = {
-  Else: 'The FALSE branch. Set the condition on the If step.',
-  EndIf: 'Closes the block. Set the condition on the If step.',
-  EndLoop: 'Closes the block. Set the loop on its opening step.',
-  BreakLoop: 'Exits the innermost loop.',
-  ContinueLoop: 'Jumps back to the innermost loop’s opening step.',
-  ForEachRow: 'Runs its block once per row of the Data Loop table. {row:column} reads the current row.',
-  Stop: 'Ends the whole run here, with no error.',
-  Return: 'Ends this pass only — the remaining passes and data rows still run.',
-};
+const MARKER_NOTES: Readonly<Record<string, string | undefined>> = tn('inspector.markers');
 
 /**
  * The Inspector with a selection, loaded with the first step (rule 6): the header, the step's Delay
@@ -96,13 +87,11 @@ export default function InspectorBody({ indices, locked, note, draft }: { indice
       </Split>
       <Foot
         note={note}
-        text={expanded ? WIDE_FOOT : one ? 'Applies as you type and saves on its own · Ctrl+Z undoes' : 'Each change is one undo step · Ctrl+Z undoes'}
+        text={expanded ? t('inspector.foot.wide') : one ? t('inspector.foot.applies') : t('inspector.foot.batch')}
       />
     </>
   );
 }
-
-const WIDE_FOOT = 'Applies as you type · Ctrl+Z undoes · drag the left edge to resize';
 
 function Foot({ note, text }: { note: string | null; text: string }) {
   return <div className="insp-foot" data-locked={note ? '' : undefined}>{note ?? text}</div>;
@@ -129,17 +118,14 @@ function Split({ expanded, children }: { expanded: boolean; children: ReactNode 
 
 /** Expand editor / Collapse editor: the expanded parts come in first, so the editor widens once. */
 function ExpandButton({ expanded }: { expanded: boolean }) {
-  const tt = useTt();
   const warm = () => { void preload(loadTextExpanded); };
   return (
     <button
       type="button"
       className="insp-close"
       data-on={expanded || undefined}
-      aria-label={expanded ? 'Collapse editor' : 'Expand editor'}
-      data-tip={expanded
-        ? tt('Back to the narrow editor (Esc)', 'Voltar ao editor estreito (Esc)')
-        : tt('Room for the tokens, the snippets, the emoji and a preview', 'Espaço para os tokens, os snippets, os emoji e uma prévia')}
+      aria-label={expanded ? t('inspector.head.collapse') : t('inspector.head.expand')}
+      data-tip={expanded ? t('inspector.head.collapseTip') : t('inspector.head.expandTip')}
       onPointerEnter={warm}
       onFocus={warm}
       onClick={() => {
@@ -154,8 +140,13 @@ function ExpandButton({ expanded }: { expanded: boolean }) {
 
 /** Where a step being made goes, said in its header. */
 function whereOf(at: number, count: number): string {
-  return count === 0 ? 'the first step' : at < count ? `after step ${at}` : `at the end, after step ${count}`;
+  return count === 0 ? t('inspector.head.newFirst')
+    : at < count ? t('inspector.head.newAfter', { number: at })
+    : t('inspector.head.newAtEnd', { number: count });
 }
+
+/** A header's second line: its parts joined by " · " (where it is, which half, expanded). */
+const subLine = (...parts: (string | false)[]) => parts.filter(Boolean).join(' · ');
 
 const DRAFT_TYPE: Record<string, string> = { key: 'Keystroke', text: 'SendText', macro: 'RunProfile' };
 
@@ -170,11 +161,11 @@ function DraftView({ draft, steps, locked, note, expanded }: { draft: Draft; ste
   const index = born ? steps.indexOf(born) : -1;
   const type = draft.kind === 'check' ? openerType(draft.opener) : DRAFT_TYPE[draft.kind];
   const waitUntil = draft.kind === 'check' && draft.opener === 'WaitUntil';
-  const foot = draft.kind === 'key' ? 'The step is added with its key · Esc cancels'
-    : draft.kind === 'text' ? (born ? (expanded ? WIDE_FOOT : 'Applies as you type and saves on its own · Ctrl+Z undoes') : 'The step is added with its first text · Esc cancels while it is empty')
-    : draft.kind === 'macro' ? 'Choose the macro it runs · Esc cancels'
-    : waitUntil ? 'Choose what it waits for · Esc cancels'
-    : 'Choose what it checks · Esc cancels';
+  const foot = draft.kind === 'key' ? t('inspector.foot.draftKey')
+    : draft.kind === 'text' ? (born ? (expanded ? t('inspector.foot.wide') : t('inspector.foot.applies')) : t('inspector.foot.draftText'))
+    : draft.kind === 'macro' ? t('inspector.foot.draftMacro')
+    : waitUntil ? t('inspector.foot.draftWait')
+    : t('inspector.foot.draftCheck');
   return (
     <>
       {born ? <StepHeader step={born} index={index} count={steps.length} expandable expanded={expanded} />
@@ -208,11 +199,11 @@ function DraftHeader({ type, where, name, icon = stepIcon(type), expandable = fa
         {icon && <span className="step-icon" data-icon={icon} />}
       </span>
       <div className="insp-title">
-        <span className="insp-name" data-display="">{name ?? stepName(type)}</span>
-        <span className="insp-sub">New step · {where}{expanded ? ' · expanded' : ''}</span>
+        <span className="insp-name" data-display="" data-glossary="">{name ?? stepName(type)}</span>
+        <span className="insp-sub">{subLine(where, expanded && t('inspector.head.expanded'))}</span>
       </div>
       {expandable && <ExpandButton expanded={expanded} />}
-      <button type="button" className="insp-close" aria-label="Cancel the new step" onClick={() => { drafts.end(); arrival.clear(); focusList(); }}>
+      <button type="button" className="insp-close" aria-label={t('inspector.head.cancelNew')} onClick={() => { drafts.end(); arrival.clear(); focusList(); }}>
         <span className="step-icon" data-icon="x" />
       </button>
     </div>
@@ -227,24 +218,24 @@ function StepHeader({ step, index, count, expandable = false, expanded = false }
   expandable?: boolean;
   expanded?: boolean;
 }) {
-  const t = step.actionType;
-  const colors = getActionTypeColors(t);
-  const icon = stepIcon(t);
+  const type = step.actionType;
+  const colors = getActionTypeColors(type);
+  const icon = stepIcon(type);
   // A half of a click or a key says which half it is (editor-passo-001).
-  const half = t.endsWith('ClickDown') || t === 'KeyDown' ? ' · ↓ press'
-    : t.endsWith('ClickUp') || t === 'KeyUp' ? ' · ↑ release'
-    : '';
+  const half = type.endsWith('ClickDown') || type === 'KeyDown' ? t('inspector.head.press')
+    : type.endsWith('ClickUp') || type === 'KeyUp' ? t('inspector.head.release')
+    : false;
   return (
     <div className="insp-head">
       <span className="insp-tile" style={{ background: colors.bg, color: colors.fg }}>
         {icon && <span className="step-icon" data-icon={icon} />}
       </span>
       <div className="insp-title">
-        <span className="insp-name" data-display="">{stepName(t)}</span>
-        <span className="insp-sub">Step {index + 1} of {count}{half}{expanded ? ' · expanded' : ''}</span>
+        <span className="insp-name" data-display="" data-glossary="">{stepName(type)}</span>
+        <span className="insp-sub">{subLine(t('inspector.head.stepOf', { number: index + 1, total: count }), half, expanded && t('inspector.head.expanded'))}</span>
       </div>
       {expandable && <ExpandButton expanded={expanded} />}
-      <button type="button" className="insp-close" aria-label="Close editor" onClick={() => { selection.clear(); focusList(); }}>
+      <button type="button" className="insp-close" aria-label={t('inspector.head.close')} onClick={() => { selection.clear(); focusList(); }}>
         <span className="step-icon" data-icon="x" />
       </button>
     </div>
@@ -264,8 +255,8 @@ function CropSlot({ step, index, count }: { step: ActionItem; index: number; cou
 /** "Steps 2, 3, 7, 12 and 16", or the first four and how many more. */
 function stepNumbers(sel: number[]): string {
   const n = sel.map(i => i + 1);
-  if (n.length <= 5) return `Steps ${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}`;
-  return `Steps ${n.slice(0, 4).join(', ')} and ${n.length - 4} more`;
+  if (n.length <= 5) return t('inspector.batch.numbers', { list: n.slice(0, -1).join(', '), last: n[n.length - 1] });
+  return t('inspector.batch.numbersMore', { list: n.slice(0, 4).join(', '), n: fmtNum(n.length - 4) });
 }
 
 function BatchHeader({ sel }: { sel: number[] }) {
@@ -275,10 +266,10 @@ function BatchHeader({ sel }: { sel: number[] }) {
         <span className="step-icon" data-icon="layers" />
       </span>
       <div className="insp-title">
-        <span className="insp-name" data-display="">{sel.length} steps selected</span>
+        <span className="insp-name" data-display="">{t('inspector.batch.selected', { count: sel.length, n: fmtNum(sel.length) })}</span>
         <span className="insp-sub">{stepNumbers(sel)}</span>
       </div>
-      <button type="button" className="insp-close" aria-label="Clear selection" onClick={() => { selection.clear(); focusList(); }}>
+      <button type="button" className="insp-close" aria-label={t('inspector.head.clearSelection')} onClick={() => { selection.clear(); focusList(); }}>
         <span className="step-icon" data-icon="x" />
       </button>
     </div>
@@ -287,19 +278,20 @@ function BatchHeader({ sel }: { sel: number[] }) {
 
 /** One step: its type's editor, then the Notes every step has (editor-passo-191). Its Delay is in the strip over it (DelayStrip). */
 function StepEditor({ step, index, steps, locked }: { step: ActionItem; index: number; steps: ActionItem[]; locked: boolean }) {
-  const t = step.actionType;
-  const editor = isCoordinateClick(t) ? <ClickEditor step={step} index={index} steps={steps} locked={locked} />
-    : t === 'Keystroke' || t === 'HoldKey' ? <KeyEditor step={step} locked={locked} />
-    : t === 'KeyDown' || t === 'KeyUp' ? <KeyHalfEditor step={step} locked={locked} />
-    : t === 'Pause' ? <PauseEditor step={step} locked={locked} />
-    : t === 'SendText' ? <TextEditorSlot step={step} draft={null} locked={locked} />
-    : WAIT_STEPS.has(t) || CONDITION_STEPS.has(t) ? <ProbeSlot step={step} locked={locked} />
-    : SIMPLE_STEPS.has(t) ? <SimpleSlot step={step} index={index} locked={locked} />
-    : WINDOW_STEPS.has(t) ? <WindowSlot step={step} locked={locked} />
-    : t.startsWith('Browser') ? <BrowserSlot step={step} locked={locked} />
-    : MARKER_NOTES[t] ? <p className="insp-summary">{MARKER_NOTES[t]}</p>
+  const type = step.actionType;
+  const marker = MARKER_NOTES[type];
+  const editor = isCoordinateClick(type) ? <ClickEditor step={step} index={index} steps={steps} locked={locked} />
+    : type === 'Keystroke' || type === 'HoldKey' ? <KeyEditor step={step} locked={locked} />
+    : type === 'KeyDown' || type === 'KeyUp' ? <KeyHalfEditor step={step} locked={locked} />
+    : type === 'Pause' ? <PauseEditor step={step} locked={locked} />
+    : type === 'SendText' ? <TextEditorSlot step={step} draft={null} locked={locked} />
+    : WAIT_STEPS.has(type) || CONDITION_STEPS.has(type) ? <ProbeSlot step={step} locked={locked} />
+    : SIMPLE_STEPS.has(type) ? <SimpleSlot step={step} index={index} locked={locked} />
+    : WINDOW_STEPS.has(type) ? <WindowSlot step={step} locked={locked} />
+    : type.startsWith('Browser') ? <BrowserSlot step={step} locked={locked} />
+    : marker ? <p className="insp-summary">{marker}</p>
     // The other types' editors come with phase 2.
-    : <NotBuilt what={`${stepName(t)} editor`} />;
+    : <NotBuilt what={t('inspector.notBuilt', { name: stepName(type) })} />;
   return (
     <CaptureForContext.Provider value={captureForStep(index, step)}>
       {editor}
@@ -318,16 +310,16 @@ function DelayStrip({ step, locked }: { step: ActionItem; locked: boolean }) {
   if (NO_DELAY_FIELD.has(step.actionType)) return null;
   return (
     <div className="insp-delay">
-      <span className="insp-label">Delay</span>
-      <DraftField stepId={step.id ?? ''} field="delay" label="Delay in milliseconds" kind="int" min={0} max={MAX_DELAY_MS} unit="ms" stored={String(step.delay)} disabled={locked} />
+      <span className="insp-label">{t('inspector.delay')}</span>
+      <DraftField stepId={step.id ?? ''} field="delay" label={t('inspector.delayField')} kind="int" min={0} max={MAX_DELAY_MS} unit="ms" stored={String(step.delay)} disabled={locked} />
     </div>
   );
 }
 
 function NotesField({ step, locked }: { step: ActionItem; locked: boolean }) {
   return (
-    <Section label="Notes">
-      <DraftField stepId={step.id ?? ''} field="comment" label="Notes" kind="text" multiline placeholder="Add a note…" stored={step.comment ?? ''} disabled={locked} />
+    <Section label={t('inspector.notes')}>
+      <DraftField stepId={step.id ?? ''} field="comment" label={t('inspector.notes')} kind="text" multiline placeholder={t('inspector.addNote')} stored={step.comment ?? ''} disabled={locked} />
     </Section>
   );
 }
@@ -353,10 +345,10 @@ function ProbeSlot({ step, locked }: { step: ActionItem; locked: boolean }) {
     if (!mod) void preload(loadProbeEditors);
   }, [mod]);
   if (!mod) return null;
-  const t = step.actionType;
-  return t === 'WaitImage' ? <mod.WaitImageEditor step={step} locked={locked} />
-    : t === 'WaitPixelColor' ? <mod.WaitPixelEditor step={step} locked={locked} />
-    : t === 'WaitText' ? <mod.WaitTextEditor step={step} locked={locked} />
+  const type = step.actionType;
+  return type === 'WaitImage' ? <mod.WaitImageEditor step={step} locked={locked} />
+    : type === 'WaitPixelColor' ? <mod.WaitPixelEditor step={step} locked={locked} />
+    : type === 'WaitText' ? <mod.WaitTextEditor step={step} locked={locked} />
     : <mod.ConditionEditor step={step} locked={locked} />;
 }
 
@@ -367,9 +359,9 @@ function SimpleSlot({ step, index, locked }: { step: ActionItem; index: number; 
     if (!mod) void preload(loadSimpleEditors);
   }, [mod]);
   if (!mod) return null;
-  const t = step.actionType;
-  return t === 'SetVariable' ? <mod.SetVariableEditor step={step} index={index} locked={locked} />
-    : t === 'CopyToSlot' ? <mod.CopyToSlotEditor step={step} locked={locked} />
+  const type = step.actionType;
+  return type === 'SetVariable' ? <mod.SetVariableEditor step={step} index={index} locked={locked} />
+    : type === 'CopyToSlot' ? <mod.CopyToSlotEditor step={step} locked={locked} />
     : <mod.ScrollEditor step={step} locked={locked} />;
 }
 

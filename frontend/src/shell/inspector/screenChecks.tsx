@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ActionItem } from '../../bridge/messageTypes';
+import { fmtNum, t } from '../../i18n';
 import { useEditorTools } from '../../logic/useEditorTools';
 import { useSteps } from '../../logic/useSteps';
-import { useTt } from '../../state/LanguageContext';
 import { effectiveOperator, isNumberMode, parsesAsNumber, regexProblem } from '../../utils/screenText';
 import { useCheckTarget } from './checkTarget';
 import { useCaptureFor } from './captureFor';
@@ -10,7 +10,7 @@ import { DraftField, Section, Segmented } from './fields';
 import { applyEdits, type StepEdit } from './inspectorState';
 import { ExtensionMissing, OcrMissing } from './missing';
 import { HexField, RailField, RegionField, ResultCard } from './probeKit';
-import { around, normalHex, regionOf, regionValue, useAsk } from './probes';
+import { around, normalHex, regionOf, regionValue, useAsk, VALUE_A, VALUE_B, withValues } from './probes';
 import { SelectorField } from './selectorField';
 
 type Props = { step: ActionItem; locked: boolean };
@@ -34,7 +34,6 @@ export function PixelCheck({ step, locked, reads }: Props & { reads: Reads }) {
   // An automation's point is on the screen, or on its own window: the tools say so.
   const where = useCheckTarget()?.tools;
   const captureFor = useCaptureFor();
-  const tt = useTt();
   const id = step.id ?? '';
   const tolerance = step.pixelTolerance ?? 0;
   const pick = useAsk('pixel:colorPicked', (p) => {
@@ -43,49 +42,53 @@ export function PixelCheck({ step, locked, reads }: Props & { reads: Reads }) {
     }
   });
   const [result, setResult] = useState<{ matches: boolean; sampledHex?: string | null; error?: string } | null>(null);
-  const test = useAsk('pixel:testMatchResult', setResult, 5000, () => setResult({ matches: false, error: 'No answer from the app.' }));
+  const test = useAsk('pixel:testMatchResult', setResult, 5000, () => setResult({ matches: false, error: t('probe.noAnswer') }));
   const target = normalHex(step.pixelColor ?? '');
   const flipped = reads !== 'found';
 
   return (
     <>
-      <Section label="Point">
+      <Section label={t('probe.pixel.point')}>
         <div className="insp-line">
-          <DraftField stepId={id} field="pixelX" label="Pixel X" kind="int" signed min={-2_000_000} max={2_000_000} empty="clear" prefix="X" placeholder="—" stored={step.pixelX == null ? '' : String(step.pixelX)} disabled={locked} />
-          <DraftField stepId={id} field="pixelY" label="Pixel Y" kind="int" signed min={-2_000_000} max={2_000_000} empty="clear" prefix="Y" placeholder="—" stored={step.pixelY == null ? '' : String(step.pixelY)} disabled={locked} />
-          <button type="button" className="insp-button" disabled={locked || pick.waiting} data-tip={tt('Click a point of the screen: its place and its color', 'Clique num ponto da tela: o lugar e a cor dele')} onClick={() => pick.ask(requestId => tools.pickColor({ requestId, ...where, captureFor }))}>
+          <DraftField stepId={id} field="pixelX" label={t('probe.pixel.x')} kind="int" signed min={-2_000_000} max={2_000_000} empty="clear" prefix="X" placeholder="—" stored={step.pixelX == null ? '' : String(step.pixelX)} disabled={locked} />
+          <DraftField stepId={id} field="pixelY" label={t('probe.pixel.y')} kind="int" signed min={-2_000_000} max={2_000_000} empty="clear" prefix="Y" placeholder="—" stored={step.pixelY == null ? '' : String(step.pixelY)} disabled={locked} />
+          <button type="button" className="insp-button" disabled={locked || pick.waiting} data-tip={t('probe.pixel.pickTip')} onClick={() => pick.ask(requestId => tools.pickColor({ requestId, ...where, captureFor }))}>
             <span className="step-icon" data-icon="pipette" />
-            {pick.waiting ? 'Picking…' : 'Pick'}
+            {pick.waiting ? t('probe.picking') : t('probe.pick')}
           </button>
         </div>
       </Section>
-      <Section label="Target color">
-        <HexField stepId={id} field="pixelColor" label="Target color" stored={step.pixelColor ?? ''} disabled={locked} clearable />
+      <Section label={t('probe.pixel.target')}>
+        <HexField stepId={id} field="pixelColor" label={t('probe.pixel.target')} stored={step.pixelColor ?? ''} disabled={locked} clearable />
       </Section>
-      <Section label="Tolerance" aside="per channel" hint="5–15 for compressed colors.">
-        <RailField stepId={id} field="pixelTolerance" label="Tolerance per channel" value={tolerance} min={0} max={255} railMax={50} disabled={locked} onApply={(v) => edit([{ field: 'pixelTolerance', value: v }])} />
+      <Section label={t('probe.tolerance')} aside={t('probe.pixel.perChannel')} hint={t('probe.pixel.toleranceHint')}>
+        <RailField stepId={id} field="pixelTolerance" label={t('probe.pixel.toleranceField')} value={tolerance} min={0} max={255} railMax={50} disabled={locked} onApply={(v) => edit([{ field: 'pixelTolerance', value: v }])} />
       </Section>
       <button
         type="button"
         className="insp-button"
         disabled={locked || test.waiting}
         onClick={() => {
-          if (step.pixelX == null || step.pixelY == null || !target) { setResult({ matches: false, error: 'Set X, Y and the target color first.' }); return; }
+          if (step.pixelX == null || step.pixelY == null || !target) { setResult({ matches: false, error: t('probe.pixel.setFirst') }); return; }
           setResult(null);
           test.ask(requestId => tools.testPixel({ requestId, x: step.pixelX ?? 0, y: step.pixelY ?? 0, hex: target, tolerance, ...where }));
         }}
       >
         <span className="step-icon" data-icon="play" />
-        {test.waiting ? 'Testing…' : 'Test match'}
+        {test.waiting ? t('probe.testing') : t('probe.testMatch')}
       </button>
       {result && !test.waiting && (
         result.error ? <ResultCard ok={false} title={result.error} /> : (
           <ResultCard
             ok={result.matches !== flipped}
-            title={<>Sampled <span className="insp-mono">{result.sampledHex ?? '—'}</span> · Target <span className="insp-mono">{target} ± {tolerance}</span>{result.matches ? '' : ' — out of tolerance'}</>}
+            title={withValues(
+              result.matches ? t('probe.pixel.sampled', { sampled: VALUE_A, target: VALUE_B }) : t('probe.pixel.sampledOut', { sampled: VALUE_A, target: VALUE_B }),
+              <span className="insp-mono">{result.sampledHex ?? '—'}</span>,
+              <span className="insp-mono">{target} ± {tolerance}</span>,
+            )}
           >
-            {reads === 'not found' && (result.matches ? 'Set to pass when not found: right now it does not pass.' : 'Set to pass when not found: right now it passes.')}
-            {reads === 'gone' && (result.matches ? 'Still that color: the wait goes on.' : 'Not that color: the wait ends now.')}
+            {reads === 'not found' && (result.matches ? t('probe.pixel.notFoundFails') : t('probe.pixel.notFoundPasses'))}
+            {reads === 'gone' && (result.matches ? t('probe.pixel.stillColor') : t('probe.pixel.notColor'))}
           </ResultCard>
         )
       )}
@@ -111,7 +114,6 @@ export function ScreenTextCheck({ step, locked, variant = 'match', reads = 'foun
   // watcher resolves no tokens.
   const auto = useCheckTarget();
   const captureFor = useCaptureFor();
-  const tt = useTt();
   const id = step.id ?? '';
   const region = regionOf(step);
   const storedNumber = isNumberMode(step.ocrReadAs);
@@ -155,7 +157,7 @@ export function ScreenTextCheck({ step, locked, variant = 'match', reads = 'foun
     if (r.matched && r.w && r.h && !region) {
       if (edit([{ field: 'waitImageSearchRegion', value: regionValue(around({ x: r.x ?? 0, y: r.y ?? 0, w: r.w, h: r.h })) }])) setSnapped(true);
     }
-  }, 8000, () => setResult({ error: 'No answer from the app.' }));
+  }, 8000, () => setResult({ error: t('probe.noAnswer') }));
   const pick = useAsk('pixel:colorPicked', (p) => {
     if (!p.cancelled && !p.refused && p.hex) edit([{ field: 'ocrTextColor', value: p.hex }]);
   });
@@ -164,14 +166,14 @@ export function ScreenTextCheck({ step, locked, variant = 'match', reads = 'foun
   // is never sent — the check would fail on every run (today Save refused it); leaving the field
   // brings the last good one back.
   const text = typed ?? sent?.value ?? operand;
-  const wrong = (t: string) => number ? (t.trim() !== '' && !t.includes('{') && !parsesAsNumber(t)) : mode === 'regex' && t !== '' && !!regexProblem(t);
+  const wrong = (s: string) => number ? (s.trim() !== '' && !s.includes('{') && !parsesAsNumber(s)) : mode === 'regex' && s !== '' && !!regexProblem(s);
   const problem = number
-    ? (text.trim() === '' ? 'Enter a number to compare with' : wrong(text) ? 'Not a number' : null)
+    ? (text.trim() === '' ? t('probe.text.enterNumber') : wrong(text) ? t('probe.text.notNumber') : null)
     : mode === 'regex'
-      ? (text === '' ? 'Enter the pattern to look for'
-        : pendingRegex && regexProblem(text) ? 'This pattern does not compile. Regex is saved once it does.'
-        : regexProblem(text))
-      : (text.trim() === '' ? 'Enter the text to look for' : null);
+      ? (text === '' ? t('probe.text.enterPattern')
+        : pendingRegex && regexProblem(text) ? t('probe.text.noCompileYet')
+        : regexProblem(text) ? t('probe.text.noCompile') : null)
+      : (text.trim() === '' ? t('probe.text.enterText') : null);
 
   const modeEdits = (v: ReadMode): StepEdit[] => (v === 'number'
     ? [{ field: 'ocrReadAs', value: 'number' }, { field: 'conditionOperator', value: 'eq' }]
@@ -188,49 +190,49 @@ export function ScreenTextCheck({ step, locked, variant = 'match', reads = 'foun
     <>
       <OcrMissing />
       <RegionField
-        label="Region to read"
+        label={t('probe.text.region')}
         region={region}
         locked={locked}
         required={!!auto}
-        wholeHint={auto ? 'Required — reading the whole screen every check is too slow.' : 'The whole screen takes ~0.5 s per read. Draw a region.'}
-        drawTip={tt('Faster, and reads only what you mean', 'Mais rápido, e lê só o que você quer')}
+        wholeHint={auto ? t('probe.text.regionRequired') : t('probe.text.regionWhole')}
+        drawTip={t('probe.text.regionTip')}
         onRegion={(r) => edit([{ field: 'waitImageSearchRegion', value: regionValue(r) }])}
       />
       {read ? (
         <Section
-          label="Read as"
+          label={t('probe.text.readAs')}
           hint={variant === 'watch'
-            ? (number ? 'Watches the first number in the region.' : 'Watches what the region reads.')
-            : (number ? 'Stores the first number in the region.' : 'Stores what the region reads.')}
+            ? (number ? t('probe.text.watchesNumber') : t('probe.text.watchesText'))
+            : (number ? t('probe.text.storesNumber') : t('probe.text.storesText'))}
         >
           <Segmented<'text' | 'number'>
-            label="Read as"
+            label={t('probe.text.readAs')}
             value={number ? 'number' : 'text'}
             disabled={locked}
             options={[
-              { value: 'text', label: 'Text' },
-              { value: 'number', label: 'Number', tip: tt('The first number in the region', 'O primeiro número da região') },
+              { value: 'text', label: t('probe.text.asText') },
+              { value: 'number', label: t('probe.text.number'), tip: t('probe.text.numberTip') },
             ]}
             onChange={(v) => edit([{ field: 'ocrReadAs', value: v === 'number' ? 'number' : '' }])}
           />
         </Section>
       ) : (
-      <Section label="Text">
+      <Section label={t('probe.text.section')}>
         <Segmented<ReadMode>
-          label="Read as"
+          label={t('probe.text.readAs')}
           value={mode}
           disabled={locked}
           options={[
-            { value: 'contains', label: 'Contains' },
-            { value: 'eq', label: 'Equals', tip: tt('The whole region reads exactly this', 'A região inteira diz exatamente isto') },
+            { value: 'contains', label: t('conditions.match.contains') },
+            { value: 'eq', label: t('conditions.match.equals'), tip: t('probe.text.equalsTip') },
             { value: 'regex', label: 'Regex' },
-            { value: 'number', label: 'Number', tip: tt('The first number in the region', 'O primeiro número da região') },
+            { value: 'number', label: t('probe.text.number'), tip: t('probe.text.numberTip') },
           ]}
           onChange={setMode}
         />
         {number && (
           <Segmented<'eq' | 'neq' | 'gt' | 'lt'>
-            label="Compare"
+            label={t('probe.text.compare')}
             value={op as 'eq' | 'neq' | 'gt' | 'lt'}
             disabled={locked}
             options={[{ value: 'eq', label: '=' }, { value: 'neq', label: '≠' }, { value: 'gt', label: '>' }, { value: 'lt', label: '<' }]}
@@ -240,12 +242,12 @@ export function ScreenTextCheck({ step, locked, variant = 'match', reads = 'foun
         <DraftField
           stepId={id}
           field="conditionOperand"
-          label={number ? 'Value' : 'Text to find'}
+          label={number ? t('conditions.value') : t('probe.text.toFind')}
           kind="mono"
-          placeholder={number ? '30' : mode === 'regex' ? '^Level \\d+' : 'Victory'}
+          placeholder={number ? '30' : mode === 'regex' ? t('probe.text.regexPlaceholder') : t('probe.text.placeholder')}
           stored={operand}
           disabled={locked}
-          parse={(t) => (wrong(t) ? null : t)}
+          parse={(s) => (wrong(s) ? null : s)}
           onText={setTyped}
           onApply={(v) => {
             setSent({ value: v, over: operand });
@@ -254,28 +256,28 @@ export function ScreenTextCheck({ step, locked, variant = 'match', reads = 'foun
         />
         <span className="insp-hint">
           {problem ? <span data-error="">{problem}</span>
-            : number ? (auto ? 'The first number in the region.' : 'The first number in the region. Tokens resolve at run time.')
-            : auto ? 'Ignores case, spaces and accents.' : 'Ignores case, spaces and accents. Tokens resolve at run time.'}
+            : number ? (auto ? t('probe.text.numberHint') : t('probe.text.numberHintTokens'))
+            : auto ? t('probe.text.textHint') : t('probe.text.textHintTokens')}
         </span>
       </Section>
       )}
-      <Section label="Text color" hint={color ? undefined : 'Any. Pick the text color to read game HUDs over a busy scene.'}>
+      <Section label={t('probe.text.color')} hint={color ? undefined : t('probe.text.colorHint')}>
         <div className="insp-line">
-          <HexField stepId={id} field="ocrTextColor" label="Text color" placeholder="Any" stored={step.ocrTextColor ?? ''} disabled={locked} clearable />
-          <button type="button" className="insp-button" disabled={locked || pick.waiting} data-tip={tt('Pick the color of the text on the screen', 'Escolher a cor do texto na tela')} onClick={() => pick.ask(requestId => tools.pickColor({ requestId, captureFor }))}>
+          <HexField stepId={id} field="ocrTextColor" label={t('probe.text.color')} placeholder={t('probe.text.colorAny')} stored={step.ocrTextColor ?? ''} disabled={locked} clearable />
+          <button type="button" className="insp-button" disabled={locked || pick.waiting} data-tip={t('probe.text.colorTip')} onClick={() => pick.ask(requestId => tools.pickColor({ requestId, captureFor }))}>
             <span className="step-icon" data-icon="pipette" />
-            {pick.waiting ? 'Picking…' : 'Pick'}
+            {pick.waiting ? t('probe.picking') : t('probe.pick')}
           </button>
           {color && (
-            <button type="button" className="insp-icon-button" aria-label="Read every color" data-tip={tt('Read every color', 'Ler todas as cores')} disabled={locked} onClick={() => edit([{ field: 'ocrTextColor', value: '' }])}>
+            <button type="button" className="insp-icon-button" aria-label={t('probe.text.everyColor')} data-tip={t('probe.text.everyColor')} disabled={locked} onClick={() => edit([{ field: 'ocrTextColor', value: '' }])}>
               <span className="step-icon" data-icon="x" />
             </button>
           )}
         </div>
       </Section>
       {color && (
-        <Section label="Color tolerance" hint="Per channel, 0–255. Higher keeps more pixels.">
-          <RailField stepId={id} field="ocrColorTolerance" label="Color tolerance" value={colorTolerance} min={0} max={255} step={10} disabled={locked} onApply={(v) => edit([{ field: 'ocrColorTolerance', value: v }])} />
+        <Section label={t('probe.text.colorTolerance')} hint={t('probe.text.colorToleranceHint')}>
+          <RailField stepId={id} field="ocrColorTolerance" label={t('probe.text.colorTolerance')} value={colorTolerance} min={0} max={255} step={10} disabled={locked} onApply={(v) => edit([{ field: 'ocrColorTolerance', value: v }])} />
         </Section>
       )}
       <button
@@ -299,21 +301,20 @@ export function ScreenTextCheck({ step, locked, variant = 'match', reads = 'foun
         }}
       >
         <span className="step-icon" data-icon="play" />
-        {test.waiting ? 'Reading…' : 'Test now'}
+        {test.waiting ? t('probe.text.reading') : t('probe.text.testNow')}
       </button>
       {result && !test.waiting && (
         result.error ? <ResultCard ok={false} title={result.error} /> : (
           <ResultCard
             // A read with nothing to match (no text yet, or a read for the value) is good when it read something.
             ok={result.matched == null ? !!result.text : result.matched !== (reads !== 'found')}
-            title={!result.text ? 'Nothing readable'
-              : <>Reads “{result.text.length > 80 ? `${result.text.slice(0, 77)}…` : result.text}”{result.number ? <> · number <span className="insp-mono">{result.number}</span></> : null}{result.matched === false ? ' — no match yet' : result.matched ? ' — a match' : ''}</>}
+            title={!result.text ? t('probe.text.nothing') : readTitle(result.text, result.number, result.matched)}
           >
-            {reads === 'not found' && result.matched != null && (result.matched ? 'Set to pass when not found: right now it does not pass.' : 'Set to pass when not found: right now it passes.')}
-            {reads === 'gone' && result.matched != null && (result.matched ? 'Still on the screen: the wait goes on.' : 'Not on the screen: the wait ends now.')}
-            {(result.elapsedMs != null || result.variant) && <span>{[result.elapsedMs != null ? `${result.elapsedMs} ms` : null, result.variant].filter(Boolean).join(' · ')}</span>}
-            {result.previewBase64 && <img className="insp-result-image" src={`data:image/png;base64,${result.previewBase64}`} alt="What was read" />}
-            {snapped && <span>Search region set around this match.</span>}
+            {reads === 'not found' && result.matched != null && (result.matched ? t('probe.text.notFoundFails') : t('probe.text.notFoundPasses'))}
+            {reads === 'gone' && result.matched != null && (result.matched ? t('probe.stillOnScreen') : t('probe.offScreen'))}
+            {(result.elapsedMs != null || result.variant) && <span>{[result.elapsedMs != null ? `${fmtNum(result.elapsedMs)} ms` : null, result.variant].filter(Boolean).join(' · ')}</span>}
+            {result.previewBase64 && <img className="insp-result-image" src={`data:image/png;base64,${result.previewBase64}`} alt={t('probe.text.whatWasRead')} />}
+            {snapped && <span>{t('probe.regionSet')}</span>}
             {!read && firstLine && !number && firstLine !== operand && (
               <button
                 type="button"
@@ -323,7 +324,7 @@ export function ScreenTextCheck({ step, locked, variant = 'match', reads = 'foun
                   ? [{ field: 'conditionOperator', value: 'contains' }, { field: 'conditionOperand', value: firstLine }]
                   : [{ field: 'conditionOperand', value: firstLine }])}
               >
-                Use this text
+                {t('probe.text.useText')}
               </button>
             )}
           </ResultCard>
@@ -331,6 +332,21 @@ export function ScreenTextCheck({ step, locked, variant = 'match', reads = 'foun
       )}
     </>
   );
+}
+
+/**
+ * What a test read says, in one sentence: the text (cut at 80), the first number in it when there is
+ * one (drawn in the monospaced face), and whether it matches — a read for the value says nothing of that.
+ */
+function readTitle(read: string, number: string | null | undefined, matched: boolean | null | undefined) {
+  const text = read.length > 80 ? `${read.slice(0, 77)}…` : read;
+  if (!number) {
+    return matched === false ? t('probe.text.readsNoMatch', { text }) : matched ? t('probe.text.readsMatch', { text }) : t('probe.text.reads', { text });
+  }
+  const sentence = matched === false ? t('probe.text.readsNumberNoMatch', { text, number: VALUE_A })
+    : matched ? t('probe.text.readsNumberMatch', { text, number: VALUE_A })
+    : t('probe.text.readsNumber', { text, number: VALUE_A });
+  return withValues(sentence, <span className="insp-mono">{number}</span>);
 }
 
 type BrowserState = 'appears' | 'disappears' | 'enabled' | 'text-match';
@@ -357,25 +373,25 @@ export function BrowserCheck({ step, locked }: Props) {
   return (
     <div className="insp-group">
       <ExtensionMissing />
-      <SelectorField step={step} locked={locked} hint="With the extension offline, it reads as not found." />
-      <Section label="State">
+      <SelectorField step={step} locked={locked} hint={t('conditions.browser.offlineHint')} />
+      <Section label={t('conditions.browser.state')}>
         <Segmented<BrowserState>
-          label="State"
+          label={t('conditions.browser.state')}
           value={state}
           disabled={locked}
           wrap
           options={[
-            { value: 'appears', label: 'Visible' },
-            { value: 'disappears', label: 'Not present / hidden' },
-            { value: 'enabled', label: 'Enabled' },
-            { value: 'text-match', label: 'Text matches' },
+            { value: 'appears', label: t('conditions.browser.visible') },
+            { value: 'disappears', label: t('conditions.browser.gone') },
+            { value: 'enabled', label: t('conditions.browser.enabled') },
+            { value: 'text-match', label: t('conditions.browser.textMatches') },
           ]}
           onChange={(v) => edit([{ field: 'waitMode', value: v }])}
         />
       </Section>
       {state === 'text-match' && (
-        <Section label="Text pattern" hint="Plain text is exact. Or text*=  text~=  text/regex/">
-          <DraftField stepId={id} field="browserText" label="Text pattern" kind="mono" stored={step.browserText ?? ''} disabled={locked} parse={(t) => t} />
+        <Section label={t('conditions.browser.textPattern')} hint={t('conditions.browser.textPatternHint')}>
+          <DraftField stepId={id} field="browserText" label={t('conditions.browser.textPattern')} kind="mono" stored={step.browserText ?? ''} disabled={locked} parse={(s) => s} />
         </Section>
       )}
       <button
@@ -392,19 +408,19 @@ export function BrowserCheck({ step, locked }: Props) {
         }}
       >
         <span className="step-icon" data-icon="play" />
-        {check.waiting ? 'Checking…' : 'Check now'}
+        {check.waiting ? t('conditions.browser.checking') : t('conditions.browser.checkNow')}
       </button>
       {result && !check.waiting && (
         <ResultCard
           ok={result.connected && result.satisfied}
-          title={result.lost ? 'No answer from the browser extension'
-            : !result.connected ? 'Extension not connected'
-            : result.satisfied ? 'Condition is TRUE now' : 'Condition is FALSE now'}
+          title={result.lost ? t('conditions.browser.lost')
+            : !result.connected ? t('conditions.browser.offline')
+            : result.satisfied ? t('conditions.browser.isTrue') : t('conditions.browser.isFalse')}
         >
-          {result.lost ? 'Is Chrome running, with the extension?'
-            : !result.connected ? 'The page could not be reached — that reads as not found.'
-            : result.negate ? `Element state: ${result.raw ? 'matched' : 'not matched'} · turned around by "Not found"`
-            : 'The run would take this branch right now.'}
+          {result.lost ? t('conditions.browser.lostHint')
+            : !result.connected ? t('conditions.browser.offlineMore')
+            : result.negate ? (result.raw ? t('conditions.browser.negatedMatched') : t('conditions.browser.negatedNotMatched'))
+            : t('conditions.browser.branch')}
         </ResultCard>
       )}
     </div>

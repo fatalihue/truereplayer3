@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppWindow } from 'lucide-react';
 import { useBridge } from '../../../bridge/BridgeContext';
+import { fmtNum, t } from '../../../i18n';
 import { useMacro } from '../../../logic/useMacro';
-import { useTt } from '../../../state/LanguageContext';
 import { useToast } from '../../../state/ToastContext';
 import { targetLabel } from '../../library/model';
 import { useShell } from '../../store';
@@ -27,7 +27,6 @@ type Removed = { label: string; target: TargetValue; flags: Flags };
  */
 export function WindowTargetSection({ facts, locked, focus }: { facts: MacroFacts; locked: boolean; focus: { section: SettingsSection; seq: number } | null }) {
   const macro = useMacro();
-  const tt = useTt();
   const { showToast } = useToast();
   const { subscribe } = useBridge();
   const name = facts.name;
@@ -47,7 +46,7 @@ export function WindowTargetSection({ facts, locked, focus }: { facts: MacroFact
   const boxRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (focus?.section !== 'target') return;
-    const field = boxRef.current?.querySelector<HTMLElement>('input[aria-label="Process"]');
+    const field = boxRef.current?.querySelector<HTMLElement>(`input[aria-label="${t('macroSettings.fields.process')}"]`);
     field?.focus();
     field?.scrollIntoView({ block: 'nearest' });
     settingsFocused();
@@ -92,19 +91,19 @@ export function WindowTargetSection({ facts, locked, focus }: { facts: MacroFact
   };
 
   const removing = useRef<Removed | null>(null);
-  const live = useRef({ name, macro, showToast, tt, convert });
-  useEffect(() => { live.current = { name, macro, showToast, tt, convert }; });
+  const live = useRef({ name, macro, showToast, convert });
+  useEffect(() => { live.current = { name, macro, showToast, convert }; });
   useEffect(() => subscribe((message) => {
     const l = live.current;
     if (message.type === 'profile:windowTargetRemoved' && message.payload.name === l.name && removing.current) {
       const { label, target, flags: was } = removing.current;
       const { windowX, windowY, windowWidth, windowHeight } = message.payload;
       removing.current = null;
-      l.showToast(l.tt(`Removed window target (${label}) from "${l.name}"`, `Janela-alvo (${label}) removida de "${l.name}"`), {
+      l.showToast(t('macroSettings.target.removed', { target: label, name: l.name }), {
         type: 'success',
         duration: 10000,
         action: {
-          label: 'Undo',
+          label: t('common.actions.undo'),
           onClick: () => l.macro.setWindowTarget({
             name: l.name, ...target,
             relativeCoordinates: was.relative, bringToFocus: was.bringToFocus, restorePosition: was.restorePosition, restoreSize: was.restoreSize,
@@ -128,22 +127,20 @@ export function WindowTargetSection({ facts, locked, focus }: { facts: MacroFact
     macro.removeWindowTarget(name);
   };
 
-  const folderTip = inherited
-    ? tt(`From the folder ‘${facts.targetFolder}’. Edit it there, or set a process or a title here for this macro's own.`,
-      `Da pasta ‘${facts.targetFolder}’. Edite lá, ou defina um processo ou um título aqui para este macro ter o seu.`)
-    : undefined;
+  const folder = facts.targetFolder ?? '';
+  const folderTip = inherited ? t('macroSettings.target.folderTip', { folder }) : undefined;
   const switchesOff = locked || !own;
 
   return (
     <div ref={boxRef} className="mset-group">
-      <span className="mset-title">Window target</span>
+      <span className="mset-title">{t('macroSettings.target.title')}</span>
       {!editing && (facts.targetSource === null ? (
         <div className="mset-target" data-none="">
           <span className="mset-target-text">
-            <span className="mset-target-name">None</span>
-            <span className="mset-target-sub">Runs on whatever window is in front.</span>
+            <span className="mset-target-name">{t('macroSettings.target.none')}</span>
+            <span className="mset-target-sub">{t('macroSettings.target.noneSub')}</span>
           </span>
-          <button type="button" className="insp-link" disabled={locked} onClick={() => setEditing(true)}>Add</button>
+          <button type="button" className="insp-link" disabled={locked} onClick={() => setEditing(true)}>{t('macroSettings.target.add')}</button>
         </div>
       ) : (
         <div className="mset-target" data-inherited={inherited || undefined}>
@@ -151,29 +148,29 @@ export function WindowTargetSection({ facts, locked, focus }: { facts: MacroFact
             ? <img className="mset-target-icon" src={`data:image/png;base64,${facts.targetIcon}`} alt="" />
             : <AppWindow className="mset-target-icon" aria-hidden="true" />}
           <span className="mset-target-text">
-            <span className="mset-target-name">{value.processName || 'Any process'}</span>
+            <span className="mset-target-name">{value.processName || t('macroSettings.target.anyProcess')}</span>
             <span className="mset-target-sub">
               {titleCondition(value)}
-              {inherited && <> · from ‘{facts.targetFolder}’</>}
+              {inherited && <> · {t('macroSettings.target.fromFolder', { folder })}</>}
             </span>
           </span>
-          <button type="button" className="insp-link" disabled={locked} onClick={() => setEditing(true)}>Edit</button>
+          <button type="button" className="insp-link" disabled={locked} onClick={() => setEditing(true)}>{t('common.actions.edit')}</button>
         </div>
       ))}
       {editing && (
         <>
           {inherited && (
             <p className="mset-target-note">
-              The folder ‘{facts.targetFolder}’ gives this target. A process or a title typed here makes one of this macro's own.{' '}
-              <button type="button" className="insp-link" onClick={() => openDialog({ kind: 'folderTarget', name: facts.targetFolder ?? '' })}>Edit the folder's</button>
+              {t('macroSettings.target.folderNote', { folder })}{' '}
+              <button type="button" className="insp-link" onClick={() => openDialog({ kind: 'folderTarget', name: folder })}>{t('macroSettings.target.editFolder')}</button>
             </p>
           )}
           <TargetFields id={`macro:${name}`} value={value} disabled={locked} onChange={(patch) => setRefused(save(patch))} />
           {refused && (
             <p className="mset-target-note" data-error="">
               {refused === 'regex'
-                ? 'The title is not a valid regular expression, so it stays Contains.'
-                : `A window target needs a process or a title.${own ? ' To have none, remove it.' : ''}`}
+                ? t('macroSettings.target.invalidRegex')
+                : own ? t('macroSettings.target.needsTargetOwn') : t('macroSettings.target.needsTarget')}
             </p>
           )}
         </>
@@ -182,33 +179,32 @@ export function WindowTargetSection({ facts, locked, focus }: { facts: MacroFact
         <>
           <div className="insp-row">
             <Switch
-              label="Bring to focus"
+              label={t('macroSettings.target.focus')}
               checked={flags.bringToFocus}
               disabled={switchesOff}
-              tip={folderTip ?? tt('Brings the window to the front before the run. With it on, the hotkey works from any window.', 'Traz a janela para a frente antes de rodar. Ligado, o atalho funciona de qualquer janela.')}
+              tip={folderTip ?? t('macroSettings.target.focusTip')}
               onChange={(bringToFocus) => save({ bringToFocus })}
             />
-            <span className="insp-row-label">Bring to focus</span>
+            <span className="insp-row-label">{t('macroSettings.target.focus')}</span>
           </div>
           <div className="insp-row">
             <Switch
-              label="Relative coordinates"
+              label={t('macroSettings.target.relative')}
               checked={flags.relative}
               disabled={switchesOff}
-              tip={folderTip ?? tt('The points of the steps follow the window when it moves', 'Os pontos dos passos acompanham a janela quando ela se move')}
+              tip={folderTip ?? t('macroSettings.target.relativeTip')}
               onChange={turnRelative}
             />
-            <span className="insp-row-label">Relative coordinates</span>
+            <span className="insp-row-label">{t('macroSettings.target.relative')}</span>
           </div>
         </>
       )}
       {convert && (
         <div className="mset-convert" role="status">
           <span>
-            {convert.count} step{convert.count === 1 ? '' : 's'} captured in {convert.direction === 'toRelative' ? 'absolute' : 'relative'} coords.{' '}
             {convert.direction === 'toRelative'
-              ? 'Convert to relative so they follow this window when it moves.'
-              : 'Convert to absolute so they keep their current screen positions.'}
+              ? t('macroSettings.target.convertToRelative', { count: convert.count, n: fmtNum(convert.count) })
+              : t('macroSettings.target.convertToAbsolute', { count: convert.count, n: fmtNum(convert.count) })}
           </span>
           <span className="mset-convert-actions">
             <button
@@ -216,15 +212,15 @@ export function WindowTargetSection({ facts, locked, focus }: { facts: MacroFact
               className="insp-button"
               data-primary=""
               disabled={converting || locked}
-              data-tip={locked ? tt('Not while a run is active', 'Não durante uma execução') : undefined}
+              data-tip={locked ? t('macroSettings.target.notWhileRunning') : undefined}
               onClick={() => {
                 setConverting(true);
                 macro.convertCoordinates(convert.direction, name);
               }}
             >
-              Convert
+              {t('macroSettings.target.convert')}
             </button>
-            <button type="button" className="insp-button" onClick={() => { answered.current = true; setConvert(null); }}>Skip</button>
+            <button type="button" className="insp-button" onClick={() => { answered.current = true; setConvert(null); }}>{t('macroSettings.target.skip')}</button>
           </span>
         </div>
       )}
@@ -232,39 +228,39 @@ export function WindowTargetSection({ facts, locked, focus }: { facts: MacroFact
         <>
           <div className="insp-row">
             <Switch
-              label="Restore position"
+              label={t('macroSettings.target.restorePosition')}
               checked={flags.restorePosition}
               disabled={switchesOff}
-              tip={folderTip ?? tt('Puts the window back where it was captured, before the run', 'Devolve a janela à posição capturada, antes de rodar')}
+              tip={folderTip ?? t('macroSettings.target.restorePositionTip')}
               onChange={(restorePosition) => save({ restorePosition })}
             />
-            <span className="insp-row-label">Restore position</span>
+            <span className="insp-row-label">{t('macroSettings.target.restorePosition')}</span>
           </div>
           <div className="insp-row">
             <Switch
-              label="Restore size"
+              label={t('macroSettings.target.restoreSize')}
               checked={flags.restoreSize}
               disabled={switchesOff}
-              tip={folderTip ?? tt('Puts the window back to the captured size, before the run', 'Devolve a janela ao tamanho capturado, antes de rodar')}
+              tip={folderTip ?? t('macroSettings.target.restoreSizeTip')}
               onChange={(restoreSize) => save({ restoreSize })}
             />
-            <span className="insp-row-label">Restore size</span>
+            <span className="insp-row-label">{t('macroSettings.target.restoreSize')}</span>
           </div>
           <button
             type="button"
             className="insp-button"
             disabled={locked || targetProblem(value) !== null}
-            data-tip={tt('Reads where the window is now, and its size, for Restore position and Restore size', 'Lê agora onde a janela está e o tamanho dela, para Restore position e Restore size')}
+            data-tip={t('macroSettings.target.updateTip')}
             onClick={() => macro.updateWindowSize({ name, processName: value.processName || undefined, windowTitle: value.windowTitle || undefined, titleMatchMode: value.titleMatchMode })}
           >
-            Update window size &amp; position
+            {t('macroSettings.target.update')}
           </button>
         </>
       )}
       {editing && (
         <span className="mset-target-end">
-          {own && <button type="button" className="insp-link" data-danger="" disabled={locked} onClick={remove}>Remove window target</button>}
-          <button type="button" className="insp-link" onClick={() => setEditing(false)}>Done</button>
+          {own && <button type="button" className="insp-link" data-danger="" disabled={locked} onClick={remove}>{t('macroSettings.target.remove')}</button>}
+          <button type="button" className="insp-link" onClick={() => setEditing(false)}>{t('common.actions.done')}</button>
         </span>
       )}
     </div>

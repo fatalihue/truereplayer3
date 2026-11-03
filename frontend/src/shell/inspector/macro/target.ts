@@ -1,4 +1,5 @@
 import type { ActionItem } from '../../../bridge/messageTypes';
+import { t } from '../../../i18n';
 import { carriesConditionProbe } from '../../../utils/conditionalBlocks';
 
 /** Which window: the process and/or the title, by Contains or a .NET regex. */
@@ -26,8 +27,8 @@ export function targetProblem(v: TargetValue): 'empty' | 'regex' | null {
 /** "title contains “Roblox”", "title matches “^Roblox”" or "any title" (Macro settings board). */
 export function titleCondition(v: TargetValue): string {
   const title = v.windowTitle.trim();
-  if (!title) return 'any title';
-  return `title ${v.titleMatchMode === 'regex' ? 'matches' : 'contains'} “${title}”`;
+  if (!title) return t('macroSettings.target.anyTitle');
+  return v.titleMatchMode === 'regex' ? t('macroSettings.target.titleMatches', { title }) : t('macroSettings.target.titleContains', { title });
 }
 
 // The clicks whose X/Y the engine's coordinate conversion moves (HandleConvertCoordinates' clickTypes):

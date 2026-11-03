@@ -1,4 +1,5 @@
 import type { ProfileEntry } from '../../../bridge/messageTypes';
+import { t } from '../../../i18n';
 
 /** The engine's own limits (HandleProfileSetMetadata): its regex, ten tags, 32 characters each. */
 export const MAX_TAGS = 10;
@@ -11,9 +12,9 @@ export const MAX_SUGGESTIONS = 8;
 /** Why a tag was not added: the one line under the field. */
 export type TagReject = 'invalid' | 'duplicate' | 'full';
 export const TAG_MESSAGE: Record<TagReject, string> = {
-  invalid: 'Letters, numbers and - _ + . only.',
-  duplicate: 'This macro already has that tag.',
-  full: 'Ten tags is the maximum.',
+  invalid: t('macroSettings.tags.reject.invalid'),
+  duplicate: t('macroSettings.tags.reject.duplicate'),
+  full: t('macroSettings.tags.reject.full'),
 };
 
 /**
@@ -65,7 +66,7 @@ let counted = '';
 export function tagsInUseKey(profiles: readonly ProfileEntry[]): string {
   if (profiles !== countedFor) {
     countedFor = profiles;
-    counted = tagsInUse(profiles).map(t => `${t.tag}\t${t.count}`).join('\n');
+    counted = tagsInUse(profiles).map(u => `${u.tag}\t${u.count}`).join('\n');
   }
   return counted;
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useBridge } from '../../bridge/BridgeContext';
+import { t } from '../../i18n';
 import { useEditorTools } from '../../logic/useEditorTools';
-import { useTt } from '../../state/LanguageContext';
 import { anchorBelow, type MenuAnchor } from '../menuAnchor';
 import { Popover } from '../Popover';
 import { useCheckTarget } from './checkTarget';
@@ -28,8 +28,8 @@ export function ResultCard({ ok, title, children }: { ok: boolean; title: ReactN
  * with is applied at once. A region that is `required` (an automation's screen read, D16) has no ×,
  * and is "Not drawn yet" until it is.
  */
-export function RegionField({ label = 'Search region', region, onRegion, locked, wholeHint, drawTip, required = false }: {
-  /** "Search region" for an image; a screen read says "Region to read". */
+export function RegionField({ label = t('inspector.region.label'), region, onRegion, locked, wholeHint, drawTip, required = false }: {
+  /** "Search region" for an image (the default); a screen read gives its own ("Region to read"). */
   label?: string;
   region: Region | null;
   onRegion: (r: Region | null) => void;
@@ -42,7 +42,9 @@ export function RegionField({ label = 'Search region', region, onRegion, locked,
   const tools = useEditorTools();
   const target = useCheckTarget();
   const captureFor = useCaptureFor();
-  const tt = useTt();
+  // A label of its own is a screen read's ("Region to read", in either language): the overlay then
+  // says it reads. The text compared is the default's, so the caller's language never matters.
+  const reads = label !== t('inspector.region.label');
   const draw = useAsk('waitimage:searchRegionSet', (p) => {
     if (!p.cancelled && p.w && p.h && p.w > 0 && p.h > 0) onRegion({ x: p.x ?? 0, y: p.y ?? 0, w: p.w, h: p.h });
   });
@@ -51,20 +53,21 @@ export function RegionField({ label = 'Search region', region, onRegion, locked,
       <span className="insp-label">{label}</span>
       <div className="insp-region">
         <span className="insp-region-text" data-whole={region ? undefined : ''}>
-          {region ? `${region.w} × ${region.h} at ${region.x}, ${region.y}` : required ? 'Not drawn yet' : 'Whole screen'}
+          {region ? t('inspector.region.size', { w: region.w, h: region.h, x: region.x, y: region.y })
+            : required ? t('inspector.region.notDrawn') : t('inspector.region.whole')}
         </span>
         <button
           type="button"
           className="insp-button"
           disabled={locked || draw.waiting}
           data-tip={drawTip}
-          onClick={() => draw.ask(requestId => tools.configureSearchRegion({ requestId, ...target?.tools, ...region, captureFor, reads: label === 'Region to read' }))}
+          onClick={() => draw.ask(requestId => tools.configureSearchRegion({ requestId, ...target?.tools, ...region, captureFor, reads }))}
         >
           <span className="step-icon" data-icon="square-dashed" />
-          {draw.waiting ? 'Drawing…' : region ? 'Redraw' : 'Draw'}
+          {draw.waiting ? t('inspector.region.drawing') : region ? t('inspector.region.redraw') : t('inspector.region.draw')}
         </button>
         {region && !required && (
-          <button type="button" className="insp-icon-button" aria-label="Search the whole screen" data-tip={tt('Search the whole screen', 'Procurar na tela inteira')} disabled={locked} onClick={() => onRegion(null)}>
+          <button type="button" className="insp-icon-button" aria-label={t('inspector.region.clear')} data-tip={t('inspector.region.clear')} disabled={locked} onClick={() => onRegion(null)}>
             <span className="step-icon" data-icon="x" />
           </button>
         )}
@@ -142,7 +145,7 @@ export function RailField({ stepId, field, label, value, min, max, railMax = max
       <DraftField
         stepId={stepId}
         field={field}
-        label={`${label}, exact`}
+        label={t('inspector.exact', { label })}
         kind="int"
         min={min}
         max={max}
@@ -164,7 +167,7 @@ function flushRail(timer: { current: ReturnType<typeof setTimeout> | null }, sen
 }
 
 /** A colour as #RRGGBB, with its swatch (dashed while there is none). Empty clears it where `clearable`. */
-export function HexField({ clearable, placeholder = '#RRGGBB', ...props }: Omit<DraftFieldProps, 'kind' | 'parse' | 'prefix'> & { clearable?: boolean }) {
+export function HexField({ clearable, placeholder = t('inspector.hex'), ...props }: Omit<DraftFieldProps, 'kind' | 'parse' | 'prefix'> & { clearable?: boolean }) {
   const color = normalHex(props.stored);
   return (
     <div className="insp-hex">
@@ -185,7 +188,6 @@ export function HexField({ clearable, placeholder = '#RRGGBB', ...props }: Omit<
  */
 export function ProcessPicker({ onPick, disabled }: { onPick: (name: string) => void; disabled?: boolean }) {
   const tools = useEditorTools();
-  const tt = useTt();
   const { subscribe } = useBridge();
   const [open, setOpen] = useState<{ anchor: MenuAnchor; button: HTMLButtonElement } | null>(null);
   const [list, setList] = useState<{ name: string; title: string }[] | null>(null);
@@ -200,10 +202,10 @@ export function ProcessPicker({ onPick, disabled }: { onPick: (name: string) => 
       <button
         type="button"
         className="insp-icon-button"
-        aria-label="Pick a running process"
+        aria-label={t('inspector.process.pick')}
         aria-haspopup="dialog"
         aria-expanded={!!open}
-        data-tip={tt('Pick a running process', 'Escolher um processo em execução')}
+        data-tip={t('inspector.process.pick')}
         disabled={disabled}
         onClick={(e) => {
           if (open) { setOpen(null); return; }
@@ -215,20 +217,20 @@ export function ProcessPicker({ onPick, disabled }: { onPick: (name: string) => 
         <span className="step-icon" data-icon="list" />
       </button>
       {open && (
-        <Popover anchor={open.anchor} label="Running processes" toggle={open.button} focusFirst onClose={() => setOpen(null)}>
+        <Popover anchor={open.anchor} label={t('inspector.process.list')} toggle={open.button} focusFirst onClose={() => setOpen(null)}>
           <div className="insp-procs">
             <input
               className="insp-procs-filter"
               type="text"
-              aria-label="Filter processes"
-              placeholder="Filter…"
+              aria-label={t('inspector.process.filter')}
+              placeholder={t('inspector.process.filterHint')}
               value={filter}
               spellCheck={false}
               onChange={(e) => setFilter(e.target.value)}
             />
-            <div className="insp-procs-list" role="listbox" aria-label="Running processes">
-              {list === null ? <span className="insp-procs-none">Loading…</span>
-                : shown.length === 0 ? <span className="insp-procs-none">No processes match.</span>
+            <div className="insp-procs-list" role="listbox" aria-label={t('inspector.process.list')}>
+              {list === null ? <span className="insp-procs-none">{t('inspector.process.loading')}</span>
+                : shown.length === 0 ? <span className="insp-procs-none">{t('inspector.process.none')}</span>
                 : shown.map(p => (
                   <button
                     key={`${p.name}\u0000${p.title}`}

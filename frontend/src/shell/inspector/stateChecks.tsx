@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useBridge } from '../../bridge/BridgeContext';
 import type { ActionItem } from '../../bridge/messageTypes';
+import { fmtNum, LANG, t } from '../../i18n';
 import { newRequestId, useEditorTools } from '../../logic/useEditorTools';
 import { useSteps } from '../../logic/useSteps';
-import { useTt } from '../../state/LanguageContext';
 import { useCheckTarget } from './checkTarget';
 import { Clear, DraftField, Section, Segmented, Switch } from './fields';
 import { applyEdits, pendingEdits, type StepEdit } from './inspectorState';
@@ -38,7 +38,6 @@ const validRegex = (s: string) => {
 export function WindowCheck({ step, locked, activate = false, anchor = false }: Props & { activate?: boolean; anchor?: boolean }) {
   const edit = useEdit(step);
   const tools = useEditorTools();
-  const tt = useTt();
   const id = step.id ?? '';
   const regex = step.windowTitleMatchMode === 'regex';
   const process = step.windowProcessName ?? '';
@@ -82,40 +81,40 @@ export function WindowCheck({ step, locked, activate = false, anchor = false }: 
 
   return (
     <div className="insp-group" onKeyDown={onKeyDown}>
-      <Section label="Process" hint="Empty = match by the title only.">
+      <Section label={t('conditions.window.process')} hint={t('conditions.window.processHint')}>
         <div className="insp-line">
-          <DraftField stepId={id} field="windowProcessName" label="Process" kind="mono" placeholder="notepad.exe" stored={process} disabled={locked} parse={asTyped} />
-          {process && <Clear label="Clear the process" labelPt="Limpar o processo" disabled={locked} onClear={() => edit([{ field: 'windowProcessName', value: '' }])} />}
+          <DraftField stepId={id} field="windowProcessName" label={t('conditions.window.process')} kind="mono" placeholder={t('conditions.window.processPlaceholder')} stored={process} disabled={locked} parse={asTyped} />
+          {process && <Clear label={t('conditions.window.clearProcess')} disabled={locked} onClear={() => edit([{ field: 'windowProcessName', value: '' }])} />}
           <ProcessPicker disabled={locked} onPick={(name) => edit([{ field: 'windowProcessName', value: name }])} />
         </div>
       </Section>
       <Section
-        label="Title"
+        label={t('conditions.window.title')}
         hint={regex && title && !validRegex(title)
-          ? <span data-error="">This does not look like a valid regular expression.</span>
-          : process || activate ? 'Case-insensitive.' : 'Case-insensitive. Fill at least one.'}
+          ? <span data-error="">{t('conditions.window.badRegex')}</span>
+          : process || activate ? t('conditions.window.titleHint') : t('conditions.window.titleHintFill')}
       >
         <Segmented<'contains' | 'regex'>
-          label="Title match mode"
+          label={t('conditions.window.titleMode')}
           value={regex ? 'regex' : 'contains'}
           disabled={locked}
-          options={[{ value: 'contains', label: 'Contains' }, { value: 'regex', label: 'Regex', tip: tt('.NET regular expression', 'Expressão regular .NET') }]}
+          options={[{ value: 'contains', label: t('conditions.match.contains') }, { value: 'regex', label: 'Regex', tip: t('conditions.match.regexTip') }]}
           onChange={(v) => edit([{ field: 'windowTitleMatchMode', value: v }])}
         />
         <div className="insp-line">
-          <DraftField stepId={id} field="windowTitle" label="Title" kind="text" placeholder={regex ? 'e.g. (Chrome|Firefox)' : 'Part of the window title'} stored={title} disabled={locked} />
-          {title && <Clear label="Clear the title" labelPt="Limpar o título" disabled={locked} onClear={() => edit([{ field: 'windowTitle', value: '' }])} />}
+          <DraftField stepId={id} field="windowTitle" label={t('conditions.window.title')} kind="text" placeholder={regex ? t('conditions.window.regexPlaceholder') : t('conditions.window.titlePlaceholder')} stored={title} disabled={locked} />
+          {title && <Clear label={t('conditions.window.clearTitle')} disabled={locked} onClear={() => edit([{ field: 'windowTitle', value: '' }])} />}
         </div>
       </Section>
       {anchor ? null : activate ? (
         // Above 1, "no window" means fewer than this many: the Launch path runs then (editor-passo-174).
-        <Section label="Match #" hint={nth > 1 ? 'Counted front→back. Above 1, Launch fires when FEWER than this many match.' : '1 = frontmost.'}>
-          <DraftField stepId={id} field="windowMatchIndex" label="Match #" kind="int" min={1} max={99} stored={String(nth)} disabled={locked} />
+        <Section label={t('conditions.window.matchIndex')} hint={nth > 1 ? t('conditions.window.matchIndexHintMore') : t('conditions.window.matchIndexHint')}>
+          <DraftField stepId={id} field="windowMatchIndex" label={t('conditions.window.matchIndex')} kind="int" min={1} max={99} stored={String(nth)} disabled={locked} />
         </Section>
       ) : (
         <div className="insp-row">
-          <span className="insp-row-label">Foreground window only</span>
-          <Switch label="Foreground window only" tip={tt('It must be in front, not just open', 'Precisa estar em primeiro plano, não só aberta')} checked={!!step.windowMatchForegroundOnly} disabled={locked} onChange={(on) => edit([{ field: 'windowMatchForegroundOnly', value: String(on) }])} />
+          <span className="insp-row-label">{t('conditions.window.foreground')}</span>
+          <Switch label={t('conditions.window.foreground')} tip={t('conditions.window.foregroundTip')} checked={!!step.windowMatchForegroundOnly} disabled={locked} onChange={(on) => edit([{ field: 'windowMatchForegroundOnly', value: String(on) }])} />
         </div>
       )}
       <div className="insp-pair">
@@ -124,10 +123,8 @@ export function WindowCheck({ step, locked, activate = false, anchor = false }: 
           className="insp-button"
           data-armed={detecting ? '' : undefined}
           data-tip={detecting
-            ? (activate
-              ? tt('Click the window to act on. Click here or press Esc to cancel.', 'Clique na janela em que agir. Clique aqui ou aperte Esc para cancelar.')
-              : tt('Click the window to check for. Click here or press Esc to cancel.', 'Clique na janela a checar. Clique aqui ou aperte Esc para cancelar.'))
-            : tt('The next window you click fills the process and the title', 'A próxima janela que você clicar preenche o processo e o título')}
+            ? (activate ? t('conditions.window.detectingActTip') : t('conditions.window.detectingTip'))
+            : t('conditions.window.detectTip')}
           disabled={locked}
           onClick={() => {
             if (detecting) { stopDetecting(); return; }
@@ -139,7 +136,7 @@ export function WindowCheck({ step, locked, activate = false, anchor = false }: 
           }}
         >
           <span className="step-icon" data-icon="crosshair" />
-          {detecting ? 'Click the target window…' : 'Detect window'}
+          {detecting ? t('conditions.window.detecting') : t('conditions.window.detect')}
         </button>
         {!anchor && (
           <button
@@ -155,14 +152,16 @@ export function WindowCheck({ step, locked, activate = false, anchor = false }: 
             }}
           >
             <span className="step-icon" data-icon="play" />
-            {test.waiting ? 'Testing…' : 'Test'}
+            {test.waiting ? t('probe.testing') : t('common.actions.test')}
           </button>
         )}
       </div>
       {result && !test.waiting && (
         <ResultCard
           ok={result.found}
-          title={result.found ? `Found — ${[result.matchProcess, result.matchTitle].filter(Boolean).join(' · ')}` : (result.error || 'Not found')}
+          title={result.found
+            ? t('conditions.window.found', { window: [result.matchProcess, result.matchTitle].filter(Boolean).join(' · ') })
+            : (result.error || t('conditions.window.notFound'))}
         />
       )}
     </div>
@@ -179,10 +178,10 @@ export function ProcessCheck({ step, locked }: Props) {
   const edit = useEdit(step);
   const process = step.windowProcessName ?? '';
   return (
-    <Section label="Process name" hint="Matches even without a window.">
+    <Section label={t('conditions.process.name')} hint={t('conditions.process.hint')}>
       <div className="insp-line">
-        <DraftField stepId={step.id ?? ''} field="windowProcessName" label="Process name" kind="mono" placeholder="chrome.exe" stored={process} disabled={locked} parse={asTyped} />
-        {process && <Clear label="Clear the process" labelPt="Limpar o processo" disabled={locked} onClear={() => edit([{ field: 'windowProcessName', value: '' }])} />}
+        <DraftField stepId={step.id ?? ''} field="windowProcessName" label={t('conditions.process.name')} kind="mono" placeholder={t('conditions.process.placeholder')} stored={process} disabled={locked} parse={asTyped} />
+        {process && <Clear label={t('conditions.window.clearProcess')} disabled={locked} onClear={() => edit([{ field: 'windowProcessName', value: '' }])} />}
         <ProcessPicker disabled={locked} onPick={(name) => edit([{ field: 'windowProcessName', value: name }])} />
       </div>
     </Section>
@@ -193,8 +192,8 @@ export function ProcessCheck({ step, locked }: Props) {
 export function FileCheck({ step, locked }: Props) {
   const auto = useCheckTarget();
   return (
-    <Section label="Path" hint={auto ? 'A file or a folder.' : 'A file or a folder. Tokens resolve at run time.'}>
-      <DraftField stepId={step.id ?? ''} field="filePath" label="Path" kind="mono" placeholder="C:\flags\go.txt" stored={step.filePath ?? ''} disabled={locked} parse={asTyped} />
+    <Section label={t('conditions.file.path')} hint={auto ? t('conditions.file.hint') : t('conditions.file.hintTokens')}>
+      <DraftField stepId={step.id ?? ''} field="filePath" label={t('conditions.file.path')} kind="mono" placeholder={t('conditions.file.placeholder')} stored={step.filePath ?? ''} disabled={locked} parse={asTyped} />
     </Section>
   );
 }
@@ -208,24 +207,24 @@ export function ClipboardCheck({ step, locked, changes = false }: Props & { chan
   const type = step.clipboardPatternType === 'equals' || step.clipboardPatternType === 'regex' ? step.clipboardPatternType : 'contains';
   if (changes) {
     return (
-      <Section label="Contains" hint="Empty = any change. The app’s own copies never count.">
-        <DraftField stepId={step.id ?? ''} field="clipboardPattern" label="Contains" kind="mono" placeholder="text the clipboard must contain" stored={step.clipboardPattern ?? ''} disabled={locked} parse={(t) => t} />
+      <Section label={t('conditions.clipboard.contains')} hint={t('conditions.clipboard.changesHint')}>
+        <DraftField stepId={step.id ?? ''} field="clipboardPattern" label={t('conditions.clipboard.contains')} kind="mono" placeholder={t('conditions.clipboard.changesPlaceholder')} stored={step.clipboardPattern ?? ''} disabled={locked} parse={(s) => s} />
       </Section>
     );
   }
   return (
     <>
-      <Section label="Match type">
+      <Section label={t('conditions.clipboard.matchType')}>
         <Segmented<'contains' | 'equals' | 'regex'>
-          label="Clipboard match type"
+          label={t('conditions.clipboard.matchTypeGroup')}
           value={type}
           disabled={locked}
-          options={[{ value: 'contains', label: 'Contains' }, { value: 'equals', label: 'Equals' }, { value: 'regex', label: 'Regex' }]}
+          options={[{ value: 'contains', label: t('conditions.match.contains') }, { value: 'equals', label: t('conditions.match.equals') }, { value: 'regex', label: 'Regex' }]}
           onChange={(v) => edit([{ field: 'clipboardPatternType', value: v }])}
         />
       </Section>
-      <Section label="Pattern" hint="Text only, ignoring case.">
-        <DraftField stepId={step.id ?? ''} field="clipboardPattern" label="Pattern" kind="mono" stored={step.clipboardPattern ?? ''} disabled={locked} parse={(t) => t} />
+      <Section label={t('conditions.clipboard.pattern')} hint={t('conditions.clipboard.patternHint')}>
+        <DraftField stepId={step.id ?? ''} field="clipboardPattern" label={t('conditions.clipboard.pattern')} kind="mono" stored={step.clipboardPattern ?? ''} disabled={locked} parse={(s) => s} />
       </Section>
     </>
   );
@@ -233,30 +232,29 @@ export function ClipboardCheck({ step, locked, changes = false }: Props & { chan
 
 type Operator = 'eq' | 'neq' | 'contains' | 'gt' | 'lt';
 const OPERATOR_VALUES: Operator[] = ['eq', 'neq', 'contains', 'gt', 'lt'];
-const operators = (tt: (en: string, pt: string) => string): { value: Operator; label: string; tip: string }[] => [
-  { value: 'eq', label: '=', tip: tt('The same text, ignoring case', 'O mesmo texto, sem diferenciar maiúsculas') },
-  { value: 'neq', label: '≠', tip: tt('Not the same text', 'Não é o mesmo texto') },
-  { value: 'contains', label: 'has', tip: tt('Contains it', 'Contém o valor') },
-  { value: 'gt', label: '>', tip: tt('As numbers when both are numbers', 'Como números, quando os dois são números') },
-  { value: 'lt', label: '<', tip: tt('As numbers when both are numbers', 'Como números, quando os dois são números') },
+const OPERATORS: { value: Operator; label: string; tip: string }[] = [
+  { value: 'eq', label: '=', tip: t('conditions.variable.eqTip') },
+  { value: 'neq', label: '≠', tip: t('conditions.variable.neqTip') },
+  { value: 'contains', label: t('conditions.variable.has'), tip: t('conditions.variable.hasTip') },
+  { value: 'gt', label: '>', tip: t('conditions.variable.numbersTip') },
+  { value: 'lt', label: '<', tip: t('conditions.variable.numbersTip') },
 ];
 
 /** Variable: a variable of the run compared with a value. */
 export function VariableCheck({ step, locked }: Props) {
   const edit = useEdit(step);
-  const tt = useTt();
   const id = step.id ?? '';
   const op = OPERATOR_VALUES.find(v => v === step.conditionOperator) ?? 'eq';
   return (
     <>
-      <Section label="Variable name">
-        <DraftField stepId={id} field="key" label="Variable name" kind="mono" placeholder="name" stored={step.key} disabled={locked} parse={asTyped} />
+      <Section label={t('conditions.variable.name')}>
+        <DraftField stepId={id} field="key" label={t('conditions.variable.name')} kind="mono" placeholder={t('conditions.variable.namePlaceholder')} stored={step.key} disabled={locked} parse={asTyped} />
       </Section>
-      <Section label="Operator">
-        <Segmented label="Comparison operator" value={op} disabled={locked} options={operators(tt)} onChange={(v) => edit([{ field: 'conditionOperator', value: v }])} />
+      <Section label={t('conditions.variable.operator')}>
+        <Segmented label={t('conditions.variable.operatorGroup')} value={op} disabled={locked} options={OPERATORS} onChange={(v) => edit([{ field: 'conditionOperator', value: v }])} />
       </Section>
-      <Section label="Value" hint="Tokens resolve at run time.">
-        <DraftField stepId={id} field="conditionOperand" label="Value" kind="mono" stored={step.conditionOperand ?? ''} disabled={locked} parse={(t) => t} />
+      <Section label={t('conditions.value')} hint={t('conditions.variable.valueHint')}>
+        <DraftField stepId={id} field="conditionOperand" label={t('conditions.value')} kind="mono" stored={step.conditionOperand ?? ''} disabled={locked} parse={(s) => s} />
       </Section>
     </>
   );
@@ -267,49 +265,65 @@ export function RandomCheck({ step, locked }: Props) {
   const pct = step.randomPercent ?? 0;
   return (
     <>
-      <Section label="Chance">
-        <DraftField stepId={step.id ?? ''} field="randomPercent" label="Random chance percent" kind="int" min={0} max={100} unit="%" stored={String(pct)} disabled={locked} />
+      <Section label={t('conditions.random.chance')}>
+        <DraftField stepId={step.id ?? ''} field="randomPercent" label={t('conditions.random.field')} kind="int" min={0} max={100} unit="%" stored={String(pct)} disabled={locked} />
       </Section>
       <p className="insp-summary" aria-live="polite" data-error={pct === 0 ? '' : undefined}>
-        {pct === 0 ? 'At 0 % it never passes.' : pct === 100 ? 'At 100 % it always passes.' : `Passes ${pct} % of the time.`}
+        {pct === 0 ? t('conditions.random.never') : pct === 100 ? t('conditions.random.always') : t('conditions.random.passes', { pct: fmtNum(pct) })}
       </p>
     </>
   );
 }
 
-const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const DAYS_PT = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+// The days of the week in the build's language (Intl, plan §3.4): the whole name for the button's
+// name and its tip, the narrow form on it ("S M T W…", "D S T Q…"). Made when a Time condition is
+// first drawn, not when this module loads: an Intl object is not free. Sunday first, as the mask
+// counts them.
+let weekdays: { name: string; letter: string }[] | undefined;
+function weekDays() {
+  if (!weekdays) {
+    const long = new Intl.DateTimeFormat(LANG, { weekday: 'long', timeZone: 'UTC' });
+    const narrow = new Intl.DateTimeFormat(LANG, { weekday: 'narrow', timeZone: 'UTC' });
+    // 2023-01-01 was a Sunday. pt-BR writes the names in lower case ("segunda-feira"): a name alone
+    // starts with a capital.
+    weekdays = Array.from({ length: 7 }, (_, i) => {
+      const at = Date.UTC(2023, 0, 1 + i);
+      const name = long.format(at);
+      return { name: name.charAt(0).toUpperCase() + name.slice(1), letter: narrow.format(at) };
+    });
+  }
+  return weekdays;
+}
 
 /** Time: a time window (overnight works) on some days of the week, or every day. */
 export function TimeCheck({ step, locked }: Props) {
   const edit = useEdit(step);
-  const tt = useTt();
   const id = step.id ?? '';
   const days = step.daysOfWeek ?? 0;
   return (
     <>
       <div className="insp-pair">
-        <Section label="From">
-          <TimeField stepId={id} field="timeStart" label="From" stored={step.timeStart ?? ''} disabled={locked} />
+        <Section label={t('conditions.time.from')}>
+          <TimeField stepId={id} field="timeStart" label={t('conditions.time.from')} stored={step.timeStart ?? ''} disabled={locked} />
         </Section>
-        <Section label="To">
-          <TimeField stepId={id} field="timeEnd" label="To" stored={step.timeEnd ?? ''} disabled={locked} />
+        <Section label={t('conditions.time.to')}>
+          <TimeField stepId={id} field="timeEnd" label={t('conditions.time.to')} stored={step.timeEnd ?? ''} disabled={locked} />
         </Section>
       </div>
-      <span className="insp-hint">Overnight works, like 22:00 to 02:00.</span>
-      <Section label="Days" hint="None = every day.">
-        <div className="insp-days" role="group" aria-label="Days">
-          {DAYS.map((day, bit) => (
+      <span className="insp-hint">{t('conditions.time.overnight')}</span>
+      <Section label={t('conditions.time.days')} hint={t('conditions.time.daysHint')}>
+        <div className="insp-days" role="group" aria-label={t('conditions.time.days')}>
+          {weekDays().map((day, bit) => (
             <button
-              key={day}
+              key={bit}
               type="button"
               aria-pressed={(days & (1 << bit)) !== 0}
-              aria-label={day}
-              data-tip={tt(day, DAYS_PT[bit])}
+              aria-label={day.name}
+              data-tip={day.name}
               disabled={locked}
               onClick={() => edit([{ field: 'daysOfWeek', value: String(days ^ (1 << bit)) }])}
             >
-              {day[0]}
+              {day.letter}
             </button>
           ))}
         </div>

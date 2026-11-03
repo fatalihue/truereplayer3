@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { StepSection, CheckRow, RadioRow, RadioGroup, NumInput, ArgInput } from './popoverAtoms';
 import { SegmentedControl } from '../common/SegmentedControl';
 import { Callout } from '../common/Callout';
-import { useTt } from '../../state/LanguageContext';
+import { t } from '../../i18n';
 import {
   applyTransformPreview,
   previewIsRuntimeDependent,
@@ -32,7 +32,8 @@ interface ClipboardModifierBodyProps {
    *  build; clipboard consumers omit it and get the {clipboard:mods} build. */
   token?: string;
   /** Label above the raw-source box (default "Clipboard now", the same words ClipboardSurface
-   *  uses; the row-cell chip passes "Cell (first row)"). */
+   *  uses; the row-cell chip passes "Cell (first row)"). The surface's labels are the catalog's
+   *  clipboard.source.* keys, for a caller that wants the same words. */
   sourceLabel?: string;
   /** The source text is not knowable while editing — {var:}, {clip:} and {winclip:} read run
    *  state that lives in the engine, not in this process. The source and preview boxes then say
@@ -57,11 +58,10 @@ export function ClipboardModifierBody({
   clipRaw,
   clipReady,
   token: tokenOverride,
-  sourceLabel = 'Clipboard now',
+  sourceLabel = t('clipboard.source.clipboardNow'),
   sourceUnknown = false,
   showNext = false,
 }: ClipboardModifierBodyProps) {
-  const tt = useTt();
   const token = useMemo(
     () => tokenOverride ?? buildClipboardToken(state),
     [tokenOverride, state],
@@ -101,8 +101,8 @@ export function ClipboardModifierBody({
   const setLimitN = (n: number) => setState((s) => ({ ...s, limitN: Math.max(0, n) }));
   const setExtractRef = (r: string) => setState((s) => ({ ...s, extractRef: r }));
   const setLimitRef = (r: string) => setState((s) => ({ ...s, limitRef: r }));
-  const refTip = tt('Use a variable instead — @name, @counter, @loop, @row or @datarow', 'Usar uma variável — @nome, @counter, @loop, @row ou @datarow');
-  const numTip = tt('Back to a fixed number', 'Voltar para um número fixo');
+  const refTip = t('clipboard.arg.refTipShort');
+  const numTip = t('clipboard.arg.numTip');
   const setListPick = (v: ListPick) => setState((s) => ({ ...s, listPick: v }));
   // A span bound of null is an OPEN end ("word 6 onwards"), which is why these go through
   // onClear rather than clamping an empty field back to a number.
@@ -119,10 +119,10 @@ export function ClipboardModifierBody({
             to rebuild it. The app's Callout, so read-only looks the same here and in the surface. */}
         <Callout tone="warn" still role="status">
           {state.unmodeledRefArg
-            ? 'Read-only: the line argument comes from a variable, which these controls can’t show. It still runs; an invalid variable yields nothing.'
-            : 'Read-only: a modifier here can’t be rebuilt as written (unknown, repeated or reordered).'}
+            ? t('clipboard.readOnly.refArg')
+            : t('clipboard.readOnly.unknown')}
         </Callout>
-        <div className="label-micro text-text-tertiary">Token</div>
+        <div className="label-micro text-text-tertiary">{t('clipboard.token')}</div>
         <div className="font-mono text-minor px-2 py-0.5 rounded break-all"
           style={{
             color: 'var(--color-action-sendtext-fg)',
@@ -131,7 +131,7 @@ export function ClipboardModifierBody({
           {token}
         </div>
         <div className="text-caption text-text-tertiary leading-snug">
-          {'Edit the token text in the editor to change it.'}
+          {t('clipboard.readOnly.editToChange')}
         </div>
       </div>
     );
@@ -143,16 +143,16 @@ export function ClipboardModifierBody({
           ladder then transforms. Clipboard-only (showNext), which is why every step below
           renumbers through sn(). */}
       {showNext && (
-        <StepSection n={1} label="Sequence" active={state.next}>
+        <StepSection n={1} label={t('clipboard.steps.sequence')} active={state.next}>
           <CheckRow
             checked={state.next}
             onChange={() => setState((s) => ({ ...s, next: !s.next }))}
-            label="One line per use"
+            label={t('clipboard.sequence.onePerUse')}
           />
           <div className="text-caption text-text-tertiary leading-snug mt-0.5">
             {state.next
-              ? 'Each use takes the next line; a new copy starts over. The preview always shows line 1.'
-              : 'Pastes the whole clipboard.'}
+              ? t('clipboard.sequence.onHint')
+              : t('clipboard.sequence.offHint')}
           </div>
         </StepSection>
       )}
@@ -161,26 +161,26 @@ export function ClipboardModifierBody({
           a lumped "Transform" group that also held the accent/digit filters and the whole case
           cluster — three different pipeline stages drawn as one, at the TOP, when case is the
           LAST thing the backend applies. */}
-      <StepSection n={sn(2)} label="Trim" active={state.trim}>
+      <StepSection n={sn(2)} label={t('clipboard.steps.trim')} active={state.trim}>
         <CheckRow
           checked={state.trim}
           onChange={() => setState((s) => ({ ...s, trim: !s.trim }))}
-          label="Trim whitespace"
+          label={t('clipboard.trim.whitespace')}
         />
       </StepSection>
 
       {/* Replace runs right after trim in the emitted chain — on the raw text, before any cut.
           Two raw arguments like the join separator: no colon in either, and an EMPTY "with"
           deletes every match. */}
-      <StepSection n={sn(3)} label="Replace" active={replaceActive}>
+      <StepSection n={sn(3)} label={t('clipboard.steps.replace')} active={replaceActive}>
         <div className="flex items-center gap-2 py-0.5">
           <input
             type="text"
             value={state.replaceFrom}
             onChange={(e) => setState((s) => ({ ...s, replaceFrom: e.target.value.replace(/[{}:]/g, '') }))}
-            placeholder="find"
-            aria-label="Find"
-            data-tip={tt('Every match, ignoring case. { } : not allowed.', 'Toda ocorrência, sem diferenciar maiúsculas. { } : não podem.')}
+            placeholder={t('clipboard.replace.findPlaceholder')}
+            aria-label={t('clipboard.replace.find')}
+            data-tip={t('clipboard.replace.findTip')}
             className="input-inline font-mono w-[92px]"
           />
           <span className="text-caption text-text-tertiary">→</span>
@@ -189,9 +189,9 @@ export function ClipboardModifierBody({
             value={state.replaceTo}
             onChange={(e) => setState((s) => ({ ...s, replaceTo: e.target.value.replace(/[{}:]/g, '') }))}
             disabled={state.replaceFrom.length === 0}
-            placeholder="(nothing)"
-            aria-label="Replace with"
-            data-tip={tt('Empty deletes the match. { } : not allowed.', 'Vazio apaga a ocorrência. { } : não podem.')}
+            placeholder={t('clipboard.replace.withPlaceholder')}
+            aria-label={t('clipboard.replace.with')}
+            data-tip={t('clipboard.replace.withTip')}
             className="input-inline font-mono w-[92px]"
           />
         </div>
@@ -199,16 +199,16 @@ export function ClipboardModifierBody({
 
       {/* Cuts the RAW text at a delimiter — in the emitted chain it runs right after replace,
           ahead of every line op. */}
-      <StepSection n={sn(4)} label="Split at" active={splitActive}>
+      <StepSection n={sn(4)} label={t('clipboard.steps.splitAt')} active={splitActive}>
         <div className="py-0.5">
           <SegmentedControl<Split>
             dense
             grow
-            ariaLabel="Split at a delimiter"
+            ariaLabel={t('clipboard.split.label')}
             options={[
-              { value: 'none', label: 'Off' },
-              { value: 'before', label: 'Before' },
-              { value: 'after', label: 'After' },
+              { value: 'none', label: t('clipboard.split.off') },
+              { value: 'before', label: t('clipboard.split.before') },
+              { value: 'after', label: t('clipboard.split.after') },
             ]}
             value={state.split}
             onChange={(v) => setState((s) => ({ ...s, split: v }))}
@@ -224,17 +224,14 @@ export function ClipboardModifierBody({
             onChange={(e) => setState((s) => ({ ...s, splitDelim: e.target.value.replace(/[{}]/g, '') }))}
             disabled={state.split === 'none'}
             placeholder=" - "
-            aria-label="Delimiter"
-            data-tip={tt(
-              'Cut here — the delimiter is dropped. Spaces and : allowed, { } not. Absent = empty result.',
-              'Corta aqui — o delimitador é descartado. Espaços e : podem, { } não. Ausente = resultado vazio.',
-            )}
+            aria-label={t('clipboard.split.delimiter')}
+            data-tip={t('clipboard.split.delimiterTipAbsent')}
             className="input-inline font-mono w-[104px]"
           />
           <CheckRow
             checked={state.splitLast}
             onChange={() => setState((s) => ({ ...s, splitLast: !s.splitLast }))}
-            label="Last match"
+            label={t('clipboard.split.lastMatch')}
             className=""
             disabled={state.split === 'none'}
           />
@@ -242,18 +239,15 @@ export function ClipboardModifierBody({
       </StepSection>
 
       {/* Strip a leading "<digits><suffix>" — runs right after the split in the emitted chain. */}
-      <StepSection n={sn(5)} label="Drop count" active={dropNumActive}>
+      <StepSection n={sn(5)} label={t('clipboard.steps.dropCount')} active={dropNumActive}>
         <div className="flex items-center gap-2 py-0.5">
           <input
             type="text"
             value={state.dropNumSuffix}
             onChange={(e) => setState((s) => ({ ...s, dropNumSuffix: e.target.value.replace(/[{}]/g, '') }))}
             placeholder="x "
-            aria-label="Count suffix"
-            data-tip={tt(
-              'Strips leading digits + this text (e.g. "1x "). { } not allowed.',
-              'Remove dígitos iniciais + este texto (ex.: "1x "). { } não podem.',
-            )}
+            aria-label={t('clipboard.dropCount.suffix')}
+            data-tip={t('clipboard.dropCount.suffixTip')}
             className="input-inline font-mono w-[104px]"
           />
         </div>
@@ -261,17 +255,17 @@ export function ClipboardModifierBody({
 
       {/* List ops — they operate on the content as LINES, and the backend applies them BEFORE
           the single-line Extract below. They used to be drawn after it. */}
-      <StepSection n={sn(6)} label="Lines" active={linesActive}>
-        <RadioGroup label="Lines">
+      <StepSection n={sn(6)} label={t('clipboard.steps.lines')} active={linesActive}>
+        <RadioGroup label={t('clipboard.steps.lines')}>
           <RadioRow
             checked={state.listPick === 'none'}
             onChange={() => setListPick('none')}
-            label="All lines"
+            label={t('clipboard.lines.all')}
           />
           <RadioRow
             checked={state.listPick === 'range'}
             onChange={() => setListPick('range')}
-            label="Range"
+            label={t('clipboard.lines.range')}
             input={
               <span className="flex items-center gap-1">
                 <NumInput
@@ -281,7 +275,7 @@ export function ClipboardModifierBody({
                   disabled={state.listPick !== 'range'}
                   min={1}
                   placeholder="1"
-                  ariaLabel="First line"
+                  ariaLabel={t('clipboard.lines.firstLine')}
                 />
                 <span className="text-caption text-text-tertiary">–</span>
                 <NumInput
@@ -290,8 +284,8 @@ export function ClipboardModifierBody({
                   onClear={() => setSpan('rangeTo', null)}
                   disabled={state.listPick !== 'range'}
                   min={1}
-                  placeholder="end"
-                  ariaLabel="Last line"
+                  placeholder={t('clipboard.openEnd')}
+                  ariaLabel={t('clipboard.lines.lastLine')}
                 />
               </span>
             }
@@ -299,7 +293,7 @@ export function ClipboardModifierBody({
           <RadioRow
             checked={state.listPick === 'lines'}
             onChange={() => setListPick('lines')}
-            label="Pick #s"
+            label={t('clipboard.lines.pick')}
             input={
               <input
                 type="text"
@@ -318,17 +312,17 @@ export function ClipboardModifierBody({
           <CheckRow
             checked={state.sort}
             onChange={() => setState((s) => ({ ...s, sort: !s.sort }))}
-            label="Sort A–Z"
+            label={t('clipboard.lines.sort')}
           />
           <CheckRow
             checked={state.dedupe}
             onChange={() => setState((s) => ({ ...s, dedupe: !s.dedupe }))}
-            label="Dedupe"
+            label={t('clipboard.lines.dedupe')}
           />
           <CheckRow
             checked={state.reverse}
             onChange={() => setState((s) => ({ ...s, reverse: !s.reverse }))}
-            label="Reverse"
+            label={t('clipboard.lines.reverse')}
           />
         </div>
         <div className="flex items-center gap-2 py-0.5">
@@ -336,7 +330,7 @@ export function ClipboardModifierBody({
           <CheckRow
             checked={state.join}
             onChange={() => setState((s) => ({ ...s, join: !s.join }))}
-            label="Join with"
+            label={t('clipboard.lines.joinWith')}
             className=""
           />
           <input
@@ -348,27 +342,24 @@ export function ClipboardModifierBody({
             onChange={(e) => setState((s) => ({ ...s, joinSep: e.target.value.replace(/[{}:]/g, '') }))}
             disabled={!state.join}
             placeholder=","
-            aria-label="Separator"
-            data-tip={tt(
-              'Joins lines with this — empty allowed. { } : not allowed.',
-              'Une as linhas com isto — vazio permitido. { } : não podem.',
-            )}
+            aria-label={t('clipboard.lines.separator')}
+            data-tip={t('clipboard.lines.joinTip')}
             className="input-inline font-mono w-[70px]"
           />
         </div>
       </StepSection>
 
-      <StepSection n={sn(7)} label="Extract" active={state.extract !== 'none'}>
-        <RadioGroup label="Extract">
+      <StepSection n={sn(7)} label={t('clipboard.steps.extract')} active={state.extract !== 'none'}>
+        <RadioGroup label={t('clipboard.steps.extract')}>
           <RadioRow
             checked={state.extract === 'none'}
             onChange={() => setExtract('none')}
-            label="Everything"
+            label={t('clipboard.extract.everything')}
           />
           <RadioRow
             checked={state.extract === 'line'}
             onChange={() => setExtract('line')}
-            label="Line #"
+            label={t('clipboard.extract.line')}
             input={
               <ArgInput
                 value={state.extractN}
@@ -385,7 +376,7 @@ export function ClipboardModifierBody({
           <RadioRow
             checked={state.extract === 'word'}
             onChange={() => setExtract('word')}
-            label="Word #"
+            label={t('clipboard.extract.word')}
             input={
               <ArgInput
                 value={state.extractN}
@@ -402,14 +393,11 @@ export function ClipboardModifierBody({
           <RadioRow
             checked={state.extract === 'words'}
             onChange={() => setExtract('words')}
-            label="Words"
+            label={t('clipboard.extract.words')}
             input={
               <span
                 className="flex items-center gap-1"
-                data-tip={tt(
-                  'Word range; a blank side is open-ended.',
-                  'Intervalo de palavras; lado em branco = sem limite.',
-                )}
+                data-tip={t('clipboard.extract.wordsTip')}
               >
                 <NumInput
                   value={state.wordsFrom}
@@ -418,7 +406,7 @@ export function ClipboardModifierBody({
                   disabled={state.extract !== 'words'}
                   min={1}
                   placeholder="1"
-                  ariaLabel="First word"
+                  ariaLabel={t('clipboard.extract.firstWord')}
                 />
                 <span className="text-caption text-text-tertiary">–</span>
                 <NumInput
@@ -427,8 +415,8 @@ export function ClipboardModifierBody({
                   onClear={() => setSpan('wordsTo', null)}
                   disabled={state.extract !== 'words'}
                   min={1}
-                  placeholder="end"
-                  ariaLabel="Last word"
+                  placeholder={t('clipboard.openEnd')}
+                  ariaLabel={t('clipboard.extract.lastWord')}
                 />
               </span>
             }
@@ -436,17 +424,17 @@ export function ClipboardModifierBody({
         </RadioGroup>
       </StepSection>
 
-      <StepSection n={sn(8)} label="Limit length" active={state.limit !== 'none'}>
-        <RadioGroup label="Limit length">
+      <StepSection n={sn(8)} label={t('clipboard.steps.limit')} active={state.limit !== 'none'}>
+        <RadioGroup label={t('clipboard.steps.limit')}>
           <RadioRow
             checked={state.limit === 'none'}
             onChange={() => setLimit('none')}
-            label="None"
+            label={t('clipboard.limit.none')}
           />
           <RadioRow
             checked={state.limit === 'first'}
             onChange={() => setLimit('first')}
-            label="First N chars"
+            label={t('clipboard.limit.first')}
             input={
               <ArgInput
                 value={state.limitN}
@@ -463,7 +451,7 @@ export function ClipboardModifierBody({
           <RadioRow
             checked={state.limit === 'last'}
             onChange={() => setLimit('last')}
-            label="Last N chars"
+            label={t('clipboard.limit.last')}
             input={
               <ArgInput
                 value={state.limitN}
@@ -482,33 +470,33 @@ export function ClipboardModifierBody({
 
       {/* Character-class filters over the value at THIS point of the chain — the builder emits
           them after the slice/limit steps and before Case. */}
-      <StepSection n={sn(9)} label="Clean up" active={state.noAccents || state.digitsOnly}>
+      <StepSection n={sn(9)} label={t('clipboard.steps.cleanUp')} active={state.noAccents || state.digitsOnly}>
         <div className="grid grid-cols-2 gap-x-3">
           <CheckRow
             checked={state.noAccents}
             onChange={() => setState((s) => ({ ...s, noAccents: !s.noAccents }))}
-            label="Remove accents"
+            label={t('clipboard.cleanUp.noAccents')}
           />
           <CheckRow
             checked={state.digitsOnly}
             onChange={() => setState((s) => ({ ...s, digitsOnly: !s.digitsOnly }))}
-            label="Digits only"
+            label={t('clipboard.cleanUp.digitsOnly')}
           />
         </div>
       </StepSection>
 
       {/* count → pad, then case, then default: the number of lines is what gets padded. */}
-      <StepSection n={sn(10)} label="Count & pad" active={shapeActive}>
+      <StepSection n={sn(10)} label={t('clipboard.steps.countPad')} active={shapeActive}>
         <CheckRow
           checked={state.count}
           onChange={() => setState((s) => ({ ...s, count: !s.count }))}
-          label="Count lines"
+          label={t('clipboard.countPad.countLines')}
         />
         <div className="flex items-center gap-2 py-0.5">
           <CheckRow
             checked={state.pad}
             onChange={() => setState((s) => ({ ...s, pad: !s.pad }))}
-            label="Zero-pad to"
+            label={t('clipboard.countPad.zeroPad')}
             className=""
           />
           <ArgInput
@@ -528,28 +516,28 @@ export function ClipboardModifierBody({
       {/* The same five values and the same labels as the surface's segmented control (None / UPPER
           / lower / Sentence / Title), as a radio group in two columns so the step stays three rows
           in a popover this narrow. */}
-      <StepSection n={sn(11)} label="Case" active={state.case !== 'none'}>
-        <RadioGroup label="Case">
+      <StepSection n={sn(11)} label={t('clipboard.steps.textCase')} active={state.case !== 'none'}>
+        <RadioGroup label={t('clipboard.steps.textCase')}>
           <div className="grid grid-cols-2 gap-x-3">
-            <RadioRow checked={state.case === 'none'} onChange={() => setCase('none')} label="None" />
-            <RadioRow checked={state.case === 'upper'} onChange={() => setCase('upper')} label="UPPER" />
-            <RadioRow checked={state.case === 'lower'} onChange={() => setCase('lower')} label="lower" />
-            <RadioRow checked={state.case === 'sentence'} onChange={() => setCase('sentence')} label="Sentence" />
-            <RadioRow checked={state.case === 'title'} onChange={() => setCase('title')} label="Title" />
+            <RadioRow checked={state.case === 'none'} onChange={() => setCase('none')} label={t('clipboard.textCase.none')} />
+            <RadioRow checked={state.case === 'upper'} onChange={() => setCase('upper')} label={t('clipboard.textCase.upper')} />
+            <RadioRow checked={state.case === 'lower'} onChange={() => setCase('lower')} label={t('clipboard.textCase.lower')} />
+            <RadioRow checked={state.case === 'sentence'} onChange={() => setCase('sentence')} label={t('clipboard.textCase.sentence')} />
+            <RadioRow checked={state.case === 'title'} onChange={() => setCase('title')} label={t('clipboard.textCase.title')} />
           </div>
         </RadioGroup>
       </StepSection>
 
       {/* LAST: the fallback sees the FINAL value, and only an empty one. */}
-      <StepSection n={sn(12)} label="Default" active={defaultActive}>
+      <StepSection n={sn(12)} label={t('clipboard.steps.fallback')} active={defaultActive}>
         <div className="py-0.5">
           <input
             type="text"
             value={state.defaultText}
             onChange={(e) => setState((s) => ({ ...s, defaultText: e.target.value.replace(/[{}]/g, '') }))}
-            placeholder="when empty"
-            aria-label="Default text"
-            data-tip={tt('Used when the result is empty. Spaces and : allowed, { } not.', 'Usado quando o resultado fica vazio. Espaços e : podem, { } não.')}
+            placeholder={t('clipboard.fallback.placeholder')}
+            aria-label={t('clipboard.fallback.label')}
+            data-tip={t('clipboard.fallback.tip')}
             className="input-inline font-mono"
           />
         </div>
@@ -563,21 +551,21 @@ export function ClipboardModifierBody({
         >
           {sourceUnknown ? (
             <span className="italic text-text-disabled">
-              {'Known only while the macro runs'}
+              {t('clipboard.unknown.duringRun')}
             </span>
           ) : clipReady ? (
             clipRaw === '' ? (
-              <span className="italic text-text-disabled">(empty)</span>
+              <span className="italic text-text-disabled">{t('clipboard.empty')}</span>
             ) : (
               clipRaw
             )
           ) : (
-            <span className="italic text-text-disabled">Reading…</span>
+            <span className="italic text-text-disabled">{t('clipboard.reading')}</span>
           )}
         </div>
         {/* Source → Result → Token, the order and the words ClipboardSurface uses: what goes in,
             what comes out, what gets written. It used to read Source → Token → Preview here. */}
-        <div className="label-micro text-text-tertiary mb-0.5">Result</div>
+        <div className="label-micro text-text-tertiary mb-0.5">{t('clipboard.result')}</div>
         <div
           className="font-mono text-caption px-2 py-0.5 mb-1.5 rounded border whitespace-pre-wrap break-all min-h-[20px] max-h-[72px] overflow-auto"
           style={{
@@ -590,19 +578,19 @@ export function ClipboardModifierBody({
               message is the one about the field still waiting on a name. */}
           {sourceUnknown
             ? <span className="italic text-text-disabled">
-                {'No preview — this value is read when the macro runs.'}
+                {t('clipboard.noPreview.readAtRun')}
               </span>
             : refUnfinished
             ? <span className="italic" style={{ color: 'var(--color-recording-fg)' }}>
-                {'Finish the name after @ — until then the token keeps the fixed number.'}
+                {t('clipboard.noPreview.refUnfinished')}
               </span>
             : runtimeDependent
               ? <span className="italic text-text-disabled">
-                  {'Resolved when the macro runs — the index comes from a variable.'}
+                  {t('clipboard.noPreview.fromVariable')}
                 </span>
-              : preview === '' ? <span className="italic text-text-disabled">(empty)</span> : preview}
+              : preview === '' ? <span className="italic text-text-disabled">{t('clipboard.empty')}</span> : preview}
         </div>
-        <div className="label-micro text-text-tertiary mb-0.5">Token</div>
+        <div className="label-micro text-text-tertiary mb-0.5">{t('clipboard.token')}</div>
         <div
           className="font-mono text-minor px-2 py-0.5 rounded break-all"
           style={{

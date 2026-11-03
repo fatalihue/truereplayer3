@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { ActionItem, SelectorAlternative } from '../../bridge/messageTypes';
+import { t, tn } from '../../i18n';
 import { useEditorTools } from '../../logic/useEditorTools';
 import { useSteps } from '../../logic/useSteps';
-import { useTt } from '../../state/LanguageContext';
 import { DraftField, Section } from './fields';
 import { applyEdits, type StepEdit } from './inspectorState';
 import { useAsk } from './probes';
@@ -20,13 +20,11 @@ export function estimateTier(selector: string): SelectorAlternative['tier'] {
   if (/^[a-z]+\./i.test(s)) return 'B';
   return 'C';
 }
-const TIER_NAMES: Record<SelectorAlternative['tier'], string> = { S: 'Stable', A: 'Strong', B: 'Decent', C: 'Fragile' };
-const TIER_NAMES_PT: Record<SelectorAlternative['tier'], string> = { S: 'Estável', A: 'Forte', B: 'Razoável', C: 'Frágil' };
+const TIER_NAMES: Readonly<Record<SelectorAlternative['tier'], string>> = tn('browser.tiers');
 
 /** The shield: how stable a selector reads, S to C (editor-passo-128). */
 export function Tier({ selector, tier = estimateTier(selector) }: { selector: string; tier?: SelectorAlternative['tier'] }) {
-  const tt = useTt();
-  return <span className="insp-tier" data-tier={tier} data-tip={tt(`${tier} · ${TIER_NAMES[tier]}`, `${tier} · ${TIER_NAMES_PT[tier]}`)}>{tier} · {TIER_NAMES[tier]}</span>;
+  return <span className="insp-tier" data-tier={tier} data-tip={`${tier} · ${TIER_NAMES[tier]}`}>{tier} · {TIER_NAMES[tier]}</span>;
 }
 
 /**
@@ -39,7 +37,6 @@ export function Tier({ selector, tier = estimateTier(selector) }: { selector: st
 export function SelectorField({ step, locked, hint, stored = step.key ?? '' }: { step: ActionItem; locked: boolean; hint?: ReactNode; stored?: string }) {
   const cmds = useSteps();
   const tools = useEditorTools();
-  const tt = useTt();
   const id = step.id ?? '';
   const edit = (edits: StepEdit[]) => applyEdits(cmds, id, edits);
   const alternatives = step.selectorAlternatives ?? [];
@@ -72,7 +69,7 @@ export function SelectorField({ step, locked, hint, stored = step.key ?? '' }: {
 
   return (
     <Section
-      label="CSS selector"
+      label={t('browser.selector.label')}
       aside={stored ? <Tier selector={stored} /> : undefined}
       hint={pickError ? <span data-error="">{pickError}</span> : hint}
     >
@@ -80,20 +77,20 @@ export function SelectorField({ step, locked, hint, stored = step.key ?? '' }: {
         <DraftField
           stepId={id}
           field="key"
-          label="CSS selector"
+          label={t('browser.selector.label')}
           kind="mono"
-          placeholder=".btn-save"
+          placeholder={t('browser.selector.placeholder')}
           stored={stored}
           disabled={locked}
-          parse={(t) => t.trim()}
+          parse={(text) => text.trim()}
           onApply={(v) => { setShowAlternatives(false); edit([{ field: 'key', value: v }, { field: 'selectorAlternatives', value: '' }]); }}
         />
         <button
           type="button"
           className="insp-icon-button"
-          aria-label="Pick element"
+          aria-label={t('browser.selector.pick')}
           aria-pressed={pick.waiting}
-          data-tip={pick.waiting ? tt('Picking on the page · Esc cancels', 'Escolhendo na página · Esc cancela') : tt('Pick an element on the page', 'Escolher um elemento na página')}
+          data-tip={pick.waiting ? t('browser.selector.pickingTip') : t('browser.selector.pickTip')}
           disabled={locked}
           onClick={() => {
             if (pick.waiting) { tools.cancelPick({}); pick.drop(); return; }
@@ -106,10 +103,10 @@ export function SelectorField({ step, locked, hint, stored = step.key ?? '' }: {
         </button>
       </div>
       {showAlternatives && alternatives.length > 1 && (
-        <div className="insp-alts" role="group" aria-label="Alternatives">
+        <div className="insp-alts" role="group" aria-label={t('browser.selector.alternatives')}>
           <span className="insp-alts-head">
-            Alternatives
-            <button type="button" className="insp-icon-button" aria-label="Close alternatives" onClick={() => setShowAlternatives(false)}>
+            {t('browser.selector.alternatives')}
+            <button type="button" className="insp-icon-button" aria-label={t('browser.selector.closeAlternatives')} onClick={() => setShowAlternatives(false)}>
               <span className="step-icon" data-icon="x" />
             </button>
           </span>

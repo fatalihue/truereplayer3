@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Smile } from 'lucide-react';
-import { useTt } from '../../../state/LanguageContext';
+import { t } from '../../../i18n';
 import { preload, useLoaded } from '../../lazyModule';
 import { anchorBelow, type MenuAnchor } from '../../menuAnchor';
 import { Popover } from '../../Popover';
 // The emoji picker is not part of opening anything but itself (rule 6): it comes when the button is
 // first pointed at or pressed, and the panel opens once it is in (it is placed once, by its size).
-import { appIsLight, loadEmojiPicker } from '../inspectorState';
+import { emojiCategories, loadEmojiPicker } from '../emoji';
+import { appIsLight } from '../inspectorState';
 
 /**
  * Info › icon: the macro's emoji, which the folded library and the import and export lists show. A
@@ -14,8 +15,8 @@ import { appIsLight, loadEmojiPicker } from '../inspectorState';
  * Clear takes it away (biblioteca-142 to 145).
  */
 export function IconPicker({ value, onPick, disabled }: { value: string | null; onPick: (emoji: string | null) => void; disabled?: boolean }) {
-  const tt = useTt();
-  const picker = useLoaded(loadEmojiPicker);
+  const loaded = useLoaded(loadEmojiPicker);
+  const picker = loaded?.module;
   const [open, setOpen] = useState<{ anchor: MenuAnchor; button: HTMLButtonElement; keyboard: boolean } | null>(null);
 
   // The picker keeps Esc for its own search box, so Esc never reaches the panel: caught first here,
@@ -39,10 +40,10 @@ export function IconPicker({ value, onPick, disabled }: { value: string | null; 
       <button
         type="button"
         className="mset-icon"
-        aria-label="Choose icon"
+        aria-label={t('macroSettings.info.chooseIcon')}
         aria-haspopup="dialog"
         aria-expanded={!!open}
-        data-tip={tt('Choose an icon for the macro', 'Escolher um ícone para o macro')}
+        data-tip={t('macroSettings.info.chooseIconTip')}
         disabled={disabled}
         onPointerEnter={() => { void preload(loadEmojiPicker); }}
         onClick={(e) => {
@@ -55,12 +56,12 @@ export function IconPicker({ value, onPick, disabled }: { value: string | null; 
         {value ? <span className="mset-icon-emoji">{value}</span> : <Smile aria-hidden="true" />}
       </button>
       {value && (
-        <button type="button" className="insp-link" aria-label="Clear icon" disabled={disabled} onClick={() => onPick(null)}>
-          Clear
+        <button type="button" className="insp-link" aria-label={t('macroSettings.info.clearIcon')} disabled={disabled} onClick={() => onPick(null)}>
+          {t('common.actions.clear')}
         </button>
       )}
       {open && Picker && picker && (
-        <Popover anchor={open.anchor} label="Choose icon" toggle={open.button} focusFirst={open.keyboard} onClose={() => setOpen(null)}>
+        <Popover anchor={open.anchor} label={t('macroSettings.info.chooseIcon')} toggle={open.button} focusFirst={open.keyboard} onClose={() => setOpen(null)}>
           <Picker
             onEmojiClick={(data) => {
               onPick(data.emoji);
@@ -72,7 +73,10 @@ export function IconPicker({ value, onPick, disabled }: { value: string | null; 
             width={304}
             height={320}
             previewConfig={{ showPreview: false }}
-            searchPlaceholder="Search emoji…"
+            searchPlaceholder={t('macroSettings.info.searchEmoji')}
+            searchClearButtonLabel={t('common.actions.clear')}
+            categories={emojiCategories(picker.Categories)}
+            emojiData={loaded?.emojiData}
           />
         </Popover>
       )}

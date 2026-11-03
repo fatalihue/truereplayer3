@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { TriggerMode } from '../../../bridge/messageTypes';
+import { t } from '../../../i18n';
 import { useKeyCapture } from '../../../logic/useKeyCapture';
 import { useMacro } from '../../../logic/useMacro';
-import { useTt } from '../../../state/LanguageContext';
 import { useToast } from '../../../state/ToastContext';
 import { settingsFocused, type SettingsSection } from '../../ui';
 import { DraftField, KeyCapture, Section, Segmented, Switch } from '../fields';
@@ -10,11 +10,20 @@ import type { MacroFacts } from './facts';
 
 /** What the four modes that are not a plain press do, under the choice (today's Assign hotkey). */
 const MODE_HELP: Partial<Record<TriggerMode, string>> = {
-  whilePressed: 'Loops while held.',
-  toggle: 'Loops until pressed again.',
-  doubleTap: 'Single taps are ignored.',
-  hold: 'Fires after ~0.6 s held; a tap does nothing.',
+  whilePressed: t('macroSettings.trigger.modeHelp.whilePressed'),
+  toggle: t('macroSettings.trigger.modeHelp.toggle'),
+  doubleTap: t('macroSettings.trigger.modeHelp.doubleTap'),
+  hold: t('macroSettings.trigger.modeHelp.hold'),
 };
+/** The modes, as the segmented offers them (two to a line). */
+const MODES: { value: TriggerMode; label: string; tip?: string }[] = [
+  { value: 'onPress', label: t('macroSettings.trigger.modes.onPress') },
+  { value: 'onRelease', label: t('macroSettings.trigger.modes.onRelease') },
+  { value: 'whilePressed', label: t('macroSettings.trigger.modes.whilePressed'), tip: t('macroSettings.trigger.modeTips.whilePressed') },
+  { value: 'toggle', label: t('macroSettings.trigger.modes.toggle'), tip: t('macroSettings.trigger.modeTips.toggle') },
+  { value: 'doubleTap', label: t('macroSettings.trigger.modes.doubleTap'), tip: t('macroSettings.trigger.modeTips.doubleTap') },
+  { value: 'hold', label: t('macroSettings.trigger.modes.hold'), tip: t('macroSettings.trigger.modeTips.hold') },
+];
 // What the engine's hotstring buffer can match: letters, digits and - . / , ; =
 const NOT_HOTSTRING = /[^a-zA-Z0-9\-./,;=]/g;
 
@@ -28,7 +37,6 @@ const NOT_HOTSTRING = /[^a-zA-Z0-9\-./,;=]/g;
 export function TriggerSection({ facts, locked, focus }: { facts: MacroFacts; locked: boolean; focus: { section: SettingsSection; seq: number } | null }) {
   const macro = useMacro();
   const capture = useKeyCapture();
-  const tt = useTt();
   const { showToast } = useToast();
   const name = facts.name;
   const mode: TriggerMode = facts.triggerMode;
@@ -46,7 +54,7 @@ export function TriggerSection({ facts, locked, focus }: { facts: MacroFacts; lo
     if (!focus) return;
     const target = focus.section === 'hotkey'
       ? boxRef.current?.querySelector<HTMLElement>('.insp-capture')
-      : boxRef.current?.querySelector<HTMLElement>('input[aria-label="Hotstring"]');
+      : boxRef.current?.querySelector<HTMLElement>(`input[aria-label="${t('macroSettings.trigger.hotstring')}"]`);
     target?.focus();
     target?.scrollIntoView({ block: 'nearest' });
     settingsFocused();
@@ -67,10 +75,10 @@ export function TriggerSection({ facts, locked, focus }: { facts: MacroFacts; lo
     const prev = facts.hotkey;
     if (!prev) return;
     macro.removeHotkey(name);
-    showToast(tt(`Removed hotkey ${prev} from "${name}"`, `Hotkey ${prev} removido de "${name}"`), {
+    showToast(t('macroSettings.trigger.removedHotkey', { hotkey: prev, name }), {
       type: 'success',
       duration: 10000,
-      action: { label: 'Undo', onClick: () => macro.assignHotkey(name, prev, mode) },
+      action: { label: t('common.actions.undo'), onClick: () => macro.assignHotkey(name, prev, mode) },
     });
   };
   const removeHotstring = () => {
@@ -78,31 +86,22 @@ export function TriggerSection({ facts, locked, focus }: { facts: MacroFacts; lo
     if (!prev) return;
     const prevInstant = facts.hotstringInstant;
     macro.removeHotstring(name);
-    showToast(tt(`Removed hotstring "${prev}" from "${name}"`, `Hotstring "${prev}" removido de "${name}"`), {
+    showToast(t('macroSettings.trigger.removedHotstring', { hotstring: prev, name }), {
       type: 'success',
       duration: 10000,
-      action: { label: 'Undo', onClick: () => macro.assignHotstring(name, prev, prevInstant) },
+      action: { label: t('common.actions.undo'), onClick: () => macro.assignHotstring(name, prev, prevInstant) },
     });
   };
 
-  const modes: { value: TriggerMode; label: string; tip?: string }[] = [
-    { value: 'onPress', label: 'On press' },
-    { value: 'onRelease', label: 'On release' },
-    { value: 'whilePressed', label: 'While pressed', tip: tt('Loops while held; stops on release', 'Repete enquanto segura; para ao soltar') },
-    { value: 'toggle', label: 'Toggle', tip: tt('Press to start looping, press again to stop', 'Aperte para começar o loop, de novo para parar') },
-    { value: 'doubleTap', label: 'Double-tap', tip: tt('Two quick taps; a single tap is ignored', 'Dois toques rápidos; toque único é ignorado') },
-    { value: 'hold', label: 'Hold (long-press)', tip: tt('Fires once after ~0.6 s held; does not stop on release', 'Dispara uma vez após ~0,6 s segurando; não para ao soltar') },
-  ];
-
   return (
     <div ref={boxRef} className="mset-group">
-      <span className="mset-title">Trigger</span>
-      <Section label="Hotkey" hint={facts.hotkey ? MODE_HELP[mode] : undefined}>
+      <span className="mset-title">{t('macroSettings.trigger.title')}</span>
+      <Section label={t('macroSettings.trigger.hotkey')} hint={facts.hotkey ? MODE_HELP[mode] : undefined}>
         <div className="insp-line">
           <KeyCapture
             key={listenSeq}
             value={facts.hotkey ?? ''}
-            label="Hotkey"
+            label={t('macroSettings.trigger.hotkey')}
             // Today's Assign hotkey took the side buttons and the wheel (Ctrl+ScrollDown, XButton1):
             // the engine fires a macro on them (biblioteca-077 and 078).
             mouse
@@ -111,25 +110,25 @@ export function TriggerSection({ facts, locked, focus }: { facts: MacroFacts; lo
             disabled={locked}
           />
           {facts.hotkey && (
-            <button type="button" className="insp-icon-button" aria-label="Remove hotkey" data-tip={tt('Remove the hotkey', 'Remover o atalho')} disabled={locked} onClick={removeHotkey}>
+            <button type="button" className="insp-icon-button" aria-label={t('macroSettings.trigger.removeHotkey')} data-tip={t('macroSettings.trigger.removeHotkeyTip')} disabled={locked} onClick={removeHotkey}>
               <span className="step-icon" data-icon="x" />
             </button>
           )}
         </div>
         <Segmented<TriggerMode>
-          label="Trigger mode"
+          label={t('macroSettings.trigger.modeGroup')}
           value={mode}
-          options={modes}
+          options={MODES}
           wrap
           disabled={locked || !facts.hotkey}
           onChange={(m) => { if (facts.hotkey) macro.assignHotkey(name, facts.hotkey, m); }}
         />
       </Section>
       <Section
-        label="Hotstring"
-        hint={tooShort ? <span data-error="">Min 2 characters.</span>
-          : facts.hotstring ? (instant ? 'Runs as soon as it is typed.' : 'Runs after Enter, Space or Tab.')
-          : 'Type it anywhere to run the macro: letters, digits and - . / , ; ='}
+        label={t('macroSettings.trigger.hotstring')}
+        hint={tooShort ? <span data-error="">{t('macroSettings.trigger.minLength')}</span>
+          : facts.hotstring ? (instant ? t('macroSettings.trigger.runsInstant') : t('macroSettings.trigger.runsOnEnd'))
+          : t('macroSettings.trigger.hotstringHelp')}
       >
         <div
           className="insp-line"
@@ -139,32 +138,32 @@ export function TriggerSection({ facts, locked, focus }: { facts: MacroFacts; lo
           <DraftField
             stepId={`macro:${name}`}
             field="hotstring"
-            label="Hotstring"
+            label={t('macroSettings.trigger.hotstring')}
             kind="mono"
-            placeholder="e.g. /id"
+            placeholder={t('macroSettings.trigger.hotstringPlaceholder')}
             maxLength={32}
-            filter={(t) => t.replace(NOT_HOTSTRING, '')}
-            parse={(t) => { const seq = t.trim().toLowerCase(); return seq.length >= 2 ? seq : null; }}
+            filter={(text) => text.replace(NOT_HOTSTRING, '')}
+            parse={(text) => { const seq = text.trim().toLowerCase(); return seq.length >= 2 ? seq : null; }}
             stored={facts.hotstring ?? ''}
             disabled={locked}
             onText={setTyped}
             onApply={(seq) => macro.assignHotstring(name, seq, instant)}
           />
           {facts.hotstring && (
-            <button type="button" className="insp-icon-button" aria-label="Remove hotstring" data-tip={tt('Remove the hotstring', 'Remover a hotstring')} disabled={locked} onClick={removeHotstring}>
+            <button type="button" className="insp-icon-button" aria-label={t('macroSettings.trigger.removeHotstring')} data-tip={t('macroSettings.trigger.removeHotstringTip')} disabled={locked} onClick={removeHotstring}>
               <span className="step-icon" data-icon="x" />
             </button>
           )}
         </div>
         <div className="insp-row">
           <Switch
-            label="Instant trigger"
+            label={t('macroSettings.trigger.instant')}
             checked={instant}
             disabled={locked}
-            tip={tt('Fires on the last character, with no Enter, Space or Tab', 'Dispara no último caractere, sem Enter, Espaço ou Tab')}
+            tip={t('macroSettings.trigger.instantTip')}
             onChange={(on) => { if (facts.hotstring) macro.assignHotstring(name, facts.hotstring, on); else setInstantNew(on); }}
           />
-          <span className="insp-row-label">Instant trigger</span>
+          <span className="insp-row-label">{t('macroSettings.trigger.instant')}</span>
         </div>
       </Section>
     </div>

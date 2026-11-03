@@ -1,3 +1,4 @@
+import { t } from '../../i18n';
 import type { CheckOpener } from './inspectorState';
 
 /** The probe families an If, an Else If or a While can check (the engine's conditionType). */
@@ -7,30 +8,29 @@ export type ConditionType =
 
 export interface Check {
   type: ConditionType;
+  /** The condition's name: glossary, the same in both languages (i18n/glossario.ts). */
   name: string;
   icon: string;
+  /** What it looks at, in one line (the catalog's conditions.desc): the Check menu's tip, and the
+   *  line under the name in the list of a step being made. */
   desc: string;
-  /** The desc in pt-BR, for the Check menu's tip. */
-  descPt: string;
   /** Made on the screen first (the image, the pixel, the region to read): Esc there makes nothing. */
   capture?: boolean;
-  /** What "Passes when … is" names; the checks of a state read "Met" instead of "Found". */
-  subject: string | null;
 }
 
 /** The Check list, in the concept's order (EditorPanels board). */
 export const CHECKS: Check[] = [
-  { type: 'ImageFound', name: 'Image found', icon: 'image', desc: 'An image on the screen — you capture it first', descPt: 'Uma imagem na tela — você a captura antes', capture: true, subject: 'the image' },
-  { type: 'PixelColorMatch', name: 'Pixel color', icon: 'pipette', desc: 'The color of one point — you pick it first', descPt: 'A cor de um ponto — você o escolhe antes', capture: true, subject: 'the color' },
-  { type: 'ScreenText', name: 'Text on screen', icon: 'scan-text', desc: 'Text read in a region — you draw it first', descPt: 'Um texto lido numa região — você a desenha antes', capture: true, subject: null },
-  { type: 'WindowOpen', name: 'Window open', icon: 'app-window', desc: 'A window, by its process or its title', descPt: 'Uma janela, pelo processo ou pelo título', subject: 'the window' },
-  { type: 'ProcessRunning', name: 'Process running', icon: 'cpu', desc: 'A program running, with a window or not', descPt: 'Um programa rodando, com janela ou não', subject: 'the process' },
-  { type: 'FileExists', name: 'File exists', icon: 'file-check', desc: 'A file or a folder on the disk', descPt: 'Um arquivo ou uma pasta no disco', subject: 'the file' },
-  { type: 'ClipboardMatch', name: 'Clipboard', icon: 'clipboard', desc: 'The text that was copied', descPt: 'O texto que foi copiado', subject: null },
-  { type: 'Variable', name: 'Variable', icon: 'variable', desc: 'A variable, compared with a value', descPt: 'Uma variável, comparada com um valor', subject: null },
-  { type: 'BrowserElementState', name: 'Browser element', icon: 'globe', desc: 'An element of the page, through the extension', descPt: 'Um elemento da página, pela extensão', subject: 'the element' },
-  { type: 'Random', name: 'Random', icon: 'dices', desc: 'A chance, in percent', descPt: 'Uma chance, em porcentagem', subject: null },
-  { type: 'TimeWindow', name: 'Time', icon: 'clock', desc: 'A time of day and days of the week', descPt: 'Um horário e dias da semana', subject: null },
+  { type: 'ImageFound', name: 'Image found', icon: 'image', desc: t('conditions.desc.ImageFound'), capture: true },
+  { type: 'PixelColorMatch', name: 'Pixel color', icon: 'pipette', desc: t('conditions.desc.PixelColorMatch'), capture: true },
+  { type: 'ScreenText', name: 'Text on screen', icon: 'scan-text', desc: t('conditions.desc.ScreenText'), capture: true },
+  { type: 'WindowOpen', name: 'Window open', icon: 'app-window', desc: t('conditions.desc.WindowOpen') },
+  { type: 'ProcessRunning', name: 'Process running', icon: 'cpu', desc: t('conditions.desc.ProcessRunning') },
+  { type: 'FileExists', name: 'File exists', icon: 'file-check', desc: t('conditions.desc.FileExists') },
+  { type: 'ClipboardMatch', name: 'Clipboard', icon: 'clipboard', desc: t('conditions.desc.ClipboardMatch') },
+  { type: 'Variable', name: 'Variable', icon: 'variable', desc: t('conditions.desc.Variable') },
+  { type: 'BrowserElementState', name: 'Browser element', icon: 'globe', desc: t('conditions.desc.BrowserElementState') },
+  { type: 'Random', name: 'Random', icon: 'dices', desc: t('conditions.desc.Random') },
+  { type: 'TimeWindow', name: 'Time', icon: 'clock', desc: t('conditions.desc.TimeWindow') },
 ];
 
 /** The checks of a state, the six an Assert takes (the engine's actions:insertAssert). */

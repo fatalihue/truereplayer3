@@ -9,6 +9,7 @@ import {
   initialState,
   type ClickerLiveInternal,
 } from '../state/appStateReducers';
+import { setMachineLocale } from '../utils/machineLocale';
 
 /** What the last save of the open macro said (profile:saved, with save as you go on). */
 export interface SaveStatus {
@@ -88,7 +89,7 @@ export function receive(message: IncomingMessage) {
   // Before it, the engine sends the library on its own, ~14 ms ahead of state:init (measured in
   // the real app): that goes on screen at once too, and state:init then finds the same macros.
   if (message.type === 'state:init' || (!started && message.type === 'profiles:updated')) {
-    if (message.type === 'state:init') started = true;
+    if (message.type === 'state:init') { started = true; setMachineLocale(message.payload.machineCulture); }
     flush();
     return;
   }

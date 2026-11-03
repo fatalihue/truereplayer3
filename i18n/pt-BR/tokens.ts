@@ -1,0 +1,90 @@
+import type en from '../en-US/tokens.ts';
+import type { Catalogo } from '../tipos.ts';
+
+// "clipboard" é coringa, em minúscula no meio da frase ("Histórico do clipboard"). As dicas não dizem
+// "clique para": "Um clique no chip…". "action" é o passo da lista.
+export default {
+  groups: {
+    dataTable: 'Da tabela do Data Loop',
+    values: 'Valores',
+    keys: 'Teclas',
+    keysTiming: 'Teclas e delay',
+    clipboard: 'Clipboard',
+    runState: 'Estado da execução',
+  },
+
+  chips: {
+    clipSlot: 'Slot…',
+    clipboardNext: 'Próxima linha do clipboard',
+    clipboardHistory: 'Histórico do clipboard',
+    variable: 'Variável…',
+    askInput: 'Pedir valor…',
+    dataRow: 'Nº da linha de dados',
+    actionRow: 'Nº da linha do passo',
+    rowColumn: 'Coluna da linha…',
+    rowColumnNext: 'Coluna da próxima linha…',
+  },
+
+  // Os formatos ficam como o .NET os escreve (yyyy, não aaaa): é o que o popover do chip aceita.
+  desc: {
+    clipboard: 'Cola o texto do clipboard',
+    date: 'Data atual (dd/MM/yyyy)',
+    time: 'Hora atual (HH:mm:ss)',
+    datetime: 'Data e hora atuais',
+    enter: 'Pressiona Enter',
+    tab: 'Pressiona Tab',
+    space: 'Pressiona Space',
+    backspace: 'Pressiona Backspace',
+    delete: 'Pressiona Del',
+    escape: 'Pressiona Esc',
+    esc: 'Pressiona Esc',
+    home: 'Pressiona Home',
+    end: 'Pressiona End',
+    pageup: 'Pressiona PgUp',
+    pagedown: 'Pressiona PgDn',
+    up: 'Pressiona a seta para cima',
+    down: 'Pressiona a seta para baixo',
+    left: 'Pressiona a seta para a esquerda',
+    right: 'Pressiona a seta para a direita',
+    delay: 'Pausa a digitação por N ms',
+    random: 'Número aleatório novo a cada execução',
+    pick: 'Digita UMA das opções, sorteada a cada execução',
+    var: 'Valor guardado por um passo Set Variable',
+    counter: 'Número da repetição da execução (1, 2, 3…)',
+    loop: 'Volta do bloco While / For Each mais interno (fora de um bloco, a repetição da execução)',
+    datarow: 'Número da linha de dados atual (1 = primeira)',
+    row: 'Número da linha do passo atual na lista (não a tabela de dados)',
+    rownext: 'Cada uso pega a PRÓXIMA linha de dados. Recomeça a cada execução.',
+    clip: 'Seleção capturada pelo Copy to Slot ou pela hotkey de captura',
+    winclip: 'Histórico do Win+V (precisa estar ativado) — 1 é o mais recente',
+    input: 'Pede um valor ao reproduzir (pausa a execução)',
+    uuid: 'Identificador único (UUID) novo a cada uso',
+    timestamp: 'Unix time — segundos desde 1970 (UTC)',
+    env: 'Valor de uma variável de ambiente desta máquina',
+  },
+
+  palette: {
+    date: '{{>tokens.desc.date}}. Um clique no chip desloca a data ou muda o formato.',
+    time: '{{>tokens.desc.time}}. Um clique no chip desloca a hora ou muda o formato.',
+    datetime: '{{>tokens.desc.datetime}}. Um clique no chip desloca o valor ou muda o formato.',
+    pick: '{{>tokens.desc.pick}}. Um clique no chip edita a lista.',
+    winclip: '{{>tokens.desc.winclip}}. Um clique no chip altera o item.',
+    uuid: '{{>tokens.desc.uuid}}. Um clique no chip o molda (maiúsculas, sem hífens…).',
+    timestamp: '{{>tokens.desc.timestamp}}. Um clique no chip passa para milissegundos.',
+    clipboardNext: '{{>tokens.variants.clipboardNext}}. Um clique no chip adiciona transformações.',
+  },
+
+  variants: {
+    clipboardNext: 'Cada uso pega a PRÓXIMA linha; copiar algo novo recomeça',
+    rowColumn: 'Coluna da tabela de dados na linha atual',
+    dateShifted: 'Data com deslocamento e/ou formato próprio',
+    timeShifted: 'Hora com deslocamento e/ou formato próprio',
+    datetimeShifted: 'Data e hora com deslocamento e/ou formato próprio',
+    counterShaped: 'Número da repetição da execução, moldado pelos modificadores',
+    loopShaped: 'Volta do bloco While / For Each mais interno, moldada pelos modificadores',
+    datarowShaped: 'Número da linha de dados atual, moldado pelos modificadores',
+    uuidShaped: 'Identificador único (UUID) novo a cada uso, moldado pelos modificadores',
+    timestampMs: 'Unix time em milissegundos desde 1970 (UTC)',
+    timestampShaped: 'Unix time (segundos), moldado pelos modificadores',
+  },
+} satisfies Catalogo<typeof en>;

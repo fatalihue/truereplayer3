@@ -1,0 +1,168 @@
+import type en from '../en-US/conditions.ts';
+import type { Catalogo } from '../tipos.ts';
+
+export default {
+  desc: {
+    ImageFound: 'Uma imagem na tela — você a captura antes',
+    PixelColorMatch: 'A cor de um ponto — você o escolhe antes',
+    ScreenText: 'Um texto lido em uma região — você a desenha antes',
+    WindowOpen: 'Uma janela, pelo processo ou pelo título',
+    ProcessRunning: 'Um programa rodando, com janela ou não',
+    FileExists: 'Um arquivo ou uma pasta no disco',
+    ClipboardMatch: 'O texto que foi copiado',
+    Variable: 'Uma variável, comparada com um valor',
+    BrowserElementState: 'Um elemento da página, pela extensão',
+    Random: 'Uma chance, em porcentagem',
+    TimeWindow: 'Um horário e dias da semana',
+  },
+
+  // "Passa com a imagem" + "Encontrada" / "Não encontrada": o particípio concorda com o sujeito e
+  // fica certo com as duas respostas ("passa com a imagem não encontrada"), o que "Passa quando a
+  // imagem está" não faz com a negativa.
+  verdict: {
+    check: { passesWhen: 'Passa com a condição', yes: 'Atendida', no: 'Não atendida', treatAsNo: 'Tratar como não atendida' },
+    image: { passesWhen: 'Passa com a imagem', yes: 'Encontrada', no: 'Não encontrada', treatAsNo: 'Tratar como não encontrada' },
+    color: { passesWhen: 'Passa com a cor', yes: 'Encontrada', no: 'Não encontrada', treatAsNo: 'Tratar como não encontrada' },
+    window: { passesWhen: 'Passa com a janela', yes: 'Encontrada', no: 'Não encontrada', treatAsNo: 'Tratar como não encontrada' },
+    process: { passesWhen: 'Passa com o processo', yes: 'Encontrado', no: 'Não encontrado', treatAsNo: 'Tratar como não encontrado' },
+    file: { passesWhen: 'Passa com o arquivo', yes: 'Encontrado', no: 'Não encontrado', treatAsNo: 'Tratar como não encontrado' },
+    element: { passesWhen: 'Passa com o elemento', yes: 'Encontrado', no: 'Não encontrado', treatAsNo: 'Tratar como não encontrado' },
+  },
+  passesWhen: 'Passa quando',
+
+  waitFor: 'Esperar por ela',
+  waitForHint: '0 = confere uma vez.',
+  waitForField: 'Esperar por ela, em milissegundos',
+  maxIterations: 'Máx. de voltas',
+  maxIterationsHint: '0 = o padrão, {{n}}.',
+  maxIterationsField: 'Máximo de voltas do loop',
+  onFailure: 'Se falhar',
+  onFailureGroup: 'Se o Assert falhar',
+  onFailureHint: '{{>common.actions.continue}} não marca a linha do Data Loop como falha.',
+  abort: 'Abortar',
+  abortTip: 'A execução para com erro',
+  continueTip: 'A execução segue para o próximo passo',
+  stopQuietly: 'Parar sem erro',
+  stopQuietlyTip: 'A execução termina aqui, sem erro',
+  onError: 'Se a condição der erro',
+  loopEnds: 'O loop termina',
+  ifOtherWay: 'O If vai para o outro lado',
+  stopRun: 'Parar a execução',
+
+  check: 'Condição',
+  was: 'Era {{name}} · Ctrl+Z a traz de volta',
+  checkNamed: 'Condição: {{name}}',
+  checkNone: 'Condição: nenhuma',
+  choose: 'Escolher uma condição',
+  list: 'Condições',
+  adding: 'Adicionando…',
+
+  match: {
+    contains: 'Contém',
+    equals: 'Igual a',
+    regexTip: 'Expressão regular .NET',
+  },
+  value: 'Valor',
+
+  window: {
+    process: 'Processo',
+    processHint: 'Vazio = casa só pelo título.',
+    processPlaceholder: 'notepad.exe',
+    clearProcess: 'Limpar o processo',
+    title: 'Título',
+    titleHint: 'Não diferencia maiúsculas.',
+    titleHintFill: 'Não diferencia maiúsculas. Preencha pelo menos um.',
+    badRegex: 'Isto não parece uma expressão regular válida.',
+    titleMode: 'Modo de comparação do título',
+    titlePlaceholder: 'Parte do título da janela',
+    regexPlaceholder: 'ex.: (Chrome|Firefox)',
+    clearTitle: 'Limpar o título',
+    matchIndex: 'Ocorrência nº',
+    matchIndexHint: '1 = a da frente.',
+    // "Abrir" é a seção Launch de Activate Window (como a coluna Details diz: "— abrir").
+    matchIndexHintMore: 'Contadas da frente para trás. Acima de 1, Abrir dispara quando casam MENOS janelas que esse número.',
+    foreground: 'Só a janela da frente',
+    foregroundTip: 'Precisa estar na frente, não só aberta',
+    detect: 'Detectar janela',
+    detecting: 'Clique na janela-alvo…',
+    detectTip: 'A próxima janela que você clicar preenche o processo e o título',
+    detectingTip: 'Clique na janela a procurar. Esc ou um clique aqui cancela.',
+    detectingActTip: 'Clique na janela em que agir. Esc ou um clique aqui cancela.',
+    found: 'Encontrada — {{window}}',
+    notFound: 'Não encontrada',
+  },
+
+  process: {
+    name: 'Nome do processo',
+    hint: 'Casa mesmo sem janela.',
+    placeholder: 'chrome.exe',
+  },
+
+  file: {
+    path: 'Caminho',
+    hint: 'Um arquivo ou uma pasta.',
+    hintTokens: 'Um arquivo ou uma pasta. Os tokens são resolvidos na execução.',
+    placeholder: 'C:\\sinais\\pronto.txt',
+  },
+
+  clipboard: {
+    matchType: 'Tipo de comparação',
+    matchTypeGroup: 'Tipo de comparação do clipboard',
+    pattern: 'Padrão',
+    patternHint: 'Só texto, sem diferenciar maiúsculas.',
+    contains: 'Contém',
+    changesHint: 'Vazio = qualquer mudança. As cópias do próprio app nunca contam.',
+    changesPlaceholder: 'texto que o clipboard precisa ter',
+  },
+
+  variable: {
+    name: 'Nome da variável',
+    namePlaceholder: 'nome',
+    operator: 'Operador',
+    operatorGroup: 'Operador de comparação',
+    has: 'tem',
+    eqTip: 'O mesmo texto, sem diferenciar maiúsculas',
+    neqTip: 'Não é o mesmo texto',
+    hasTip: 'Contém o valor',
+    numbersTip: 'Como números, quando os dois são números',
+    valueHint: 'Os tokens são resolvidos na execução.',
+  },
+
+  random: {
+    chance: 'Chance',
+    field: 'Chance, em porcentagem',
+    never: 'Com 0 % nunca passa.',
+    always: 'Com 100 % sempre passa.',
+    passes: 'Passa {{pct}} % das vezes.',
+  },
+
+  time: {
+    from: 'De',
+    to: 'Até',
+    overnight: 'Pode passar da meia-noite, como de 22:00 a 02:00.',
+    days: 'Dias',
+    daysHint: 'Nenhum = todo dia.',
+  },
+
+  browser: {
+    offlineHint: 'Com a extensão desconectada, conta como não encontrado.',
+    state: 'Estado',
+    visible: 'Visível',
+    gone: 'Ausente / oculto',
+    enabled: 'Habilitado',
+    textMatches: 'Texto corresponde',
+    textPattern: 'Padrão do texto',
+    textPatternHint: 'Texto simples é exato. Ou text*=  text~=  text/regex/',
+    checkNow: 'Verificar agora',
+    checking: 'Verificando…',
+    lost: 'Nenhuma resposta da extensão do navegador',
+    offline: 'Extensão desconectada',
+    isTrue: 'A condição é VERDADEIRA agora',
+    isFalse: 'A condição é FALSA agora',
+    lostHint: 'O Chrome está rodando, com a extensão?',
+    offlineMore: 'Não foi possível acessar a página — isso conta como não encontrado.',
+    negatedMatched: 'Estado do elemento: corresponde · invertido por "{{>conditions.verdict.element.no}}"',
+    negatedNotMatched: 'Estado do elemento: não corresponde · invertido por "{{>conditions.verdict.element.no}}"',
+    branch: 'A execução seguiria por este ramo agora.',
+  },
+} satisfies Catalogo<typeof en>;

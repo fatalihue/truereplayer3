@@ -4,7 +4,7 @@ import {
   buildChainToken, chainHeadIsUsable, DEFAULT_TRANSFORM, parseChainToken, type ChainHead, type TransformState,
 } from '../../components/lexical/clipboardModifiers';
 import type { LexicalEditorHandle } from '../../components/lexical/LexicalTokenEditor';
-import { useTt } from '../../state/LanguageContext';
+import { t } from '../../i18n';
 
 /**
  * A Transform… session: building a new chain (from the Insert panel, or a name prompt's
@@ -26,7 +26,6 @@ export function TransformHost({ session, api, onClose }: {
   api: MutableRefObject<LexicalEditorHandle | null>;
   onClose: () => void;
 }) {
-  const tt = useTt();
   const [state, setState] = useState<TransformState>(() => (session.mode === 'edit' ? parseChainToken(session.token)?.state : null) ?? DEFAULT_TRANSFORM);
   const [head, setHead] = useState<ChainHead>(() => (session.mode === 'edit' ? parseChainToken(session.token)?.head : session.startHead) ?? { kind: 'clipboard' });
   const usable = chainHeadIsUsable(head);
@@ -86,7 +85,7 @@ export function TransformHost({ session, api, onClose }: {
   };
 
   return (
-    <div ref={root} className="stx-transform" role="dialog" aria-label="Transform" tabIndex={-1} onKeyDown={onKeyDown}>
+    <div ref={root} className="stx-transform" role="dialog" aria-label={t('sendText.transform.name')} tabIndex={-1} onKeyDown={onKeyDown}>
       <div className="stx-transform-body">
         <ClipboardSurface
           state={state}
@@ -96,32 +95,30 @@ export function TransformHost({ session, api, onClose }: {
           onBack={onClose}
           onReset={reset}
           originalToken={session.mode === 'edit' ? session.token : undefined}
-          backTip={session.mode === 'edit'
-            ? tt('Back to the message — the changes are in it already', 'Volta à mensagem — as mudanças já estão nela')
-            : tt('Back to the message, inserting nothing', 'Volta à mensagem, sem inserir nada')}
+          backTip={session.mode === 'edit' ? t('sendText.transform.backEdit') : t('sendText.transform.backInsert')}
         />
       </div>
       <div className="stx-transform-foot">
         {session.mode === 'edit' && (
           <button type="button" className="stx-danger" onClick={() => { session.remove(); onClose(); }}>
             <span className="step-icon" data-icon="trash-2" />
-            Delete token
+            {t('sendText.transform.deleteToken')}
           </button>
         )}
         <span className="stx-transform-hint">
-          {session.mode === 'insert' ? 'Steps apply in the order shown'
-            : state.unmodeled ? 'The token stays as it is written'
-            : 'Each change goes into the message · Ctrl+Z undoes'}
+          {session.mode === 'insert' ? t('sendText.transform.order')
+            : state.unmodeled ? t('sendText.transform.asWritten')
+            : t('sendText.transform.live')}
         </span>
         {session.mode === 'insert' && (
           <button
             type="button"
             className="insp-primary"
             disabled={!usable}
-            data-tip={usable ? undefined : tt('Name it first', 'Dê um nome primeiro')}
+            data-tip={usable ? undefined : t('sendText.transform.nameFirst')}
             onClick={insert}
           >
-            Insert
+            {t('sendText.actions.insert')}
           </button>
         )}
       </div>

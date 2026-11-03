@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ActionItem } from '../../bridge/messageTypes';
 import { useBridge } from '../../bridge/BridgeContext';
+import { t, tn } from '../../i18n';
 import { newRequestId, useEditorTools } from '../../logic/useEditorTools';
 import { useSteps } from '../../logic/useSteps';
-import { useLanguage, useTt } from '../../state/LanguageContext';
+import { useLanguage } from '../../state/LanguageContext';
 import { useToast } from '../../state/ToastContext';
 import { CLICK_COORD_TOLERANCE_PX, clickDefaultGap } from '../../utils/actionCost';
 import { clickFormOf, formatMs, isClickHold, isCombinedClick, isFocusClickEligible } from '../../utils/displayUtils';
@@ -16,14 +17,17 @@ type Button = 'Left' | 'Right' | 'Middle';
 type Kind = 'single' | 'double' | 'triple' | 'hold';
 
 const BUTTONS: Button[] = ['Left', 'Right', 'Middle'];
+// The buttons' names: on the segmented, and inside a sentence of the summary.
+const BUTTON_LABELS = tn('editors.click.buttons');
+const BUTTON_WORDS = tn('editors.click.buttonWord');
 const HOLD_CHIPS = [100, 500, 1000, 5000];
 const COORD = 2_000_000;
 const DEFAULT_HOLD_MS = 1000;
 
-const kindOf = (t: string): Kind =>
-  t === 'DoubleClick' ? 'double' : t === 'TripleClick' ? 'triple' : isClickHold(t) ? 'hold' : 'single';
-const buttonOf = (t: string): Button =>
-  (t === 'DoubleClick' || t === 'TripleClick' ? 'Left' : t.replace(/Click(Hold|Down|Up)?$/, '')) as Button;
+const kindOf = (type: string): Kind =>
+  type === 'DoubleClick' ? 'double' : type === 'TripleClick' ? 'triple' : isClickHold(type) ? 'hold' : 'single';
+const buttonOf = (type: string): Button =>
+  (type === 'DoubleClick' || type === 'TripleClick' ? 'Left' : type.replace(/Click(Hold|Down|Up)?$/, '')) as Button;
 /** The type for a button and a kind; a half stays a half (the replay dispatches on the suffix). */
 const compose = (button: Button, kind: Kind, form: '' | 'Down' | 'Up') =>
   kind === 'double' ? 'DoubleClick' : kind === 'triple' ? 'TripleClick' : kind === 'hold' ? `${button}ClickHold` : `${button}Click${form}`;
@@ -45,17 +49,16 @@ export function ClickEditor({ step, index, steps, locked }: { step: ActionItem; 
   const { send, subscribe } = useBridge();
   const { showToast } = useToast();
   const { language } = useLanguage();
-  const tt = useTt();
   const target = useApp(a => {
     const p = a.profiles.find(x => x.name === a.activeProfile);
     return p?.effectiveUseRelativeCoordinates ? (p.effectiveTargetWindowTitle || p.effectiveTargetProcessName || '') : null;
   });
   const id = step.id ?? '';
-  const t = step.actionType;
-  const form = clickFormOf(t);
-  const kind = kindOf(t);
-  const button = buttonOf(t);
-  const combined = isCombinedClick(t);
+  const type = step.actionType;
+  const form = clickFormOf(type);
+  const kind = kindOf(type);
+  const button = buttonOf(type);
+  const combined = isCombinedClick(type);
   const atCursor = combined && !!step.atCursor;
   const repeat = step.repeatCount ?? 1;
   const multi = kind === 'double' || kind === 'triple';
@@ -88,7 +91,7 @@ export function ClickEditor({ step, index, steps, locked }: { step: ActionItem; 
       pickRef.current = null;
       setPicking(null);
       const { cancelled, refused, x, y } = message.payload;
-      if (refused) showToast(tt('Another pick is open — finish it first.', 'Outra captura está aberta — termine-a primeiro.'), 'error');
+      if (refused) showToast(t('list.toasts.pickBusy'), 'error');
       else if (!cancelled && x != null && y != null) answer.current.point(pending.what, x, y);
     } else if (message.type === 'clipboard:content' && pasteWait.current) {
       pasteWait.current = false;
@@ -96,7 +99,7 @@ export function ClickEditor({ step, index, steps, locked }: { step: ActionItem; 
       if (m) answer.current.point('press', Number(m[1]), Number(m[2]));
       else setPasteFailed(true);
     }
-  }), [subscribe, showToast, tt]);
+  }), [subscribe, showToast]);
   const pick = (what: 'press' | 'release') => {
     const requestId = newRequestId();
     pickRef.current = { requestId, what };
@@ -120,7 +123,7 @@ export function ClickEditor({ step, index, steps, locked }: { step: ActionItem; 
   const setRelease = (x: number, y: number) => {
     if (Math.abs(x - step.x) <= CLICK_COORD_TOLERANCE_PX && Math.abs(y - step.y) <= CLICK_COORD_TOLERANCE_PX) {
       setReleaseText({ x: String(x), y: String(y) });
-      setReleaseNote('Release within 2 px of the press — the app reads that as one click, not a drag.');
+      setReleaseNote(t('editors.click.releaseTooClose'));
       return;
     }
     setReleaseNote(null);
@@ -142,7 +145,7 @@ export function ClickEditor({ step, index, steps, locked }: { step: ActionItem; 
     const x = Number.parseInt(text.x, 10);
     const y = Number.parseInt(text.y, 10);
     if (text.x === '' && text.y === '') setReleaseNote(null);
-    else if (!Number.isFinite(x) || !Number.isFinite(y)) setReleaseNote('A drag needs both X and Y for the release.');
+    else if (!Number.isFinite(x) || !Number.isFinite(y)) setReleaseNote(t('editors.click.releaseNeedsBoth'));
     else setRelease(Math.max(-COORD, Math.min(COORD, x)), Math.max(-COORD, Math.min(COORD, y)));
   };
   /** One click again: the drag's two steps become the press, at its own point. */
@@ -163,69 +166,76 @@ export function ClickEditor({ step, index, steps, locked }: { step: ActionItem; 
     const edits: StepEdit[] = [{ field: 'actionType', value: nextType }];
     // A gap still on the old type's default follows the new one (30 ms single, 600 ms double and
     // triple): untouched means "the default", and 30 ms between double-clicks blurs them into one.
-    const fromGap = clickDefaultGap(t);
+    const fromGap = clickDefaultGap(type);
     const toGap = clickDefaultGap(nextType);
     if (fromGap !== toGap && step.repeatDelayMs === fromGap) edits.push({ field: 'repeatDelayMs', value: String(toGap) });
     edit(edits);
   };
 
-  const where = atCursor ? 'wherever the mouse is' : `at ${step.x}, ${step.y}`;
-  const gap = step.repeatDelayMs ?? clickDefaultGap(t);
-  const times = form === '' && repeat > 1 ? ` · ${repeat}×, ${formatMs(gap, language)} ms apart` : '';
-  const btn = button.toLowerCase();
+  const gap = step.repeatDelayMs ?? clickDefaultGap(type);
+  const times = form === '' && repeat > 1 ? t('editors.click.summary.times', { n: repeat, ms: formatMs(gap, language) }) : '';
+  const btn = BUTTON_WORDS[button];
+  // The summary (D13), a whole sentence for each case: a half of a click is never at the cursor.
   const summary = form === 'Down'
     ? pairedUp
-      ? `Presses the ${btn} button ${where}, then releases at ${pairedUp.x}, ${pairedUp.y}${dragged(step, pairedUp) ? ' — a drag' : ''}.`
-      : `Presses the ${btn} button ${where} and keeps it down.`
-    : form === 'Up' ? `Releases the ${btn} button ${where}.`
-    : kind === 'hold' ? `Presses the ${btn} button ${where}, holds ${formatMs(step.holdDurationMs || DEFAULT_HOLD_MS, language)} ms, releases.`
-    : kind === 'double' ? `Double-clicks ${where}${times}.`
-    : kind === 'triple' ? `Triple-clicks ${where}${times}.`
-    : `Clicks the ${btn} button ${where}${times}.`;
+      ? dragged(step, pairedUp)
+        ? t('editors.click.summary.downDrag', { button: btn, x: step.x, y: step.y, x2: pairedUp.x, y2: pairedUp.y })
+        : t('editors.click.summary.downThen', { button: btn, x: step.x, y: step.y, x2: pairedUp.x, y2: pairedUp.y })
+      : t('editors.click.summary.down', { button: btn, x: step.x, y: step.y })
+    : form === 'Up' ? t('editors.click.summary.up', { button: btn, x: step.x, y: step.y })
+    : kind === 'hold'
+      ? atCursor
+        ? t('editors.click.summary.holdCursor', { button: btn, ms: formatMs(step.holdDurationMs || DEFAULT_HOLD_MS, language) })
+        : t('editors.click.summary.hold', { button: btn, x: step.x, y: step.y, ms: formatMs(step.holdDurationMs || DEFAULT_HOLD_MS, language) })
+    : kind === 'double'
+      ? atCursor ? t('editors.click.summary.doubleCursor', { times }) : t('editors.click.summary.double', { x: step.x, y: step.y, times })
+    : kind === 'triple'
+      ? atCursor ? t('editors.click.summary.tripleCursor', { times }) : t('editors.click.summary.triple', { x: step.x, y: step.y, times })
+    : atCursor ? t('editors.click.summary.singleCursor', { button: btn, times }) : t('editors.click.summary.single', { button: btn, x: step.x, y: step.y, times });
 
   return (
     <>
-      <Section label="Button">
+      <Section label={t('editors.click.button')}>
         <Segmented<Button>
-          label="Mouse button"
+          label={t('editors.click.buttonField')}
           value={button}
-          options={BUTTONS.map(b => ({ value: b, label: b, disabled: multi, tip: multi ? tt('Double and triple clicks use the left button', 'Duplo e triplo clicam com o botão esquerdo') : undefined }))}
+          options={BUTTONS.map(b => ({ value: b, label: BUTTON_LABELS[b], disabled: multi, tip: multi ? t('editors.click.leftOnlyTip') : undefined }))}
           onChange={(b) => edit([{ field: 'actionType', value: compose(b, kind, form) }])}
           disabled={locked}
         />
       </Section>
-      <Section label="Clicks" hint={form ? 'A half of a click keeps its form; Convert ▸ in the step menu joins the two.' : undefined}>
+      <Section label={t('editors.click.clicks')} hint={form ? t('editors.click.halfHint') : undefined}>
         <Segmented<Kind>
-          label="Clicks"
+          label={t('editors.click.clicks')}
           value={kind}
           options={([
-            { value: 'single', label: 'Single' },
-            { value: 'double', label: 'Double', tip: tt('Left button only', 'Só o botão esquerdo') },
-            { value: 'triple', label: 'Triple', tip: tt('Left button only — selects a paragraph', 'Só o botão esquerdo — seleciona um parágrafo') },
-            { value: 'hold', label: 'Hold', tip: tt('Press, wait, release — still one step', 'Aperta, espera, solta — ainda um passo') },
+            { value: 'single', label: t('editors.click.single') },
+            { value: 'double', label: t('editors.click.double'), tip: t('editors.click.doubleTip') },
+            { value: 'triple', label: t('editors.click.triple'), tip: t('editors.click.tripleTip') },
+            { value: 'hold', label: t('editors.click.hold'), tip: t('editors.click.holdTip') },
           ] satisfies { value: Kind; label: string; tip?: string }[]).map(o => ({ ...o, disabled: form !== '' }))}
           onChange={switchKind}
           disabled={locked}
         />
       </Section>
       {kind === 'hold' && (
-        <Section label="Hold">
-          <DraftField stepId={id} field="holdDurationMs" label="Hold duration in milliseconds" kind="int" min={10} max={60000} step={durationStep} unit="ms" stored={String(step.holdDurationMs || DEFAULT_HOLD_MS)} disabled={locked} />
+        <Section label={t('editors.holdLabel')}>
+          <DraftField stepId={id} field="holdDurationMs" label={t('editors.holdField')} kind="int" min={10} max={60000} step={durationStep} unit="ms" stored={String(step.holdDurationMs || DEFAULT_HOLD_MS)} disabled={locked} />
           <Chips values={HOLD_CHIPS} current={step.holdDurationMs || DEFAULT_HOLD_MS} onPick={(ms) => edit([{ field: 'holdDurationMs', value: String(ms) }])} disabled={locked} />
         </Section>
       )}
       <Section
-        label="Position"
+        label={t('editors.click.position')}
         hint={!atCursor && target !== null
-          ? `Relative to ${target || 'the target window'}'s top-left corner`
+          ? (target ? t('editors.click.relativeTo', { window: target }) : t('editors.click.relativeToTarget'))
           : undefined}
       >
         <Segmented<'point' | 'cursor'>
-          label="Click position source"
+          label={t('editors.click.positionField')}
           value={atCursor ? 'cursor' : 'point'}
           options={[
-            { value: 'point', label: 'This point' },
-            { value: 'cursor', label: 'At cursor', disabled: !combined, tip: tt('Wherever the mouse is at run time', 'Onde o mouse estiver na hora') },
+            { value: 'point', label: t('editors.click.thisPoint') },
+            { value: 'cursor', label: t('editors.click.atCursor'), disabled: !combined, tip: t('editors.click.atCursorTip') },
           ]}
           onChange={(v) => edit([{ field: 'atCursor', value: v === 'cursor' ? 'true' : 'false' }])}
           disabled={locked}
@@ -233,54 +243,54 @@ export function ClickEditor({ step, index, steps, locked }: { step: ActionItem; 
         {!atCursor && (
           <>
             <div className="insp-pair">
-              <DraftField stepId={id} field="x" label="X coordinate" kind="int" signed min={-COORD} max={COORD} prefix="X" stored={String(step.x)} disabled={locked} />
-              <DraftField stepId={id} field="y" label="Y coordinate" kind="int" signed min={-COORD} max={COORD} prefix="Y" stored={String(step.y)} disabled={locked} />
+              <DraftField stepId={id} field="x" label={t('editors.click.x')} kind="int" signed min={-COORD} max={COORD} prefix="X" stored={String(step.x)} disabled={locked} />
+              <DraftField stepId={id} field="y" label={t('editors.click.y')} kind="int" signed min={-COORD} max={COORD} prefix="Y" stored={String(step.y)} disabled={locked} />
             </div>
             <div className="insp-pair">
               <button type="button" className="insp-button" disabled={locked || picking !== null} onClick={() => pick('press')}>
                 <span className="step-icon" data-icon="crosshair" />
-                {picking === 'press' ? 'Picking…' : 'Pick from screen'}
+                {picking === 'press' ? t('editors.click.picking') : t('editors.click.pick')}
               </button>
               <button
                 type="button"
                 className="insp-button"
                 data-error={pasteFailed || undefined}
-                data-tip={pasteFailed ? tt('No point like 640, 512 on the clipboard', 'Nenhum ponto como 640, 512 na área de transferência') : tt('A point copied as 640, 512', 'Um ponto copiado como 640, 512')}
+                data-tip={pasteFailed ? t('editors.click.pasteFailed') : t('editors.click.pasteTip')}
                 disabled={locked}
                 onClick={paste}
               >
                 <span className="step-icon" data-icon="clipboard-paste" />
-                Paste
+                {t('common.actions.paste')}
               </button>
             </div>
             {was && (was.x !== step.x || was.y !== step.y) && (
-              <span className="insp-hint">Was {was.x}, {was.y} · Ctrl+Z undoes</span>
+              <span className="insp-hint">{t('editors.click.was', { x: was.x, y: was.y })}</span>
             )}
           </>
         )}
       </Section>
       {form === '' && (
-        <Section label="Repeat">
+        <Section label={t('editors.repeat')}>
           <div className="insp-pair">
-            <DraftField stepId={id} field="repeat" label="Times to repeat" kind="int" min={1} max={999} unit="times" stored={String(repeat)} disabled={locked} />
+            <DraftField stepId={id} field="repeat" label={t('editors.timesField')} kind="int" min={1} max={999} unit={t('editors.click.times')} stored={String(repeat)} disabled={locked} />
             <DraftField
               stepId={id}
               field="repeatDelayMs"
-              label="Gap between clicks (ms)"
+              label={t('editors.click.gapField')}
               kind="int"
               min={0}
               max={5000}
               empty="clear"
-              unit="ms gap"
-              placeholder={String(clickDefaultGap(t))}
+              unit={t('editors.click.gapUnit')}
+              placeholder={String(clickDefaultGap(type))}
               stored={step.repeatDelayMs == null ? '' : String(step.repeatDelayMs)}
               disabled={locked || repeat <= 1}
-              tip={kind === 'double' || kind === 'triple' ? tt('Keep it above your system double-click speed (~½ s).', 'Mantenha acima da velocidade de duplo-clique do sistema (~½ s).') : undefined}
+              tip={kind === 'double' || kind === 'triple' ? t('editors.click.gapTip') : undefined}
             />
           </div>
           <Vary
-            label="Vary the gap"
-            tip={tt('Random ±% on each gap — less robotic.', 'Variação ±% aleatória em cada intervalo — menos robótico.')}
+            label={t('editors.varyGap')}
+            tip={t('editors.varyGapTip')}
             stepId={id}
             field="repeatDelayJitterPct"
             value={step.repeatDelayJitterPct ?? 0}
@@ -292,8 +302,8 @@ export function ClickEditor({ step, index, steps, locked }: { step: ActionItem; 
           />
           {combined && (
             <Vary
-              label="Vary the point"
-              tip={atCursor ? tt('Not at cursor — the scatter would move the cursor it reads', 'Não no cursor — o espalhamento moveria o cursor que ele lê') : tt('Random ±px on the click point — less robotic.', 'Variação ±px aleatória no ponto — menos robótico.')}
+              label={t('editors.click.varyPoint')}
+              tip={atCursor ? t('editors.click.varyPointCursorTip') : t('editors.click.varyPointTip')}
               stepId={id}
               field="repeatPositionJitterPx"
               value={step.repeatPositionJitterPx ?? 0}
@@ -306,40 +316,40 @@ export function ClickEditor({ step, index, steps, locked }: { step: ActionItem; 
           )}
         </Section>
       )}
-      {isFocusClickEligible(t) && (
+      {isFocusClickEligible(type) && (
         <div className="insp-row">
           <Switch
-            label="Focus click"
+            label={t('list.focusClick')}
             checked={!!step.isFocusClick}
-            tip={tt('Clicks twice, a few pixels apart, to focus a small target', 'Clica duas vezes, a poucos pixels, para focar um alvo pequeno')}
+            tip={t('editors.click.focusTip')}
             onChange={() => cmds.toggleFocusClick({ indices: [index] })}
             disabled={locked}
           />
-          <span className="insp-row-label">Focus click</span>
+          <span className="insp-row-label">{t('list.focusClick')}</span>
         </div>
       )}
       {canDrag && (
-        <Section label="Release at" hint={releaseNote ?? 'Leave it empty and the release lands on the press point.'}>
+        <Section label={t('editors.click.releaseAt')} hint={releaseNote ?? t('editors.click.releaseHint')}>
           <div className="insp-pair">
-            <ReleaseField label="Release X coordinate" prefix="X" text={release.x} disabled={locked} onCommit={(x) => commitRelease({ ...release, x })} />
-            <ReleaseField label="Release Y coordinate" prefix="Y" text={release.y} disabled={locked} onCommit={(y) => commitRelease({ ...release, y })} />
+            <ReleaseField label={t('editors.click.releaseX')} prefix="X" text={release.x} disabled={locked} onCommit={(x) => commitRelease({ ...release, x })} />
+            <ReleaseField label={t('editors.click.releaseY')} prefix="Y" text={release.y} disabled={locked} onCommit={(y) => commitRelease({ ...release, y })} />
           </div>
           <button type="button" className="insp-button" disabled={locked || picking !== null} onClick={() => pick('release')}>
             <span className="step-icon" data-icon="crosshair" />
-            {picking === 'release' ? 'Picking…' : 'Pick the release'}
+            {picking === 'release' ? t('editors.click.picking') : t('editors.click.pickRelease')}
           </button>
         </Section>
       )}
       {pairedUp && (
-        <Section label="Release at" hint={dragged(step, pairedUp) ? undefined : 'Within 2 px of the press — the app reads it as one click.'}>
+        <Section label={t('editors.click.releaseAt')} hint={dragged(step, pairedUp) ? undefined : t('editors.click.withinTwo')}>
           <div className="insp-pair">
-            <DraftField stepId={pairedUp.id ?? ''} field="x" label="Release X coordinate" kind="int" signed min={-COORD} max={COORD} prefix="X" stored={String(pairedUp.x)} disabled={locked} />
-            <DraftField stepId={pairedUp.id ?? ''} field="y" label="Release Y coordinate" kind="int" signed min={-COORD} max={COORD} prefix="Y" stored={String(pairedUp.y)} disabled={locked} />
+            <DraftField stepId={pairedUp.id ?? ''} field="x" label={t('editors.click.releaseX')} kind="int" signed min={-COORD} max={COORD} prefix="X" stored={String(pairedUp.x)} disabled={locked} />
+            <DraftField stepId={pairedUp.id ?? ''} field="y" label={t('editors.click.releaseY')} kind="int" signed min={-COORD} max={COORD} prefix="Y" stored={String(pairedUp.y)} disabled={locked} />
           </div>
-          <button type="button" className="insp-button" disabled={locked} onClick={mergeDrag}>Make it one click</button>
+          <button type="button" className="insp-button" disabled={locked} onClick={mergeDrag}>{t('editors.click.oneClick')}</button>
         </Section>
       )}
-      {pairedDown && <span className="insp-hint">Releases the button pressed in step {index}.</span>}
+      {pairedDown && <span className="insp-hint">{t('editors.click.releasesFrom', { number: index })}</span>}
       <p className="insp-summary" aria-live="polite">{summary}</p>
     </>
   );

@@ -30,7 +30,7 @@ export function moveSteps(steps: ActionItem[], sel: number[], dir: 'up' | 'down'
  * Deletes what a selection means (deleteIntent) — the Delete key, the step menu and the batch
  * editor — says so when whole blocks went with it, and clears the selection. Returns how many
  * steps went, or 0 when whole blocks went too (that was said already). The text comes from the
- * catalog; `_tt`, the old pairs' function, is no longer read (the cleanup drops it).
+ * catalog.
  */
 export function deleteSteps(
   steps: ActionItem[],
@@ -38,7 +38,6 @@ export function deleteSteps(
   blocks: BlockMap,
   cmds: ReturnType<typeof useSteps>,
   tell: (text: string) => void,
-  _tt?: (en: string, pt: string) => string,
 ): number {
   const intent = deleteIntent(sel, steps, (o) => blocks.closerOf.get(o));
   const wider = intent.message.type === 'actions:delete' && intent.count > sel.length;

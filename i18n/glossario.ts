@@ -80,6 +80,9 @@ export const AMBIGUOS = [
   'Pause', 'Stop', 'Return', 'Next', 'Break', 'If', 'Else', 'While', 'Assert',
   'Click', 'Key', 'Text', 'Scroll', 'Variable', 'Random', 'Time',
   'Win', 'Enter', 'Tab', 'Del', 'Ins', 'Home', 'End', 'Caps', 'Space', 'Edge', 'Windows',
+  // A condição Clipboard e o coringa clipboard são a mesma palavra: no meio da frase em português ela
+  // vai em minúscula ("Histórico do clipboard"), e o coringa (sem caixa) segue conferido.
+  'Clipboard',
 ] as const;
 
 /**
@@ -87,4 +90,6 @@ export const AMBIGUOS = [
  * está ali em outro papel (o verbo, o nome comum), ou a frase em português diz o mesmo de outro jeito.
  * Uma linha por chave.
  */
-export const ISENCOES: Readonly<Record<string, string>> = {};
+export const ISENCOES: Readonly<Record<string, string>> = {
+  'tokenEditor.date.shift': 'o deslocamento da data ({date:+7}), não a tecla Shift',
+};

@@ -1,5 +1,6 @@
 import type { OcrLanguage, OcrLanguagesPayload } from '../bridge/messageTypes';
 import { APP_NAME } from '../appIdentity';
+import { t } from '../i18n';
 
 // OCR language picker labels. Windows' display names carry the region ("English (United
 // States)", 176 px) and never fit a settings field, so a pack shows its bare language name —
@@ -43,20 +44,20 @@ export type OcrLanguageNote =
 // for an app restart. Nothing when the pick is installed — or is Auto with a pack to resolve to.
 // "Uses" is the C# side's own answer (effective), not a guess made here. Worded to ONE line beside
 // Install: the row leaves 148 px for the text at 11 px ("Not on this PC — reads use Português" was
-// 185 and wrapped; "Missing — uses Português" is 128).
+// 185 and wrapped; "Missing — uses Português" is 128). The texts are the catalog's (i18n/*/ocr.ts).
 export function ocrLanguageNote(pick: string, langs: OcrLanguagesPayload): OcrLanguageNote | null {
   const picker = ocrPickerLanguages(langs.offered, langs.available);
   const label = (tag: string) => {
     const i = picker.findIndex(x => sameTag(x.tag, tag));
     return i >= 0 ? ocrLanguageOptions(picker)[i].label : tag;
   };
-  if (!pick) return langs.auto ? null : { kind: 'missing', text: 'No OCR language on this PC', install: null };
+  if (!pick) return langs.auto ? null : { kind: 'missing', text: t('ocr.none'), install: null };
   if (langs.available.some(a => sameTag(a.tag, pick))) return null;
-  if (langs.installing && sameTag(langs.installing, pick)) return { kind: 'installing', text: 'Installing…' };
-  if (langs.pendingRestart.some(t => sameTag(t, pick))) return { kind: 'restart', text: `Installed — restart ${APP_NAME}` };
+  if (langs.installing && sameTag(langs.installing, pick)) return { kind: 'installing', text: t('ocr.installing') };
+  if (langs.pendingRestart.some(tag => sameTag(tag, pick))) return { kind: 'restart', text: t('ocr.restart', { app: APP_NAME }) };
   return {
     kind: 'missing',
-    text: langs.effective ? `Missing — uses ${label(langs.effective)}` : 'Missing — no OCR yet',
+    text: langs.effective ? t('ocr.missingUses', { name: label(langs.effective) }) : t('ocr.missingNone'),
     install: langs.offered.find(o => sameTag(o.tag, pick)) ?? null,
   };
 }

@@ -1,7 +1,6 @@
 import type { ActionItem } from '../../bridge/messageTypes';
+import { fmtNum, t } from '../../i18n';
 import { useSteps } from '../../logic/useSteps';
-import { useLanguage, useTt } from '../../state/LanguageContext';
-import { formatMs } from '../../utils/displayUtils';
 import { Section, Segmented, Switch } from './fields';
 import { applyEdits, type StepEdit } from './inspectorState';
 import { ScreenTextCheck } from './screenChecks';
@@ -19,29 +18,28 @@ type Mode = 'appears' | 'disappears' | 'changes';
  */
 export function WaitTextEditor({ step, locked }: { step: ActionItem; locked: boolean }) {
   const cmds = useSteps();
-  const { language } = useLanguage();
-  const tt = useTt();
   const edit = (edits: StepEdit[]) => applyEdits(cmds, step.id ?? '', edits);
   const mode: Mode = step.waitMode === 'disappears' || step.waitMode === 'changes' ? step.waitMode : 'appears';
   const timeout = waitTimeout(step, DEFAULT_TIMEOUT_MS);
-  const then = `the run ${goesOn(step) ? 'goes on' : 'stops'}`;
+  const goOn = goesOn(step);
   const click = mode === 'appears' && !!step.waitImageClickOnMatch;
-  const upTo = `${formatMs(timeout, language)} ms`;
-  const summary = mode === 'changes' ? `Waits up to ${upTo} for the region to read something else. If it never does, ${then}.`
-    : mode === 'disappears' ? `Waits up to ${upTo} for the text to go. If it stays, ${then}.`
-    : `Waits up to ${upTo} for the text${click ? ', then clicks it' : ''}. If it never shows, ${then}.`;
+  const ms = fmtNum(timeout);
+  const summary = mode === 'changes' ? (goOn ? t('probe.wait.text.changesGoesOn', { ms }) : t('probe.wait.text.changesStops', { ms }))
+    : mode === 'disappears' ? (goOn ? t('probe.wait.text.goneGoesOn', { ms }) : t('probe.wait.text.goneStops', { ms }))
+    : click ? (goOn ? t('probe.wait.text.clickGoesOn', { ms }) : t('probe.wait.text.clickStops', { ms }))
+    : (goOn ? t('probe.wait.text.goesOn', { ms }) : t('probe.wait.text.stops', { ms }));
 
   return (
     <>
-      <Section label="Wait until">
+      <Section label={t('probe.wait.until')}>
         <Segmented<Mode>
-          label="Wait until"
+          label={t('probe.wait.until')}
           value={mode}
           disabled={locked}
           options={[
-            { value: 'appears', label: 'Appears' },
-            { value: 'disappears', label: 'Disappears' },
-            { value: 'changes', label: 'Changes', tip: tt('Waits for the region to read something else', 'Espera a região mostrar outra coisa') },
+            { value: 'appears', label: t('probe.wait.appears') },
+            { value: 'disappears', label: t('probe.wait.disappears') },
+            { value: 'changes', label: t('probe.wait.changes'), tip: t('probe.wait.changesTip') },
           ]}
           onChange={(v) => edit([{ field: 'waitMode', value: v === 'appears' ? '' : v }])}
         />
@@ -57,8 +55,8 @@ export function WaitTextEditor({ step, locked }: { step: ActionItem; locked: boo
       <WaitTiming step={step} locked={locked} timeout={timeout} />
       {mode === 'appears' && (
         <div className="insp-row">
-          <span className="insp-row-label">Click on found location</span>
-          <Switch label="Click on found location" checked={click} disabled={locked} onChange={(on) => edit([{ field: 'waitImageClickOnMatch', value: String(on) }])} />
+          <span className="insp-row-label">{t('probe.wait.clickOnFound')}</span>
+          <Switch label={t('probe.wait.clickOnFound')} checked={click} disabled={locked} onChange={(on) => edit([{ field: 'waitImageClickOnMatch', value: String(on) }])} />
         </div>
       )}
       <p className="insp-summary" aria-live="polite">{summary}</p>

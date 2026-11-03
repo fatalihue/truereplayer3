@@ -3,9 +3,12 @@ import { Wand2, X } from 'lucide-react';
 import { NumberInput } from '../common/NumberInput';
 import { IconButton } from '../common/IconButton';
 import { CheckboxBox } from '../Checkbox';
+import { t } from '../../i18n';
 
 // Small UI primitives shared by the Advanced Clipboard insert popover and the
-// chip click-to-edit popover. Pure presentational — no business logic here.
+// chip click-to-edit popover. Pure presentational — no business logic here. The labels come from
+// the callers, already in the build's language; the only text of their own is the close button's
+// name and ArgInput's placeholder (the catalog's common and clipboard areas).
 
 /**
  * THE header of every token editor that floats — the chip popover and the name prompt. Wand ·
@@ -34,7 +37,7 @@ export function PopoverHeader({
         >
           {token}
         </div>
-        <IconButton size="sm" onClick={onClose} aria-label="Close" className="-mr-1.5">
+        <IconButton size="sm" onClick={onClose} aria-label={t('common.actions.close')} className="-mr-1.5">
           <X size={14} />
         </IconButton>
       </div>
@@ -221,7 +224,7 @@ export function ArgInput({
   min = 0,
   max,
   width = 54,
-  refPlaceholder = '@name',
+  refPlaceholder = t('clipboard.arg.refPlaceholder'),
   refTip,
   numTip,
 }: {

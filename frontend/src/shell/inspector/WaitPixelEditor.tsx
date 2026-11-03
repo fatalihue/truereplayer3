@@ -1,7 +1,6 @@
 import type { ActionItem } from '../../bridge/messageTypes';
+import { fmtNum, t } from '../../i18n';
 import { useSteps } from '../../logic/useSteps';
-import { useLanguage } from '../../state/LanguageContext';
-import { formatMs } from '../../utils/displayUtils';
 import { Section, Segmented, Switch } from './fields';
 import { applyEdits, type StepEdit } from './inspectorState';
 import { PixelCheck } from './screenChecks';
@@ -17,34 +16,35 @@ const DEFAULT_TIMEOUT_MS = 5000;
  */
 export function WaitPixelEditor({ step, locked }: { step: ActionItem; locked: boolean }) {
   const cmds = useSteps();
-  const { language } = useLanguage();
   const edit = (edits: StepEdit[]) => applyEdits(cmds, step.id ?? '', edits);
   const gone = !!step.pixelInvert;
   const timeout = waitTimeout(step, DEFAULT_TIMEOUT_MS);
   const goOn = goesOn(step);
   const click = !gone && !!step.pixelClickOnMatch;
-  const upTo = `${formatMs(timeout, language)} ms`;
+  const ms = fmtNum(timeout);
   const summary = gone
-    ? `Waits up to ${upTo} for the point to lose the color. If it keeps it, the run ${goOn ? 'goes on' : 'stops'}.`
-    : `Waits up to ${upTo} for the point to show the color${click ? ', then clicks it' : ''}. If it never does, the run ${goOn ? 'goes on' : 'stops'}.`;
+    ? (goOn ? t('probe.wait.pixel.goneGoesOn', { ms }) : t('probe.wait.pixel.goneStops', { ms }))
+    : click
+      ? (goOn ? t('probe.wait.pixel.clickGoesOn', { ms }) : t('probe.wait.pixel.clickStops', { ms }))
+      : (goOn ? t('probe.wait.pixel.goesOn', { ms }) : t('probe.wait.pixel.stops', { ms }));
 
   return (
     <>
       <PixelCheck step={step} locked={locked} reads={gone ? 'gone' : 'found'} />
-      <Section label="Wait until">
+      <Section label={t('probe.wait.until')}>
         <Segmented<'matches' | 'stops'>
-          label="Wait until"
+          label={t('probe.wait.until')}
           value={gone ? 'stops' : 'matches'}
           disabled={locked}
-          options={[{ value: 'matches', label: 'Matches' }, { value: 'stops', label: 'Stops matching' }]}
+          options={[{ value: 'matches', label: t('probe.wait.matches') }, { value: 'stops', label: t('probe.wait.stopsMatching') }]}
           onChange={(v) => edit([{ field: 'pixelInvert', value: String(v === 'stops') }])}
         />
       </Section>
       <WaitTiming step={step} locked={locked} timeout={timeout} />
       {!gone && (
         <div className="insp-row">
-          <span className="insp-row-label">Click on found location</span>
-          <Switch label="Click on found location" checked={click} disabled={locked} onChange={(on) => edit([{ field: 'pixelClickOnMatch', value: String(on) }])} />
+          <span className="insp-row-label">{t('probe.wait.clickOnFound')}</span>
+          <Switch label={t('probe.wait.clickOnFound')} checked={click} disabled={locked} onChange={(on) => edit([{ field: 'pixelClickOnMatch', value: String(on) }])} />
         </div>
       )}
       <p className="insp-summary" aria-live="polite">{summary}</p>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useBridge } from '../../../bridge/BridgeContext';
+import { fmtNum, t } from '../../../i18n';
 import { useMacro } from '../../../logic/useMacro';
 import { formatDateLong } from '../../../utils/dateFormat';
 import { settingsFocused, type SettingsSection } from '../../ui';
@@ -35,7 +36,7 @@ export function InfoSection({ facts, locked, focus }: { facts: MacroFacts; locke
   const boxRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!focus) return;
-    const field = boxRef.current?.querySelector<HTMLTextAreaElement>('textarea[aria-label="Description"]');
+    const field = boxRef.current?.querySelector<HTMLTextAreaElement>(`textarea[aria-label="${t('macroSettings.info.description')}"]`);
     field?.focus();
     field?.scrollIntoView({ block: 'nearest' });
     settingsFocused();
@@ -43,30 +44,32 @@ export function InfoSection({ facts, locked, focus }: { facts: MacroFacts; locke
 
   return (
     <div ref={boxRef} className="mset-group">
-      <span className="mset-title">Info</span>
-      <Section label="Icon">
+      <span className="mset-title">{t('macroSettings.info.title')}</span>
+      <Section label={t('macroSettings.info.icon')}>
         <IconPicker value={facts.iconEmoji} disabled={locked} onPick={(iconEmoji) => macro.setInfo({ name, iconEmoji })} />
       </Section>
       <Section
-        label="Description"
-        hint={over > 0 ? <span data-error="">Too long by {over} — trim it to save it.</span> : `${description.length} / ${MAX_DESCRIPTION}`}
+        label={t('macroSettings.info.description')}
+        hint={over > 0
+          ? <span data-error="">{t('macroSettings.info.tooLong', { count: over, n: fmtNum(over) })}</span>
+          : `${description.length} / ${MAX_DESCRIPTION}`}
       >
         <DraftField
           stepId={`macro:${name}`}
           field="description"
-          label="Description"
+          label={t('macroSettings.info.description')}
           kind="text"
           multiline
-          placeholder="What does this macro do?"
+          placeholder={t('macroSettings.info.descriptionPlaceholder')}
           maxLength={MAX_DESCRIPTION}
           stored={facts.description ?? ''}
           disabled={locked}
-          parse={(t) => (t.length > MAX_DESCRIPTION ? null : t)}
+          parse={(text) => (text.length > MAX_DESCRIPTION ? null : text)}
           onText={setTyped}
           onApply={(text) => { setSent(text); macro.setInfo({ name, description: text.trim() || null }); }}
         />
       </Section>
-      <Section label="Tags">
+      <Section label={t('macroSettings.info.tags')}>
         <TagEditor tags={tagList(facts.tags)} disabled={locked} onChange={(tags) => macro.setInfo({ name, tags: tags.length > 0 ? tags : null })} />
       </Section>
       <History facts={facts} />
@@ -101,20 +104,20 @@ function History({ facts }: { facts: MacroFacts }) {
   return (
     <div className="mset-history">
       <button type="button" className="insp-link" aria-expanded={open} onClick={() => setOpen(o => !o)}>
-        {open ? 'Hide history' : 'History'}
+        {open ? t('macroSettings.info.hideHistory') : t('macroSettings.info.history')}
       </button>
       {open && (
         <dl className="mset-facts">
-          <dt>Created</dt>
+          <dt>{t('macroSettings.info.created')}</dt>
           <dd>{formatDateLong(facts.createdAt)}</dd>
-          <dt>Updated</dt>
+          <dt>{t('macroSettings.info.updated')}</dt>
           <dd>{formatDateLong(facts.updatedAt)}</dd>
-          <dt>Macro version</dt>
+          <dt>{t('macroSettings.info.version')}</dt>
           <dd>v{facts.profileVersion}</dd>
-          <dt>Min app version</dt>
+          <dt>{t('macroSettings.info.minAppVersion')}</dt>
           <dd>
-            {facts.appMinVersion ?? 'Any'}
-            {contributors.length > 0 && <span className="mset-facts-why">Required by: {contributors.join(', ')}</span>}
+            {facts.appMinVersion ?? t('macroSettings.info.anyVersion')}
+            {contributors.length > 0 && <span className="mset-facts-why">{t('macroSettings.info.requiredBy', { list: contributors.join(', ') })}</span>}
           </dd>
         </dl>
       )}

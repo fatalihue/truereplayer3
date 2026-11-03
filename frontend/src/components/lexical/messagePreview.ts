@@ -42,6 +42,8 @@ import {
   hasNextModifier,
 } from './clipboardModifiers';
 import { resolveDateToken } from './dateFormat';
+import { fmtNum, t, tn } from '../../i18n';
+import { machineLocale } from '../../utils/machineLocale';
 
 /** Why a piece could not be resolved. Each one is a DIFFERENT statement to the user. */
 export type PendingReason =
@@ -71,69 +73,15 @@ export type PreviewPiece =
   | { kind: 'resolved'; text: string; token: string; note?: string }
   | { kind: 'pending'; token: string; label: string; reason: PendingReason };
 
-/** Why a placeholder is one, said in its tip — [English, Portuguese]. */
-export const PREVIEW_REASON_TIP: Record<PendingReason, [string, string]> = {
-  literal: [
-    'Sent verbatim, braces included — the argument is not a shape the engine accepts.',
-    'Enviado literalmente, com as chaves — o argumento não está numa forma que o motor aceita.',
-  ],
-  'key-press': [
-    'Sent as a key press between the text blocks, not as characters.',
-    'Enviado como tecla entre os blocos de texto, não como caracteres.',
-  ],
-  delay: ['A pause in the typing, not text.', 'Uma pausa na digitação, não texto.'],
-  random: ['Drawn fresh every run.', 'Sorteado a cada execução.'],
-  pick: ['One of the options, drawn fresh every run.', 'Uma das opções, sorteada a cada execução.'],
-  ask: [
-    'The run pauses and asks you for this value.',
-    'A execução pausa e pergunta este valor.',
-  ],
-  runtime: ['Only the engine has this value, and only while the macro runs.', 'Só o motor tem este valor, e só enquanto a macro roda.'],
-  'runtime-clipreading': ['Reading the clipboard…', 'Lendo a área de transferência…'],
-  'runtime-counter': ['The run repeat number — there is no value outside a run.', 'O número da repetição da execução — não existe valor fora de uma execução.'],
-  'runtime-loop': ['The iteration of the innermost While / For Each block — there is no value outside a run.', 'A volta do bloco While / For Each mais interno — não existe valor fora de uma execução.'],
-  'runtime-datarow': ['The number of the current data row — there is no value outside a run.', 'O número da linha de dados atual — não existe valor fora de uma execução.'],
-  'runtime-row': ["The action's own grid row — there is no value outside a run.", 'A linha da action na grade — não existe valor fora de uma execução.'],
-  'runtime-rowcursor': [
-    'Loop over data is off: each run takes the NEXT row, and that position lives between runs.',
-    'Loop over data desligado: cada execução pega a PRÓXIMA linha, e essa posição vive entre as execuções.',
-  ],
-  'runtime-norows': [
-    'The Data table has no rows, so this resolves to nothing at replay.',
-    'A tabela de dados não tem linhas, então isto resolve como vazio no replay.',
-  ],
-  'runtime-cursor': [
-    'Auto-advancing: the line depends on how many runs came before.',
-    'Auto-avança: a linha depende de quantas execuções já houve.',
-  ],
-  'unmodeled-chain': [
-    'The builder cannot model this chain, so it shows no result. It still runs.',
-    'O construtor não consegue modelar esta cadeia, então não mostra resultado. Ela roda normalmente.',
-  ],
-  'unknown-column': ['No column by that name in the Data table.', 'Nenhuma coluna com esse nome na tabela de dados.'],
-  unset: ['Nothing stored under that name yet.', 'Nada guardado com esse nome ainda.'],
-  generated: ['A fresh identifier at every use — store it in a variable to reuse one.', 'Um identificador novo a cada uso — guarde numa variável para reaproveitar.'],
-  'runtime-env': [
-    'Read from this machine’s environment when the macro runs; the editor cannot see it.',
-    'Lido do ambiente desta máquina quando a macro roda; o editor não enxerga.',
-  ],
-};
+/**
+ * Why a placeholder is one, said in its tip — ready text in the build's language (the catalog's
+ * tokenEditor.preview.reason, one sentence per reason). Typed against PendingReason, so a reason
+ * added above without its sentence fails tsc.
+ */
+export const PREVIEW_REASON_TIP: Record<PendingReason, string> = tn('tokenEditor.preview.reason');
 
-/** Where a resolved value came from, said in its tip — [English, Portuguese]. */
-export const PREVIEW_NOTE_TIP: Record<string, [string, string]> = {
-  clock: [
-    'Preview time. Month and day names follow the machine locale at replay.',
-    'Hora da prévia. Nomes de mês e dia seguem o idioma da máquina no replay.',
-  ],
-  'first-data-row': [
-    'The FIRST data row. A run uses the row it is on; ForEach and Run Macro can use another table.',
-    'A PRIMEIRA linha de dados. A execução usa a linha em que está; ForEach e Run Macro podem usar outra tabela.',
-  ],
-  'last-run': [
-    'From the LAST run — variables reset at every start.',
-    'Da ÚLTIMA execução — as variáveis zeram a cada início.',
-  ],
-};
+/** Where a resolved value came from, said in its tip — ready text (tokenEditor.preview.note). */
+export const PREVIEW_NOTE_TIP: Record<string, string> = tn('tokenEditor.preview.note');
 
 export interface PreviewSources {
   /** Current clipboard text, and whether the read has come back. */
@@ -188,8 +136,9 @@ function findColumn(headers: string[], column: string): number {
 // The clock tokens go through the TS port of ResolveDateTimeTokens (dateFormat.ts): offsets,
 // formats and the head's default. The engine formats with the machine's culture and '/' and ':'
 // pinned, so what differs at replay is only the month and day NAMES — the panel's tip says so.
-// No navigator in a node harness, hence the guard.
-const previewLocale = (): string => (typeof navigator !== 'undefined' && navigator.language) || 'en-US';
+// The machine's culture comes from state:init (utils/machineLocale): the WebView2's language
+// follows the interface, so navigator.language no longer stands for the machine.
+const previewLocale = (): string => machineLocale();
 
 /**
  * Resolve a whole SendText payload into display pieces.
@@ -240,7 +189,7 @@ export function resolveMessagePreview(text: string, src: PreviewSources, now: Da
       // {Delay:abc} is half a second — echoing the text would have said 1500000 and "abc".
       const first = parseSendTextSegments(token)[0];
       const ms = first && first.kind === 'delay' ? first.ms : 500;
-      push({ kind: 'pending', token, label: `pause ${ms} ms`, reason: 'delay' });
+      push({ kind: 'pending', token, label: t('tokenEditor.preview.pending.pause', { ms: fmtNum(ms) }), reason: 'delay' });
       continue;
     }
     if (SEGMENTING_TOKEN_NAMES.has(name)) {
@@ -262,19 +211,19 @@ export function resolveMessagePreview(text: string, src: PreviewSources, now: Da
         continue;
       }
       case 'counter':
-        push({ kind: 'pending', token, label: 'run repeat', reason: 'runtime-counter' });
+        push({ kind: 'pending', token, label: t('tokenEditor.preview.pending.runRepeat'), reason: 'runtime-counter' });
         continue;
       case 'loop':
-        push({ kind: 'pending', token, label: 'block iteration', reason: 'runtime-loop' });
+        push({ kind: 'pending', token, label: t('tokenEditor.preview.pending.blockIteration'), reason: 'runtime-loop' });
         continue;
       case 'datarow':
-        push({ kind: 'pending', token, label: 'data row number', reason: 'runtime-datarow' });
+        push({ kind: 'pending', token, label: t('tokenEditor.preview.pending.dataRowNumber'), reason: 'runtime-datarow' });
         continue;
       // {uuid} is drawn fresh at every use, like {random}; {env:NAME} lives on the machine, where
       // a WebView cannot read it. Both stay pending whatever chain they carry. {timestamp} is a
       // clock and resolves below, through the chain block, like {date}.
       case 'uuid':
-        push({ kind: 'pending', token, label: 'new UUID', reason: 'generated' });
+        push({ kind: 'pending', token, label: t('tokenEditor.preview.pending.newUuid'), reason: 'generated' });
         continue;
       case 'env': {
         const m = /^env:([^:}]+)/i.exec(token.slice(1, -1));
@@ -282,12 +231,13 @@ export function resolveMessagePreview(text: string, src: PreviewSources, now: Da
         continue;
       }
       case 'random':
-        push({ kind: 'pending', token, label: `${arg(token)} at random`, reason: 'random' });
+        // The range as the token writes it ("1-10"), not reformatted: it is what the user typed.
+        push({ kind: 'pending', token, label: t('tokenEditor.preview.pending.random', { range: arg(token) }), reason: 'random' });
         continue;
       case 'pick': {
         // The engine splits on '|' and DROPS zero-length options, so "a||b" is two.
         const n = token.slice(1, -1).slice('pick:'.length).split('|').filter((o) => o.length > 0).length;
-        push({ kind: 'pending', token, label: `one of ${n}`, reason: 'pick' });
+        push({ kind: 'pending', token, label: t('tokenEditor.preview.pending.pick', { n: fmtNum(n) }), reason: 'pick' });
         continue;
       }
       case 'input':
@@ -300,7 +250,7 @@ export function resolveMessagePreview(text: string, src: PreviewSources, now: Da
         push({
           kind: 'pending',
           token,
-          label: `history item ${/^winclip:([0-9]+)/i.exec(token.slice(1, -1))?.[1] ?? '1'}`,
+          label: t('tokenEditor.preview.pending.historyItem', { n: /^winclip:([0-9]+)/i.exec(token.slice(1, -1))?.[1] ?? '1' }),
           reason: 'runtime',
         });
         continue;
@@ -310,7 +260,7 @@ export function resolveMessagePreview(text: string, src: PreviewSources, now: Da
 
     // Bare {row} — the action's own grid row, which only exists during a run.
     if (name === 'row' && !token.slice(1, -1).includes(':')) {
-      push({ kind: 'pending', token, label: 'action row', reason: 'runtime-row' });
+      push({ kind: 'pending', token, label: t('tokenEditor.preview.pending.actionRow'), reason: 'runtime-row' });
       continue;
     }
 
@@ -334,19 +284,19 @@ export function resolveMessagePreview(text: string, src: PreviewSources, now: Da
     switch (head.kind) {
       case 'clipboard':
         if (!src.clipReady) {
-          push({ kind: 'pending', token, label: 'clipboard', reason: 'runtime-clipreading' });
+          push({ kind: 'pending', token, label: t('tokenEditor.preview.pending.clipboard'), reason: 'runtime-clipreading' });
           continue;
         }
         // The auto-advancing read's cursor lives in the run; the preview would always claim line 1.
         if (hasNextModifier(token)) {
-          push({ kind: 'pending', token, label: 'next clipboard line', reason: 'runtime-cursor' });
+          push({ kind: 'pending', token, label: t('tokenEditor.preview.pending.nextClipboardLine'), reason: 'runtime-cursor' });
           continue;
         }
         raw = src.clipRaw;
         break;
       case 'rownext':
         // Same cursor problem, and it advances per USE rather than per run.
-        push({ kind: 'pending', token, label: `next row of ${head.column}`, reason: 'runtime-cursor' });
+        push({ kind: 'pending', token, label: t('tokenEditor.preview.pending.nextRowOf', { column: head.column }), reason: 'runtime-cursor' });
         continue;
       case 'row': {
         const idx = findColumn(src.dataTable.headers, head.column);

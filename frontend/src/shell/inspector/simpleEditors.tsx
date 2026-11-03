@@ -1,6 +1,6 @@
 import type { ActionItem } from '../../bridge/messageTypes';
+import { t } from '../../i18n';
 import { useSteps } from '../../logic/useSteps';
-import { useTt } from '../../state/LanguageContext';
 import { DraftField, Section, Segmented } from './fields';
 import { applyEdits, type StepEdit } from './inspectorState';
 import { ScreenTextCheck } from './screenChecks';
@@ -28,12 +28,12 @@ const MAX_WAIT_MS = 999_999_999;
 export function ScrollEditor({ step, locked }: Props) {
   const edit = useEdit(step);
   return (
-    <Section label="Direction" hint="One notch of the mouse wheel, where the cursor is.">
+    <Section label={t('editors.scroll.direction')} hint={t('editors.scroll.hint')}>
       <Segmented<'ScrollUp' | 'ScrollDown'>
-        label="Scroll direction"
+        label={t('editors.scroll.field')}
         value={step.actionType === 'ScrollUp' ? 'ScrollUp' : 'ScrollDown'}
         disabled={locked}
-        options={[{ value: 'ScrollUp', label: 'Scroll Up ↑' }, { value: 'ScrollDown', label: 'Scroll Down ↓' }]}
+        options={[{ value: 'ScrollUp', label: t('editors.scroll.up') }, { value: 'ScrollDown', label: t('editors.scroll.down') }]}
         onChange={(v) => edit([{ field: 'actionType', value: v }])}
       />
     </Section>
@@ -51,7 +51,6 @@ type VariableMode = 'set' | 'cycle' | 'add' | 'screen';
 export function SetVariableEditor({ step, index, locked }: Props & { index: number }) {
   const edit = useEdit(step);
   const cmds = useSteps();
-  const tt = useTt();
   const id = step.id ?? '';
   const name = step.key ?? '';
   const mode: VariableMode = step.variableMode === 'cycle' || step.variableMode === 'add' || step.variableMode === 'screen' ? step.variableMode : 'set';
@@ -59,21 +58,21 @@ export function SetVariableEditor({ step, index, locked }: Props & { index: numb
   return (
     <>
       <Section
-        label="Variable name"
-        hint={unusableName(name) ? <span data-error="">Letters, digits and _ only — skipped at replay as written.</span> : 'Read it back with {var:name}.'}
+        label={t('editors.variable.name')}
+        hint={unusableName(name) ? <span data-error="">{t('editors.unusableName')}</span> : t('editors.variable.nameHint')}
       >
-        <DraftField stepId={id} field="key" label="Variable name" kind="mono" placeholder="name" stored={name} disabled={locked} filter={keepName} parse={asTyped} />
+        <DraftField stepId={id} field="key" label={t('editors.variable.name')} kind="mono" placeholder={t('editors.variable.namePlaceholder')} stored={name} disabled={locked} filter={keepName} parse={asTyped} />
       </Section>
-      <Section label="Mode">
+      <Section label={t('editors.mode')}>
         <Segmented<VariableMode>
-          label="Variable mode"
+          label={t('editors.variable.modeField')}
           value={mode}
           disabled={locked}
           options={[
-            { value: 'set', label: 'Set' },
-            { value: 'cycle', label: 'Cycle', tip: tt('The next line of a list on each run, then back to the first', 'A próxima linha de uma lista a cada execução, depois volta à primeira') },
-            { value: 'add', label: 'Add', tip: tt('Adds a number to the current value (a counter)', 'Soma um número ao valor atual (um contador)') },
-            { value: 'screen', label: 'Screen', tip: tt('Reads text from a region of the screen (OCR)', 'Lê o texto de uma região da tela (OCR)') },
+            { value: 'set', label: t('editors.variable.set') },
+            { value: 'cycle', label: t('editors.variable.cycle'), tip: t('editors.variable.cycleTip') },
+            { value: 'add', label: t('editors.variable.add'), tip: t('editors.variable.addTip') },
+            { value: 'screen', label: t('editors.variable.screen'), tip: t('editors.variable.screenTip') },
           ]}
           onChange={(v) => edit([{ field: 'variableMode', value: v === 'set' ? '' : v }])}
         />
@@ -81,11 +80,11 @@ export function SetVariableEditor({ step, index, locked }: Props & { index: numb
       {mode === 'screen' ? (
         <>
           <ScreenTextCheck step={step} locked={locked} variant="read" />
-          <Section label="Wait up to" hint="0 = read once. Nothing read deletes the variable.">
+          <Section label={t('editors.variable.waitUpTo')} hint={t('editors.variable.waitHint')}>
             <DraftField
               stepId={id}
               field="conditionTimeout"
-              label="Wait up to, in milliseconds"
+              label={t('editors.variable.waitField')}
               kind="int"
               min={0}
               max={MAX_WAIT_MS}
@@ -98,20 +97,20 @@ export function SetVariableEditor({ step, index, locked }: Props & { index: numb
         </>
       ) : (
         <Section
-          label={mode === 'cycle' ? 'List (one item per line)' : mode === 'add' ? 'Amount' : 'Value'}
-          hint={mode === 'cycle' ? 'One line per run, then back to the first.'
-            : mode === 'add' ? 'Added to the current value (unset counts as 0). Negative subtracts.'
-            : 'Tokens resolve here. Empty deletes the variable.'}
+          label={mode === 'cycle' ? t('editors.variable.listLabel') : mode === 'add' ? t('editors.variable.amount') : t('editors.variable.value')}
+          hint={mode === 'cycle' ? t('editors.variable.listHint')
+            : mode === 'add' ? t('editors.variable.amountHint')
+            : t('editors.variable.valueHint')}
         >
           <DraftField
             // One field per mode: a value typed as a list does not carry over as an amount.
             key={mode}
             stepId={id}
             field="variableValue"
-            label={mode === 'cycle' ? 'List' : mode === 'add' ? 'Amount' : 'Value'}
+            label={mode === 'cycle' ? t('editors.variable.list') : mode === 'add' ? t('editors.variable.amount') : t('editors.variable.value')}
             kind="mono"
             multiline={mode !== 'add'}
-            placeholder={mode === 'cycle' ? 'item 1\nitem 2\nitem 3' : mode === 'add' ? '1' : undefined}
+            placeholder={mode === 'cycle' ? t('editors.variable.listPlaceholder') : mode === 'add' ? '1' : undefined}
             stored={value}
             disabled={locked}
             // Empty is a real value here (it deletes the variable), sent as it is.
@@ -124,10 +123,10 @@ export function SetVariableEditor({ step, index, locked }: Props & { index: numb
           type="button"
           className="insp-link"
           disabled={locked}
-          data-tip={tt('The next run starts at the first item of the list', 'A próxima execução começa no primeiro item da lista')}
+          data-tip={t('list.menu.resetCycleTip')}
           onClick={() => cmds.resetCycle({ index })}
         >
-          Reset cycle position
+          {t('list.menu.resetCycle')}
         </button>
       )}
     </>
@@ -140,30 +139,29 @@ export function SetVariableEditor({ step, index, locked }: Props & { index: numb
  */
 export function CopyToSlotEditor({ step, locked }: Props) {
   const edit = useEdit(step);
-  const tt = useTt();
   const id = step.id ?? '';
   const slot = step.key ?? '';
   const clear = step.slotMode === 'clear';
   return (
     <>
-      <Section label="Mode">
+      <Section label={t('editors.mode')}>
         <Segmented<'capture' | 'clear'>
-          label="Slot mode"
+          label={t('editors.slot.modeField')}
           value={clear ? 'clear' : 'capture'}
           disabled={locked}
           options={[
-            { value: 'capture', label: 'Capture', tip: tt('Copies the selection of the app in front into the slot', 'Copia a seleção do app da frente para o slot') },
-            { value: 'clear', label: 'Clear', tip: tt('Empties the slot; with no name, every slot', 'Esvazia o slot; sem nome, todos os slots') },
+            { value: 'capture', label: t('editors.slot.capture'), tip: t('editors.slot.captureTip') },
+            { value: 'clear', label: t('editors.slot.clear'), tip: t('editors.slot.clearTip') },
           ]}
           onChange={(v) => edit([{ field: 'slotMode', value: v === 'clear' ? 'clear' : '' }])}
         />
       </Section>
       <Section
-        label="Slot"
-        hint={unusableName(slot) ? <span data-error="">Letters, digits and _ only — skipped at replay as written.</span>
-          : clear ? 'Blank clears all slots.' : 'Read it back with {clip:slot}.'}
+        label={t('editors.slot.slot')}
+        hint={unusableName(slot) ? <span data-error="">{t('editors.unusableName')}</span>
+          : clear ? t('editors.slot.blankHint') : t('editors.slot.hint')}
       >
-        <DraftField stepId={id} field="key" label="Slot" kind="mono" placeholder={clear ? 'all slots' : '1'} stored={slot} disabled={locked} filter={keepName} parse={asTyped} />
+        <DraftField stepId={id} field="key" label={t('editors.slot.slot')} kind="mono" placeholder={clear ? t('editors.slot.placeholderAll') : '1'} stored={slot} disabled={locked} filter={keepName} parse={asTyped} />
       </Section>
     </>
   );

@@ -1,6 +1,6 @@
 import type { ActionItem } from '../../bridge/messageTypes';
+import { t } from '../../i18n';
 import { useSteps } from '../../logic/useSteps';
-import { useTt } from '../../state/LanguageContext';
 import { Chips, DraftField, Section, Segmented } from './fields';
 import { applyEdits } from './inspectorState';
 
@@ -25,23 +25,25 @@ export const goesOn = (step: ActionItem) => step[onTimeoutField(step)] === 'Cont
  * on to the next step (Wait Image, Wait Text, Wait Pixel Color, and Activate Window waiting for its
  * window).
  */
-export function WaitTiming({ step, locked, timeout, label = 'Timeout in milliseconds' }: { step: ActionItem; locked: boolean; timeout: number; label?: string }) {
+export function WaitTiming({ step, locked, timeout, label = t('inspector.wait.timeoutField') }: { step: ActionItem; locked: boolean; timeout: number; label?: string }) {
   const cmds = useSteps();
-  const tt = useTt();
   const id = step.id ?? '';
   const field = onTimeoutField(step);
   return (
     <>
-      <Section label="Timeout">
+      <Section label={t('inspector.wait.timeout')}>
         <DraftField stepId={id} field="timeout" label={label} kind="int" step={1000} min={MIN_TIMEOUT_MS} max={MAX_TIMEOUT_MS} unit="ms" stored={String(timeout)} disabled={locked} />
         <Chips values={TIMEOUT_CHIPS} current={timeout} disabled={locked} onPick={(v) => applyEdits(cmds, id, [{ field: 'timeout', value: String(v) }])} />
       </Section>
-      <Section label="On timeout">
+      <Section label={t('inspector.wait.onTimeout')}>
         <Segmented<'halt' | 'continue'>
-          label="On timeout"
+          label={t('inspector.wait.onTimeout')}
           value={goesOn(step) ? 'continue' : 'halt'}
           disabled={locked}
-          options={[{ value: 'halt', label: 'Halt', tip: tt('The run stops', 'A execução para') }, { value: 'continue', label: 'Continue', tip: tt('The run goes on to the next step', 'A execução segue para o próximo passo') }]}
+          options={[
+            { value: 'halt', label: t('inspector.wait.halt'), tip: t('inspector.wait.haltTip') },
+            { value: 'continue', label: t('inspector.wait.continue'), tip: t('inspector.wait.continueTip') },
+          ]}
           onChange={(v) => applyEdits(cmds, id, [{ field, value: v === 'continue' ? 'Continue' : '' }])}
         />
       </Section>

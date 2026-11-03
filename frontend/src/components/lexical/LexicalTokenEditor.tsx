@@ -58,7 +58,7 @@ import {
   Bold, Italic, Underline, Strikethrough, Code, List, ListOrdered, Link2, Check, X, RemoveFormatting,
 } from 'lucide-react';
 import { iconButtonClass } from '../common/IconButton';
-import { useTt } from '../../state/LanguageContext';
+import { t } from '../../i18n';
 import { TokenNode, $createTokenNode, $isTokenNode } from './TokenNode';
 import { ClipboardChipEditContext, OPEN_TOKEN_CHIP_COMMAND, type ClipboardChipEditRequest } from './TokenChip';
 // The whitelist of names the backend resolves, and the walker that finds them the way the
@@ -943,7 +943,7 @@ function TokenAutocompletePlugin({ scope }: { scope: TokenScope }) {
     <div
       ref={menuRef}
       role="listbox"
-      aria-label="Tokens"
+      aria-label={t('tokenEditor.autocomplete.name')}
       data-token-popover=""
       // Keeps the editor's focus and selection while an entry is clicked, as the toolbar does.
       onMouseDown={(e) => e.preventDefault()}
@@ -973,7 +973,7 @@ function TokenAutocompletePlugin({ scope }: { scope: TokenScope }) {
         </Fragment>
       ))}
       <div className="mt-1 px-3 pt-1 pb-0.5 border-t border-border-subtle text-caption text-text-tertiary">
-        Enter inserts · Esc keeps the brace
+        {t('tokenEditor.autocomplete.keys')}
       </div>
     </div>,
     document.body,
@@ -1041,7 +1041,6 @@ function $clearFormatting(): void {
 
 function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDelivered: boolean; toolbarExtra?: React.ReactNode }) {
   const [editor] = useLexicalComposerContext();
-  const tt = useTt();
   const [formats, setFormats] = useState({
     bold: false, italic: false, underline: false, strikethrough: false, code: false,
     link: false, ul: false, ol: false,
@@ -1140,8 +1139,8 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
   const btnClass = (active: boolean) =>
     iconButtonClass('sm', { className: active ? 'text-accent bg-[color-mix(in_srgb,var(--color-accent)_14%,transparent)] enabled:hover:text-accent' : '' });
 
-  // Icon-only, so each one is NAMED (English, like every name — the tip is the localised text) and
-  // says whether its format is ON: the accent tint was that state's only channel.
+  // Icon-only, so each one is NAMED (the catalog's noun, in the build's language, beside the tip that
+  // adds the shortcut) and says whether its format is ON: the accent tint was that state's only channel.
   const fmtBtn = (fmt: TextFormatType, active: boolean, Icon: typeof Bold, tip: string, name: string) => (
     <button
       type="button"
@@ -1169,11 +1168,11 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
       <div className={`flex flex-wrap items-center gap-x-0.5 gap-y-1 min-w-0 transition-opacity ${
         formattingDelivered ? '' : 'opacity-45 hover:opacity-75'
       }`}>
-      {fmtBtn('bold', formats.bold, Bold, tt('Bold (Ctrl+B)', 'Negrito (Ctrl+B)'), 'Bold')}
-      {fmtBtn('italic', formats.italic, Italic, tt('Italic (Ctrl+I)', 'Itálico (Ctrl+I)'), 'Italic')}
-      {fmtBtn('underline', formats.underline, Underline, tt('Underline (Ctrl+U)', 'Sublinhado (Ctrl+U)'), 'Underline')}
-      {fmtBtn('strikethrough', formats.strikethrough, Strikethrough, tt('Strikethrough', 'Tachado'), 'Strikethrough')}
-      {fmtBtn('code', formats.code, Code, tt('Inline code', 'Código inline'), 'Inline code')}
+      {fmtBtn('bold', formats.bold, Bold, t('tokenEditor.toolbar.boldTip'), t('tokenEditor.toolbar.bold'))}
+      {fmtBtn('italic', formats.italic, Italic, t('tokenEditor.toolbar.italicTip'), t('tokenEditor.toolbar.italic'))}
+      {fmtBtn('underline', formats.underline, Underline, t('tokenEditor.toolbar.underlineTip'), t('tokenEditor.toolbar.underline'))}
+      {fmtBtn('strikethrough', formats.strikethrough, Strikethrough, t('tokenEditor.toolbar.strikethrough'), t('tokenEditor.toolbar.strikethrough'))}
+      {fmtBtn('code', formats.code, Code, t('tokenEditor.toolbar.code'), t('tokenEditor.toolbar.code'))}
       {/* The eraser closes the inline-format cluster. Measured before adding it (2026-09-05, the
           rule from 08-31): at the minimum window the group had 133 px of slack with the link input
           closed, so these 24 px keep the row on one line; with the input open the delivery control
@@ -1184,11 +1183,11 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => editor.update($clearFormatting)}
         disabled={!formats.clearable}
-        aria-label="Clear formatting"
+        aria-label={t('tokenEditor.toolbar.clearFormatting')}
         className={btnClass(false)}
         data-tip={formats.clearable
-          ? tt('Clear formatting (Ctrl+\\)', 'Limpar formatação (Ctrl+\\)')
-          : tt('Select formatted text to clear it', 'Selecione texto formatado para limpar')}
+          ? t('tokenEditor.toolbar.clearFormattingTip')
+          : t('tokenEditor.toolbar.nothingToClear')}
       >
         <RemoveFormatting size={14} />
       </button>
@@ -1197,10 +1196,10 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
         type="button"
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => editor.dispatchCommand(formats.ul ? REMOVE_LIST_COMMAND : INSERT_UNORDERED_LIST_COMMAND, undefined)}
-        aria-label="Bullet list"
+        aria-label={t('tokenEditor.toolbar.bulletList')}
         aria-pressed={formats.ul}
         className={btnClass(formats.ul)}
-        data-tip={tt('Bullet list', 'Lista com marcadores')}
+        data-tip={t('tokenEditor.toolbar.bulletList')}
       >
         <List size={14} />
       </button>
@@ -1208,10 +1207,10 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
         type="button"
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => editor.dispatchCommand(formats.ol ? REMOVE_LIST_COMMAND : INSERT_ORDERED_LIST_COMMAND, undefined)}
-        aria-label="Numbered list"
+        aria-label={t('tokenEditor.toolbar.numberedList')}
         aria-pressed={formats.ol}
         className={btnClass(formats.ol)}
-        data-tip={tt('Numbered list', 'Lista numerada')}
+        data-tip={t('tokenEditor.toolbar.numberedList')}
       >
         <ListOrdered size={14} />
       </button>
@@ -1232,9 +1231,9 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
           }
         }}
         className={btnClass(formats.link || linkInputOpen)}
-        aria-label={formats.link ? 'Remove link' : 'Link'}
+        aria-label={formats.link ? t('tokenEditor.toolbar.removeLink') : t('tokenEditor.toolbar.link')}
         aria-expanded={formats.link ? undefined : linkInputOpen}
-        data-tip={formats.link ? tt('Remove link', 'Remover link') : tt('Link', 'Inserir link')}
+        data-tip={formats.link ? t('tokenEditor.toolbar.removeLink') : t('tokenEditor.toolbar.link')}
       >
         <Link2 size={14} />
       </button>
@@ -1251,21 +1250,21 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
               if (e.key === 'Enter') { e.preventDefault(); if (e.ctrlKey) e.stopPropagation(); applyLink(); }
               if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setLinkInputOpen(false); setLinkUrl(''); editor.focus(); }
             }}
-            placeholder="https://…"
-            aria-label="Link URL"
+            placeholder={t('tokenEditor.toolbar.urlExample')}
+            aria-label={t('tokenEditor.toolbar.linkUrl')}
             autoFocus
             spellCheck={false}
             className="h-6 w-52 min-w-[7rem] shrink px-1.5 text-caption font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid"
           />
-          <button type="button" onClick={applyLink} aria-label="Apply link" className={btnClass(false)} data-tip={tt('Apply link', 'Aplicar link')}>
+          <button type="button" onClick={applyLink} aria-label={t('tokenEditor.toolbar.applyLink')} className={btnClass(false)} data-tip={t('tokenEditor.toolbar.applyLink')}>
             <Check size={14} />
           </button>
           <button
             type="button"
             onClick={() => { setLinkInputOpen(false); setLinkUrl(''); editor.focus(); }}
-            aria-label="Cancel link"
+            aria-label={t('tokenEditor.toolbar.cancelLink')}
             className={btnClass(false)}
-            data-tip={tt('Cancel', 'Cancelar')}
+            data-tip={t('common.actions.cancel')}
           >
             <X size={14} />
           </button>
@@ -1376,8 +1375,8 @@ export function LexicalTokenEditor({
   density = 'dialog',
   contentClassName = EDITOR_DENSITY[density].content,
   placeholderClassName = EDITOR_DENSITY[density].placeholder,
-  placeholder: placeholderContent = 'Type the text to send…',
-  ariaLabel = 'Text to send',
+  placeholder: placeholderContent = t('tokenEditor.editor.placeholder'),
+  ariaLabel = t('tokenEditor.editor.name'),
   tokenAutocomplete = false,
   tokenScope = 'desktop',
   onClipboardChipEdit,

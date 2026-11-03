@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import type { ActionItem } from '../../bridge/messageTypes';
+import { t } from '../../i18n';
 import { useEditorTools } from '../../logic/useEditorTools';
-import { useTt } from '../../state/LanguageContext';
 import { applyCropMode, cropBetween, cropIsUsable, type CropRect, type DragMode } from '../../utils/cropRect';
 import { getActionTypeColors } from '../../utils/displayUtils';
 import { stepName } from '../list/stepTypes';
@@ -11,7 +11,7 @@ import { Segmented } from './fields';
 import './referenceCrop.css';
 
 type Zoom = 'fit' | '100' | '200';
-const ZOOMS: { value: Zoom; label: string }[] = [{ value: 'fit', label: 'Fit' }, { value: '100', label: '100%' }, { value: '200', label: '200%' }];
+const ZOOMS: { value: Zoom; label: string }[] = [{ value: 'fit', label: t('probe.crop.fit') }, { value: '100', label: '100%' }, { value: '200', label: '200%' }];
 const HANDLES: DragMode[] = ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se'];
 const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 // The room kept around the image in Fit, so the handles on its edges stay easy to take.
@@ -44,7 +44,7 @@ export default function ReferenceCrop({ step, index, count }: { step: ActionItem
     <CropEditor
       imagePath={step.imagePath}
       imageBase64={step.imageBase64}
-      sub={`${stepName(step.actionType)} · step ${index + 1} of ${count} · expanded`}
+      sub={t('probe.crop.sub', { name: stepName(step.actionType), number: index + 1, total: count })}
       colors={getActionTypeColors(step.actionType)}
       onDone={(crop) => {
         const at = useShell.getState().app.actions.findIndex(s => s.id === step.id);
@@ -75,7 +75,6 @@ export function CropEditor({ imagePath, imageBase64, sub, colors, onDone, onReca
   onRecapture: () => void;
   onLeave: () => void;
 }) {
-  const tt = useTt();
   const hintId = useId();
   const [image, setImage] = useState(imagePath);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
@@ -194,24 +193,24 @@ export function CropEditor({ imagePath, imageBase64, sub, colors, onDone, onReca
           <span className="step-icon" data-icon="crop" />
         </span>
         <div className="insp-title">
-          <span className="insp-name" data-display="">Reference image</span>
+          <span className="insp-name" data-display="">{t('probe.image.reference')}</span>
           <span className="insp-sub">{sub}</span>
         </div>
-        <button type="button" className="insp-button" data-tip={tt('Capture the image again on the screen', 'Capturar a imagem de novo na tela')} onClick={onRecapture}>
+        <button type="button" className="insp-button" data-tip={t('probe.image.recaptureTip')} onClick={onRecapture}>
           <span className="step-icon" data-icon="refresh-cw" />
-          Recapture
+          {t('probe.image.recapture')}
         </button>
-        <button type="button" className="insp-primary" disabled={!usable} data-tip={usable ? tt('Keep the crop (Enter)', 'Manter o recorte (Enter)') : tt('Pick a smaller region first', 'Selecione uma região menor primeiro')} onClick={done}>
-          Done
+        <button type="button" className="insp-primary" disabled={!usable} data-tip={usable ? t('probe.crop.keepTip') : t('probe.crop.smallerTip')} onClick={done}>
+          {t('common.actions.done')}
         </button>
-        <button type="button" className="insp-close" data-on="" aria-label="Collapse editor" data-tip={tt('Leave without cropping (Esc)', 'Sair sem recortar (Esc)')} onClick={onLeave}>
+        <button type="button" className="insp-close" data-on="" aria-label={t('probe.crop.collapse')} data-tip={t('probe.crop.leaveTip')} onClick={onLeave}>
           <span className="step-icon" data-icon="minimize-2" />
         </button>
       </div>
       <div className="crop-bar">
-        <Segmented<Zoom> label="Zoom" value={zoom} options={ZOOMS} onChange={setZoom} />
+        <Segmented<Zoom> label={t('probe.crop.zoom')} value={zoom} options={ZOOMS} onChange={setZoom} />
         <span className="crop-readout">
-          {natural ? `Selection ${crop.w} × ${crop.h} px · at ${crop.x}, ${crop.y} · image ${natural.w} × ${natural.h}` : 'Loading…'}
+          {natural ? t('probe.crop.readout', { w: crop.w, h: crop.h, x: crop.x, y: crop.y, iw: natural.w, ih: natural.h }) : t('probe.crop.loading')}
         </span>
       </div>
       <div
@@ -219,7 +218,7 @@ export function CropEditor({ imagePath, imageBase64, sub, colors, onDone, onReca
         className="crop-area"
         tabIndex={0}
         role="group"
-        aria-label="Crop region"
+        aria-label={t('probe.crop.area')}
         aria-describedby={hintId}
         onKeyDown={onAreaKey}
       >
@@ -236,7 +235,7 @@ export function CropEditor({ imagePath, imageBase64, sub, colors, onDone, onReca
           {imageBase64 && (
             <img
               src={`data:image/png;base64,${imageBase64}`}
-              alt="The reference image"
+              alt={t('probe.image.alt')}
               draggable={false}
               onLoad={(e) => {
                 const w = e.currentTarget.naturalWidth;
@@ -261,8 +260,8 @@ export function CropEditor({ imagePath, imageBase64, sub, colors, onDone, onReca
         </div>
       </div>
       <div className="insp-foot crop-foot">
-        <span id={hintId}>Drag to select · arrows nudge · Shift+arrows resize · Ctrl ×10 · Enter keeps the crop</span>
-        <span className="crop-foot-undo">Ctrl+Z brings the old image back</span>
+        <span id={hintId}>{t('probe.crop.keys')}</span>
+        <span className="crop-foot-undo">{t('probe.crop.undo')}</span>
       </div>
     </div>
   );

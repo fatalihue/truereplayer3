@@ -1,6 +1,6 @@
 import { useId, useState, type KeyboardEvent } from 'react';
 import { Hash, X } from 'lucide-react';
-import { useTt } from '../../../state/LanguageContext';
+import { fmtNum, t } from '../../../i18n';
 import { useShell } from '../../store';
 import { checkTag, MAX_SUGGESTIONS, MAX_TAGS, normalizeTag, parseTagsKey, TAG_MESSAGE, tagsInUseKey, TOP_TAGS, type TagReject } from './tags';
 
@@ -12,7 +12,6 @@ import { checkTag, MAX_SUGGESTIONS, MAX_TAGS, normalizeTag, parseTagsKey, TAG_ME
  * and Esc closes the suggestions. The most used tags of the other macros are a click away.
  */
 export function TagEditor({ tags, onChange, disabled }: { tags: string[]; onChange: (tags: string[]) => void; disabled?: boolean }) {
-  const tt = useTt();
   // The tags in use across the library, counted once per list of macros (a string: no new render
   // when a switch brings the library again with the same tags).
   const inUseKey = useShell(s => tagsInUseKey(s.app.profiles));
@@ -24,9 +23,9 @@ export function TagEditor({ tags, onChange, disabled }: { tags: string[]; onChan
   const listId = `${id}-tags`;
   const optionId = (i: number) => `${id}-tag-${i}`;
 
-  const inUse = parseTagsKey(inUseKey).filter(t => !tags.includes(t.tag));
+  const inUse = parseTagsKey(inUseKey).filter(u => !tags.includes(u.tag));
   const typed = normalizeTag(draft);
-  const suggestions = inUse.filter(t => typed === '' || t.tag.includes(typed)).slice(0, MAX_SUGGESTIONS);
+  const suggestions = inUse.filter(u => typed === '' || u.tag.includes(typed)).slice(0, MAX_SUGGESTIONS);
   const top = inUse.slice(0, TOP_TAGS);
   const listOpen = open && suggestions.length > 0;
   const full = tags.length >= MAX_TAGS;
@@ -40,7 +39,7 @@ export function TagEditor({ tags, onChange, disabled }: { tags: string[]; onChan
     setActive(-1);
   };
   const remove = (tag: string) => {
-    onChange(tags.filter(t => t !== tag));
+    onChange(tags.filter(other => other !== tag));
     setError(null);
   };
 
@@ -73,7 +72,7 @@ export function TagEditor({ tags, onChange, disabled }: { tags: string[]; onChan
               #{tag}
               <button
                 type="button"
-                aria-label={`Remove tag ${tag}`}
+                aria-label={t('macroSettings.tags.remove', { tag })}
                 disabled={disabled}
                 onClick={(e) => {
                   remove(tag);
@@ -92,12 +91,12 @@ export function TagEditor({ tags, onChange, disabled }: { tags: string[]; onChan
           <input
             type="text"
             role="combobox"
-            aria-label="Add a tag"
+            aria-label={t('macroSettings.tags.add')}
             aria-expanded={listOpen}
             aria-controls={listId}
             aria-activedescendant={listOpen && active >= 0 ? optionId(active) : undefined}
             aria-invalid={error ? true : undefined}
-            placeholder="Add a tag…"
+            placeholder={t('macroSettings.tags.addPlaceholder')}
             spellCheck={false}
             autoComplete="off"
             value={draft}
@@ -112,7 +111,7 @@ export function TagEditor({ tags, onChange, disabled }: { tags: string[]; onChan
           <span className="insp-box-unit">{tags.length} / {MAX_TAGS}</span>
         </label>
         {listOpen && (
-          <div id={listId} role="listbox" aria-label="Tag suggestions" className="mset-tag-list menu-surface">
+          <div id={listId} role="listbox" aria-label={t('macroSettings.tags.suggestions')} className="mset-tag-list menu-surface">
             {suggestions.map((s, i) => (
               <button
                 key={s.tag}
@@ -129,7 +128,7 @@ export function TagEditor({ tags, onChange, disabled }: { tags: string[]; onChan
                 onClick={() => add(s.tag)}
               >
                 <span>#{s.tag}</span>
-                <span className="mset-tag-count">used {s.count}×</span>
+                <span className="mset-tag-count">{t('macroSettings.tags.used', { n: fmtNum(s.count) })}</span>
               </button>
             ))}
           </div>
@@ -137,21 +136,21 @@ export function TagEditor({ tags, onChange, disabled }: { tags: string[]; onChan
       </div>
       {/* The field's rule at rest, and why a tag was refused in its place (biblioteca-147). */}
       <span className="insp-hint">
-        {error ? <span data-error="">{TAG_MESSAGE[error]}</span> : 'Press Enter or comma to add. Spaces and accents are converted.'}
+        {error ? <span data-error="">{TAG_MESSAGE[error]}</span> : t('macroSettings.tags.rule')}
       </span>
       {top.length > 0 && (
-        <div className="mset-tag-top" role="group" aria-label="Most used tags">
-          <span className="insp-hint">Most used</span>
-          {top.map(t => (
+        <div className="mset-tag-top" role="group" aria-label={t('macroSettings.tags.mostUsedGroup')}>
+          <span className="insp-hint">{t('macroSettings.tags.mostUsed')}</span>
+          {top.map(u => (
             <button
-              key={t.tag}
+              key={u.tag}
               type="button"
               className="mset-tag-chip"
               disabled={disabled || full}
-              data-tip={tt(`Used by ${t.count} macros`, `Usada por ${t.count} macros`)}
-              onClick={() => add(t.tag)}
+              data-tip={t('macroSettings.tags.usedBy', { count: u.count, n: fmtNum(u.count) })}
+              onClick={() => add(u.tag)}
             >
-              #{t.tag}
+              #{u.tag}
             </button>
           ))}
         </div>

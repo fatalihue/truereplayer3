@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { AppWindow, Clipboard, Clock, Cpu, Dices, FileCheck, Globe, Image, Pipette, ScanText, Variable, type LucideIcon } from 'lucide-react';
 import type { ActionItem } from '../../bridge/messageTypes';
+import { fmtNum, t, tn } from '../../i18n';
 import { useSteps } from '../../logic/useSteps';
-import { useTt } from '../../state/LanguageContext';
 import { Menu } from '../Menu';
 import { anchorBelow, type MenuAnchor } from '../menuAnchor';
 import { checkOf, checksFor, type Check, type ConditionType } from './checks';
@@ -18,6 +18,30 @@ const MENU_ICONS: Record<ConditionType, LucideIcon> = {
 };
 const MAX_WAIT_MS = 86_400_000;
 const MAX_ITERATIONS = 1_000_000;
+// A While's ceiling when its own is 0 (the engine's default).
+const DEFAULT_ITERATIONS = 1000;
+
+/**
+ * What a condition passes on, in the words of its subject (the catalog's conditions.verdict): the label
+ * over the two answers, the answers, and the answer for a check that errors. One whole phrase per
+ * subject, so each language agrees in gender ("Passes when the image is" + "Found", "Passa com o
+ * processo" + "Encontrado"); the checks with no subject of their own read "the check is" … "Met".
+ */
+type Verdict = Readonly<Record<'passesWhen' | 'yes' | 'no' | 'treatAsNo', string>>;
+const MET = tn('conditions.verdict.check');
+const VERDICTS: Record<ConditionType, Verdict> = {
+  ImageFound: tn('conditions.verdict.image'),
+  PixelColorMatch: tn('conditions.verdict.color'),
+  ScreenText: MET,
+  WindowOpen: tn('conditions.verdict.window'),
+  ProcessRunning: tn('conditions.verdict.process'),
+  FileExists: tn('conditions.verdict.file'),
+  ClipboardMatch: MET,
+  Variable: MET,
+  BrowserElementState: tn('conditions.verdict.element'),
+  Random: MET,
+  TimeWindow: MET,
+};
 
 /**
  * ⑧ If, Else If, While and Assert: one condition editor ("Condição — o mesmo editor em If, While,
@@ -29,62 +53,61 @@ const MAX_ITERATIONS = 1_000_000;
  */
 export function ConditionEditor({ step, locked }: { step: ActionItem; locked: boolean }) {
   const cmds = useSteps();
-  const tt = useTt();
   const id = step.id ?? '';
   const edit = (edits: StepEdit[]) => applyEdits(cmds, id, edits);
   const check = checkOf(step.conditionType);
+  const verdict = check ? VERDICTS[check.type] : undefined;
   const negate = !!step.conditionNegate;
-  const met = !check?.subject;
   const assert = step.actionType === 'Assert';
 
   return (
     <>
       <CheckSwitch step={step} check={check} locked={locked} onSwitch={(type) => edit([{ field: 'conditionType', value: type }])} />
-      {check && (
+      {check && verdict && (
         <>
-          <Section label={met ? 'Passes when the check is' : `Passes when ${check.subject} is`}>
+          <Section label={verdict.passesWhen}>
             <Segmented<'yes' | 'not'>
-              label="Passes when"
+              label={t('conditions.passesWhen')}
               value={negate ? 'not' : 'yes'}
               disabled={locked}
-              options={[{ value: 'yes', label: met ? 'Met' : 'Found' }, { value: 'not', label: met ? 'Not met' : 'Not found' }]}
+              options={[{ value: 'yes', label: verdict.yes }, { value: 'not', label: verdict.no }]}
               onChange={(v) => edit([{ field: 'conditionNegate', value: String(v === 'not') }])}
             />
           </Section>
           {/* A chance re-rolled until it hits is no wait at all. */}
           {check.type !== 'Random' && (
-            <Section label="Wait for it" hint="0 = check once.">
-              <DraftField stepId={id} field="conditionTimeout" label="Wait for it, in milliseconds" kind="int" step={500} min={0} max={MAX_WAIT_MS} unit="ms" stored={String(step.conditionTimeout ?? 0)} disabled={locked} />
+            <Section label={t('conditions.waitFor')} hint={t('conditions.waitForHint')}>
+              <DraftField stepId={id} field="conditionTimeout" label={t('conditions.waitForField')} kind="int" step={500} min={0} max={MAX_WAIT_MS} unit="ms" stored={String(step.conditionTimeout ?? 0)} disabled={locked} />
             </Section>
           )}
           {step.actionType === 'While' && (
-            <Section label="Max iterations" hint="0 = the default, 1,000.">
-              <DraftField stepId={id} field="loopMaxIterations" label="Maximum loop iterations" kind="int" min={0} max={MAX_ITERATIONS} unit="×" stored={String(step.loopMaxIterations ?? 0)} disabled={locked} />
+            <Section label={t('conditions.maxIterations')} hint={t('conditions.maxIterationsHint', { n: fmtNum(DEFAULT_ITERATIONS) })}>
+              <DraftField stepId={id} field="loopMaxIterations" label={t('conditions.maxIterationsField')} kind="int" min={0} max={MAX_ITERATIONS} unit="×" stored={String(step.loopMaxIterations ?? 0)} disabled={locked} />
             </Section>
           )}
           {assert ? (
-            <Section label="On failure" hint="Continue does not fail a data-loop row.">
+            <Section label={t('conditions.onFailure')} hint={t('conditions.onFailureHint')}>
               <Segmented<'abort' | 'continue' | 'quiet'>
-                label="On assert failure"
+                label={t('conditions.onFailureGroup')}
                 value={step.assertOnFail === 'Continue' ? 'continue' : step.assertOnFail === 'StopReplay' ? 'quiet' : 'abort'}
                 disabled={locked}
                 options={[
-                  { value: 'abort', label: 'Abort', tip: tt('The run stops with an error', 'A execução para com erro') },
-                  { value: 'continue', label: 'Continue', tip: tt('The run goes on to the next step', 'A execução segue para o próximo passo') },
-                  { value: 'quiet', label: 'Stop quietly', tip: tt('The run ends here, with no error', 'A execução termina aqui, sem erro') },
+                  { value: 'abort', label: t('conditions.abort'), tip: t('conditions.abortTip') },
+                  { value: 'continue', label: t('common.actions.continue'), tip: t('conditions.continueTip') },
+                  { value: 'quiet', label: t('conditions.stopQuietly'), tip: t('conditions.stopQuietlyTip') },
                 ]}
                 onChange={(v) => edit([{ field: 'assertOnFail', value: v === 'continue' ? 'Continue' : v === 'quiet' ? 'StopReplay' : '' }])}
               />
             </Section>
           ) : (
-            <Section label="If the check itself errors">
+            <Section label={t('conditions.onError')}>
               <Segmented<'false' | 'halt'>
-                label="If the check itself errors"
+                label={t('conditions.onError')}
                 value={step.ifOnProbeError === 'Halt' ? 'halt' : 'false'}
                 disabled={locked}
                 options={[
-                  { value: 'false', label: met ? 'Treat as not met' : 'Treat as not found', tip: step.actionType === 'While' ? tt('The loop ends', 'O loop termina') : tt('The If goes the other way', 'O If vai para o outro lado') },
-                  { value: 'halt', label: 'Stop the run' },
+                  { value: 'false', label: verdict.treatAsNo, tip: step.actionType === 'While' ? t('conditions.loopEnds') : t('conditions.ifOtherWay') },
+                  { value: 'halt', label: t('conditions.stopRun') },
                 ]}
                 onChange={(v) => edit([{ field: 'ifOnProbeError', value: v === 'halt' ? 'Halt' : '' }])}
               />
@@ -119,36 +142,36 @@ function CheckFields({ check, step, locked }: { check: Check; step: ActionItem; 
  * since its settings go with it until Ctrl+Z.
  */
 function CheckSwitch({ step, check, locked, onSwitch }: { step: ActionItem; check: Check | undefined; locked: boolean; onSwitch: (type: ConditionType) => void }) {
-  const tt = useTt();
   const [menu, setMenu] = useState<{ anchor: MenuAnchor; keyboard: boolean; button: HTMLButtonElement } | null>(null);
   const [was, setWas] = useState<string | null>(null);
   return (
-    <Section label="Check" hint={was ? `Was ${was} · Ctrl+Z brings it back` : undefined}>
+    <Section label={t('conditions.check')} hint={was ? t('conditions.was', { name: was }) : undefined}>
       <button
         type="button"
         className="insp-check-button"
         aria-haspopup="menu"
         aria-expanded={!!menu}
-        aria-label={`Check: ${check?.name ?? 'none'}`}
+        aria-label={check ? t('conditions.checkNamed', { name: check.name }) : t('conditions.checkNone')}
         disabled={locked}
         onClick={(e) => setMenu(menu ? null : { anchor: anchorBelow(e.currentTarget, 'start'), keyboard: e.detail === 0, button: e.currentTarget })}
       >
         {check && <span className="step-icon" data-icon={check.icon} />}
-        <span className="insp-check-name">{check?.name ?? 'Choose a check'}</span>
+        <span className="insp-check-name" data-glossary={check ? '' : undefined}>{check?.name ?? t('conditions.choose')}</span>
         <span className="step-icon" data-icon="chevron-down" />
       </button>
       {menu && (
         <Menu
           anchor={menu.anchor}
-          label="Checks"
+          label={t('conditions.list')}
           focusFirst={menu.keyboard}
           toggle={menu.button}
           onClose={() => setMenu(null)}
           entries={checksFor(step.actionType).map(c => ({
             label: c.name,
+            named: true,
             icon: MENU_ICONS[c.type],
             checked: c.type === check?.type,
-            tip: tt(c.desc, c.descPt),
+            tip: c.desc,
             onSelect: () => {
               if (c.type === check?.type) return;
               setWas(check?.name ?? null);

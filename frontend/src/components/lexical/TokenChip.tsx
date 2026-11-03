@@ -5,7 +5,6 @@ import {
   $getNodeByKey, $getSelection, $isNodeSelection, createCommand, COMMAND_PRIORITY_LOW,
   type LexicalCommand, type NodeKey,
 } from 'lexical';
-import { useTt } from '../../state/LanguageContext';
 import { TokenNode } from './TokenNode';
 import { TokenChipPopover } from './TokenChipPopover';
 import { tokenTip } from './tokenDescriptions';
@@ -55,7 +54,6 @@ export function TokenChip({ nodeKey, token }: { nodeKey: NodeKey; token: string 
   // span mounts/unmounts.
   const [anchorEl, setAnchorEl] = useState<HTMLSpanElement | null>(null);
   const liveTokenRef = useRef(token);
-  const tt = useTt();
   // Lexical's own selection model IS the keyboard affordance — arrowing onto an inline, isolated,
   // keyboard-selectable decorator already builds a NodeSelection on it. All this does is mirror
   // that into a class, which is the half that was missing: the state existed and was invisible.
@@ -163,7 +161,7 @@ export function TokenChip({ nodeKey, token }: { nodeKey: NodeKey; token: string 
         // {clipboard:next} note) was reachable only before you had a chip to read it about.
         // Hover-only, like every other data-tip; the keyboard path to the same words is the
         // popover header, which Enter/Space now opens.
-        data-tip={tokenTip(token, tt, { skipKeys: true })}
+        data-tip={tokenTip(token, { skipKeys: true })}
         // DOM marker for the selected state so it can be asserted without a screenshot.
         data-chip-selected={isSelected ? '' : undefined}
         // Chip palette tracks the SendText action colour (--color-action-sendtext-fg).
