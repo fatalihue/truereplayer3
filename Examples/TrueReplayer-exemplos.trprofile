@@ -55,7 +55,7 @@
         }
       ],
       "images": null,
-      "description": "Digita duas linhas no Bloco de Notas. {enter} e {tab} dentro do texto viram teclas de verdade. Selecione o perfil e aperte Replay.",
+      "description": "Digita duas linhas no Bloco de Notas. {enter} e {tab} dentro do texto viram teclas de verdade. Selecione a macro e aperte Reproduzir.",
       "tags": [
         "exemplo",
         "tokens"
@@ -300,7 +300,7 @@
           "x": 0,
           "y": 0,
           "delay": 100,
-          "comment": "digita um nome sujo (modo Type, sem clipboard)",
+          "comment": "digita um nome sujo (modo Digitar, sem clipboard)",
           "imagePath": null,
           "timeout": 5000,
           "confidence": 0.8,
@@ -399,7 +399,7 @@
           "x": 0,
           "y": 0,
           "delay": 100,
-          "comment": "digita um telefone (modo Type, sem clipboard)",
+          "comment": "digita um telefone (modo Digitar, sem clipboard)",
           "imagePath": null,
           "timeout": 5000,
           "confidence": 0.8,
@@ -536,7 +536,7 @@
           "x": 0,
           "y": 0,
           "delay": 100,
-          "comment": "digita um cadastro de 3 linhas (modo Type, sem clipboard)",
+          "comment": "digita um cadastro de 3 linhas (modo Digitar, sem clipboard)",
           "imagePath": null,
           "timeout": 5000,
           "confidence": 0.8,
@@ -729,7 +729,7 @@
           "x": 0,
           "y": 0,
           "delay": 100,
-          "comment": "digita uma lista de 4 linhas (modo Type, sem clipboard)",
+          "comment": "digita uma lista de 4 linhas (modo Digitar, sem clipboard)",
           "imagePath": null,
           "timeout": 5000,
           "confidence": 0.8,
@@ -908,7 +908,7 @@
           "x": 0,
           "y": 0,
           "delay": 100,
-          "comment": "digita um nome (modo Type, sem clipboard)",
+          "comment": "digita um nome (modo Digitar, sem clipboard)",
           "imagePath": null,
           "timeout": 5000,
           "confidence": 0.8,
@@ -994,7 +994,7 @@
           "x": 0,
           "y": 0,
           "delay": 100,
-          "comment": "digita outro texto (modo Type, sem clipboard)",
+          "comment": "digita outro texto (modo Digitar, sem clipboard)",
           "imagePath": null,
           "timeout": 5000,
           "confidence": 0.8,
@@ -1255,7 +1255,7 @@
           "x": 0,
           "y": 0,
           "delay": 100,
-          "comment": "modo Add: soma 10 a cada volta",
+          "comment": "modo Somar: \u002B10 a cada volta",
           "imagePath": null,
           "timeout": 5000,
           "confidence": 0.8,
@@ -1280,7 +1280,7 @@
         }
       ],
       "images": null,
-      "description": "O perfil roda 3 vezes (Loops = 3). {counter} \u00E9 a volta; Set Variable em Add soma a cada volta, porque a vari\u00E1vel dura a execu\u00E7\u00E3o inteira.",
+      "description": "A macro roda 3 vezes (Loops = 3). {counter} \u00E9 a volta; Set Variable em Somar acumula a cada volta, porque a vari\u00E1vel dura a execu\u00E7\u00E3o inteira.",
       "tags": [
         "exemplo",
         "vari\u00E1veis"
@@ -1337,7 +1337,7 @@
           "x": 0,
           "y": 0,
           "delay": 100,
-          "comment": "modo Cycle: um item por linha",
+          "comment": "modo Ciclo: um item por linha",
           "imagePath": null,
           "timeout": 5000,
           "confidence": 0.8,
@@ -1362,7 +1362,7 @@
         }
       ],
       "images": null,
-      "description": "Set Variable em Cycle guarda o PR\u00D3XIMO item da lista a cada execu\u00E7\u00E3o e volta ao come\u00E7o no fim. A posi\u00E7\u00E3o fica gravada: rode v\u00E1rias vezes. Bot\u00E3o direito na linha \u2192 Reset cycle position recome\u00E7a.",
+      "description": "Set Variable em Ciclo guarda o PR\u00D3XIMO item da lista a cada execu\u00E7\u00E3o e volta ao come\u00E7o no fim. A posi\u00E7\u00E3o fica gravada: rode v\u00E1rias vezes. Bot\u00E3o direito na linha \u2192 Redefinir posi\u00E7\u00E3o do ciclo recome\u00E7a.",
       "tags": [
         "exemplo",
         "vari\u00E1veis"
@@ -1857,7 +1857,7 @@
           "x": 0,
           "y": 0,
           "delay": 100,
-          "comment": "Window Open: h\u00E1 janela do Bloco de Notas?",
+          "comment": "Window open: h\u00E1 janela do Bloco de Notas?",
           "imagePath": null,
           "timeout": 5000,
           "confidence": 0.8,
@@ -1901,7 +1901,7 @@
           "x": 0,
           "y": 0,
           "delay": 100,
-          "comment": "Process Running: o Chrome est\u00E1 rodando?",
+          "comment": "Process running: o Chrome est\u00E1 rodando?",
           "imagePath": null,
           "timeout": 5000,
           "confidence": 0.8,
@@ -2077,7 +2077,7 @@
           "x": 0,
           "y": 0,
           "delay": 100,
-          "comment": "File Exists: o caminho aceita tokens",
+          "comment": "File exists: o caminho aceita tokens",
           "imagePath": null,
           "timeout": 5000,
           "confidence": 0.8,
@@ -2365,7 +2365,7 @@
           "x": 0,
           "y": 0,
           "delay": 100,
-          "comment": "modo Add: i \u002B 1",
+          "comment": "modo Somar: i \u002B 1",
           "imagePath": null,
           "timeout": 5000,
           "confidence": 0.8,
@@ -2522,7 +2522,7 @@
         }
       ],
       "images": null,
-      "description": "While repete enquanto a condi\u00E7\u00E3o vale; {loop} \u00E9 a volta do bloco. Next iteration pula o resto da volta, Break loop sai do bloco. Max iterations (20) \u00E9 o freio de emerg\u00EAncia.",
+      "description": "While repete enquanto a condi\u00E7\u00E3o vale; {loop} \u00E9 a volta do bloco. Next iteration pula o resto da volta, Break loop sai do bloco. M\u00E1x. de voltas (20) \u00E9 o freio de emerg\u00EAncia.",
       "tags": [
         "exemplo",
         "condicionais"
@@ -2597,7 +2597,7 @@
           "x": 0,
           "y": 0,
           "delay": 100,
-          "comment": "responda n\u00E3o para ver o Stop quietly",
+          "comment": "responda n\u00E3o para ver o Parar sem erro",
           "imagePath": null,
           "timeout": 5000,
           "confidence": 0.8,
@@ -2626,11 +2626,11 @@
         {
           "id": "e64a4394dd07976b341c56420349b214",
           "actionType": "SetVariable",
-          "key": "passe",
+          "key": "volta",
           "x": 0,
           "y": 0,
           "delay": 100,
-          "comment": "o n\u00FAmero do passe",
+          "comment": "o n\u00FAmero da volta",
           "imagePath": null,
           "timeout": 5000,
           "confidence": 0.8,
@@ -2641,7 +2641,7 @@
         {
           "id": "8551a8b7bb65f750abe3c2676524f15f",
           "actionType": "SendText",
-          "key": "Passe {counter}: ",
+          "key": "Volta {counter}: ",
           "x": 0,
           "y": 0,
           "delay": 100,
@@ -2655,7 +2655,7 @@
         {
           "id": "357c2aa5b53014d5affce40cbbdb1704",
           "actionType": "If",
-          "key": "passe",
+          "key": "volta",
           "x": 0,
           "y": 0,
           "delay": 100,
@@ -2672,7 +2672,7 @@
         {
           "id": "cca84a114198923fab0255b54288d1dc",
           "actionType": "SendText",
-          "key": "Return encerra s\u00F3 este passe.{enter}",
+          "key": "Return encerra s\u00F3 esta volta.{enter}",
           "x": 0,
           "y": 0,
           "delay": 100,
@@ -2690,7 +2690,7 @@
           "x": 0,
           "y": 0,
           "delay": 100,
-          "comment": "Return: o pr\u00F3ximo passe roda",
+          "comment": "Return: a pr\u00F3xima volta roda",
           "imagePath": null,
           "timeout": 5000,
           "confidence": 0.8,
@@ -2714,7 +2714,7 @@
         {
           "id": "96c1fb646734a53840491745025073b9",
           "actionType": "If",
-          "key": "passe",
+          "key": "volta",
           "x": 0,
           "y": 0,
           "delay": 100,
@@ -2749,7 +2749,7 @@
           "x": 0,
           "y": 0,
           "delay": 100,
-          "comment": "Stop: os passes 4 e 5 nunca rodam",
+          "comment": "Stop: as voltas 4 e 5 nunca rodam",
           "imagePath": null,
           "timeout": 5000,
           "confidence": 0.8,
@@ -2786,7 +2786,7 @@
         }
       ],
       "images": null,
-      "description": "Assert exige: se n\u00E3o valer, para com erro (Abort) ou encerra sem erro (Stop quietly). Return encerra s\u00F3 o passe; Stop, a execu\u00E7\u00E3o inteira. Loops = 5, mas s\u00F3 3 passes rodam. A pergunta vem uma vez: a resposta vale para a execu\u00E7\u00E3o toda. Responda n\u00E3o para ver o Stop quietly.",
+      "description": "Assert exige: se n\u00E3o valer, para com erro (Abortar) ou encerra sem erro (Parar sem erro). Return encerra s\u00F3 a volta; Stop, a execu\u00E7\u00E3o inteira. Loops = 5, mas s\u00F3 3 voltas rodam. A pergunta vem uma vez: a resposta vale para a execu\u00E7\u00E3o toda. Responda n\u00E3o para ver o Parar sem erro.",
       "tags": [
         "exemplo",
         "condicionais"
@@ -2886,7 +2886,7 @@
           "x": 0,
           "y": 0,
           "delay": 100,
-          "comment": "Condition = NOT Met: e-mail sem @",
+          "comment": "Passa com a condi\u00E7\u00E3o N\u00E3o atendida: e-mail sem @",
           "imagePath": null,
           "timeout": 5000,
           "confidence": 0.8,
@@ -3057,7 +3057,7 @@
         }
       ],
       "images": null,
-      "description": "A tabela vem dentro do perfil: \u00EDcone de tabela na barra. For Each Data Row repete o miolo uma vez por linha, e o If decide por linha. A Carla, sem @ no e-mail, cai no primeiro If (NOT Met), e o Next iteration passa para a pr\u00F3xima linha.",
+      "description": "A tabela vem dentro da macro, na aba Data Loop. For Each Data Row repete o miolo uma vez por linha, e o If decide por linha. A Carla, sem @ no e-mail, cai no primeiro If (N\u00E3o atendida), e o Next iteration passa para a pr\u00F3xima linha.",
       "tags": [
         "exemplo",
         "completo"
@@ -3158,7 +3158,7 @@
           "x": 0,
           "y": 0,
           "delay": 100,
-          "comment": "digita o lote e 3 pedidos (modo Type, sem clipboard)",
+          "comment": "digita o lote e 3 pedidos (modo Digitar, sem clipboard)",
           "imagePath": null,
           "timeout": 5000,
           "confidence": 0.8,
@@ -3517,7 +3517,7 @@
           "x": 0,
           "y": 0,
           "delay": 100,
-          "comment": "o subperfil l\u00EA {var:atendente}",
+          "comment": "a macro chamada l\u00EA {var:atendente}",
           "imagePath": null,
           "timeout": 5000,
           "confidence": 0.8,
@@ -3526,7 +3526,7 @@
         }
       ],
       "images": null,
-      "description": "Junta tudo: perguntas, rod\u00EDzio, {clipboard:next} num While, escada de If, contador, Assert de limite e um subperfil (18b) que l\u00EA as vari\u00E1veis deste. A 1\u00AA linha copiada \u00E9 o lote: ela muda a cada execu\u00E7\u00E3o, e \u00E9 isso que faz o {clipboard:next} recome\u00E7ar \u2014 copiar a mesma coisa n\u00E3o recome\u00E7a.",
+      "description": "Junta tudo: perguntas, rod\u00EDzio, {clipboard:next} num While, escada de If, contador, Assert de limite e uma macro chamada pelo Run Macro (18b), que l\u00EA as vari\u00E1veis desta. A 1\u00AA linha copiada \u00E9 o lote: ela muda a cada execu\u00E7\u00E3o, e \u00E9 isso que faz o {clipboard:next} recome\u00E7ar \u2014 copiar a mesma coisa n\u00E3o recome\u00E7a.",
       "tags": [
         "exemplo",
         "completo"
@@ -3583,7 +3583,7 @@
           "x": 0,
           "y": 0,
           "delay": 100,
-          "comment": "{var:atendente} vem do perfil 18",
+          "comment": "{var:atendente} vem da macro 18",
           "imagePath": null,
           "timeout": 5000,
           "confidence": 0.8,
@@ -3592,7 +3592,7 @@
         }
       ],
       "images": null,
-      "description": "Subperfil chamado pelo 18. Roda dentro da mesma execu\u00E7\u00E3o, ent\u00E3o l\u00EA as vari\u00E1veis de quem chamou. Rodado sozinho, sai sem o nome do atendente.",
+      "description": "Macro chamada pelo Run Macro da 18. Roda dentro da mesma execu\u00E7\u00E3o, ent\u00E3o l\u00EA as vari\u00E1veis de quem chamou. Rodada sozinha, sai sem o nome do atendente.",
       "tags": [
         "exemplo",
         "completo"

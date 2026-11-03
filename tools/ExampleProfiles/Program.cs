@@ -64,7 +64,7 @@ static class Gen
     static IEnumerable<TrueReplayer.Models.ActionItem> Copia(string amostra, int linhas, string oque)
     {
         yield return Tecla("Ctrl+End", "prepara: vai para o fim do texto");
-        yield return Digita("{enter}" + amostra, "digita " + oque + " (modo Type, sem clipboard)");
+        yield return Digita("{enter}" + amostra, "digita " + oque + " (modo Digitar, sem clipboard)");
         yield return Tecla("Shift+Home", "seleciona a linha");
         if (linhas > 1) yield return Tecla("Shift+Up", "estende a seleção às linhas de cima", linhas - 1);
         yield return Tecla("Ctrl+C", "copia");
@@ -84,7 +84,7 @@ static class Gen
     {
         // ══ Tokens ══════════════════════════════════════════════════════════════════════
         new("01 · Olá com Enter", "👋",
-            "Digita duas linhas no Bloco de Notas. {enter} e {tab} dentro do texto viram teclas de verdade. Selecione o perfil e aperte Replay.",
+            "Digita duas linhas no Bloco de Notas. {enter} e {tab} dentro do texto viram teclas de verdade. Selecione a macro e aperte Reproduzir.",
             "tokens", L(Abrir(),
                 Txt("Olá! Tudo bem?{enter}Segue o código:{tab}ABC-123{enter}{enter}", "{enter} e {tab} são teclas, não texto"))),
 
@@ -147,15 +147,15 @@ static class Gen
                 Txt("Confirmando o pedido de {var:produto:upper}.{enter}{enter}", "e pode ser reusada"))),
 
         new("09 · Contar e somar", "🔢",
-            "O perfil roda 3 vezes (Loops = 3). {counter} é a volta; Set Variable em Add soma a cada volta, porque a variável dura a execução inteira.",
+            "A macro roda 3 vezes (Loops = 3). {counter} é a volta; Set Variable em Somar acumula a cada volta, porque a variável dura a execução inteira.",
             "variáveis", L(Abrir(),
-                Var("total", "10", "modo Add: soma 10 a cada volta", "add"),
+                Var("total", "10", "modo Somar: +10 a cada volta", "add"),
                 Txt("Item {counter:pad:3} — total: {var:total}{enter}", "pad:3 completa com zeros")), Loops: 3),
 
         new("10 · Rodízio", "🔁",
-            "Set Variable em Cycle guarda o PRÓXIMO item da lista a cada execução e volta ao começo no fim. A posição fica gravada: rode várias vezes. Botão direito na linha → Reset cycle position recomeça.",
+            "Set Variable em Ciclo guarda o PRÓXIMO item da lista a cada execução e volta ao começo no fim. A posição fica gravada: rode várias vezes. Botão direito na linha → Redefinir posição do ciclo recomeça.",
             "variáveis", L(Abrir(),
-                Var("saudacao", "Bom dia\nOlá\nOi, tudo bem?", "modo Cycle: um item por linha", "cycle"),
+                Var("saudacao", "Bom dia\nOlá\nOi, tudo bem?", "modo Ciclo: um item por linha", "cycle"),
                 Txt("{var:saudacao} — esta execução pegou este.{enter}", "rode de novo: vem o próximo"))),
 
         new("11 · Número vindo de variável", "🎯",
@@ -193,10 +193,10 @@ static class Gen
         new("14 · Perguntas ao sistema", "🖥️",
             "O If também pergunta ao Windows: janela aberta, processo rodando, hora do dia, arquivo existe, o que está no clipboard e uma moeda. As respostas mudam de máquina para máquina e de hora para hora.",
             "condicionais", L(Abrir(),
-                Cond("If", "WindowOpen", a => a.WindowProcessName = "notepad", "Window Open: há janela do Bloco de Notas?"),
+                Cond("If", "WindowOpen", a => a.WindowProcessName = "notepad", "Window open: há janela do Bloco de Notas?"),
                 Txt("{enter}O Bloco de Notas está aberto.{enter}"),
                 EndIf(),
-                Cond("If", "ProcessRunning", a => a.WindowProcessName = "chrome", "Process Running: o Chrome está rodando?"),
+                Cond("If", "ProcessRunning", a => a.WindowProcessName = "chrome", "Process running: o Chrome está rodando?"),
                 Txt("O Chrome está rodando.{enter}"),
                 Else(),
                 Txt("O Chrome não está rodando.{enter}"),
@@ -208,7 +208,7 @@ static class Gen
                 Else(),
                 Txt("Boa noite!{enter}"),
                 EndIf(),
-                Cond("If", "FileExists", a => a.FilePath = "{env:WINDIR}\\notepad.exe", "File Exists: o caminho aceita tokens"),
+                Cond("If", "FileExists", a => a.FilePath = "{env:WINDIR}\\notepad.exe", "File exists: o caminho aceita tokens"),
                 Txt("O arquivo {env:WINDIR}\\notepad.exe existe.{enter}"),
                 EndIf(),
                 Cond("If", "ClipboardMatch", a => { a.ClipboardPatternType = "regex"; a.ClipboardPattern = "^\\d{11}$"; }, "Clipboard: 11 dígitos (regex)?"),
@@ -223,12 +223,12 @@ static class Gen
                 EndIf())),
 
         new("15 · Repetir", "🔄",
-            "While repete enquanto a condição vale; {loop} é a volta do bloco. Next iteration pula o resto da volta, Break loop sai do bloco. Max iterations (20) é o freio de emergência.",
+            "While repete enquanto a condição vale; {loop} é a volta do bloco. Next iteration pula o resto da volta, Break loop sai do bloco. Máx. de voltas (20) é o freio de emergência.",
             "condicionais", L(Abrir(),
                 Var("i", "0", "começa do zero"),
                 Txt("{enter}Contando:{enter}"),
                 A("While", a => { a.ConditionType = "Variable"; a.Key = "i"; a.ConditionOperator = "lt"; a.ConditionOperand = "10"; a.LoopMaxIterations = 20; a.Comment = "enquanto i < 10"; }),
-                Var("i", "1", "modo Add: i + 1", "add"),
+                Var("i", "1", "modo Somar: i + 1", "add"),
                 CondVar("If", "i", "eq", "3"),
                 Txt("(pulando o 3){enter}"),
                 A("ContinueLoop", a => a.Comment = "Next iteration: volta para o While"),
@@ -241,31 +241,31 @@ static class Gen
                 EndLoop("volta para o While"))),
 
         new("16 · Exigir e encerrar", "🛑",
-            "Assert exige: se não valer, para com erro (Abort) ou encerra sem erro (Stop quietly). Return encerra só o passe; Stop, a execução inteira. Loops = 5, mas só 3 passes rodam. A pergunta vem uma vez: a resposta vale para a execução toda. Responda não para ver o Stop quietly.",
+            "Assert exige: se não valer, para com erro (Abortar) ou encerra sem erro (Parar sem erro). Return encerra só a volta; Stop, a execução inteira. Loops = 5, mas só 3 voltas rodam. A pergunta vem uma vez: a resposta vale para a execução toda. Responda não para ver o Parar sem erro.",
             "condicionais", L(Abrir(),
                 Cond("Assert", "WindowOpen", a => { a.WindowProcessName = "notepad"; a.WindowMatchForegroundOnly = true; a.ConditionTimeout = 3000; }, "Bloco de Notas na frente"),
-                Var("seguir", "{input:Continuar?|menu:sim,não}", "responda não para ver o Stop quietly"),
+                Var("seguir", "{input:Continuar?|menu:sim,não}", "responda não para ver o Parar sem erro"),
                 Cond("Assert", "Variable", a => { a.Key = "seguir"; a.ConditionOperator = "eq"; a.ConditionOperand = "sim"; a.AssertOnFail = "StopReplay"; }, "você escolheu não seguir"),
-                Var("passe", "{counter}", "o número do passe"),
-                Txt("Passe {counter}: "),
-                CondVar("If", "passe", "eq", "2"),
-                Txt("Return encerra só este passe.{enter}"),
-                A("Return", a => a.Comment = "Return: o próximo passe roda"),
+                Var("volta", "{counter}", "o número da volta"),
+                Txt("Volta {counter}: "),
+                CondVar("If", "volta", "eq", "2"),
+                Txt("Return encerra só esta volta.{enter}"),
+                A("Return", a => a.Comment = "Return: a próxima volta roda"),
                 EndIf(),
-                CondVar("If", "passe", "eq", "3"),
+                CondVar("If", "volta", "eq", "3"),
                 Txt("Stop encerra a execução inteira.{enter}{enter}"),
-                A("Stop", a => a.Comment = "Stop: os passes 4 e 5 nunca rodam"),
+                A("Stop", a => a.Comment = "Stop: as voltas 4 e 5 nunca rodam"),
                 EndIf(),
                 Txt("segue normal.{enter}")), Loops: 5),
 
         // ══ Sistemas completos ═════════════════════════════════════════════════════════
         new("17 · Planilha que decide", "📊",
-            "A tabela vem dentro do perfil: ícone de tabela na barra. For Each Data Row repete o miolo uma vez por linha, e o If decide por linha. A Carla, sem @ no e-mail, cai no primeiro If (NOT Met), e o Next iteration passa para a próxima linha.",
+            "A tabela vem dentro da macro, na aba Data Loop. For Each Data Row repete o miolo uma vez por linha, e o If decide por linha. A Carla, sem @ no e-mail, cai no primeiro If (Não atendida), e o Next iteration passa para a próxima linha.",
             "completo", L(Abrir(),
                 Txt("{enter}Clientes de {date}:{enter}", "roda 1×"),
                 A("ForEachRow", a => a.Comment = "uma volta por linha da tabela"),
                 Var("email", "{row:email}"),
-                A("If", a => { a.ConditionType = "Variable"; a.Key = "email"; a.ConditionOperator = "contains"; a.ConditionOperand = "@"; a.ConditionNegate = true; a.Comment = "Condition = NOT Met: e-mail sem @"; }),
+                A("If", a => { a.ConditionType = "Variable"; a.Key = "email"; a.ConditionOperator = "contains"; a.ConditionOperand = "@"; a.ConditionNegate = true; a.Comment = "Passa com a condição Não atendida: e-mail sem @"; }),
                 Txt("{datarow}. {row:nome} — e-mail inválido, linha pulada{enter}"),
                 A("ContinueLoop", a => a.Comment = "Next iteration: vai para a próxima linha"),
                 EndIf(),
@@ -294,7 +294,7 @@ static class Gen
             }),
 
         new("18 · Atendimento completo", "🏁",
-            "Junta tudo: perguntas, rodízio, {clipboard:next} num While, escada de If, contador, Assert de limite e um subperfil (18b) que lê as variáveis deste. A 1ª linha copiada é o lote: ela muda a cada execução, e é isso que faz o {clipboard:next} recomeçar — copiar a mesma coisa não recomeça.",
+            "Junta tudo: perguntas, rodízio, {clipboard:next} num While, escada de If, contador, Assert de limite e uma macro chamada pelo Run Macro (18b), que lê as variáveis desta. A 1ª linha copiada é o lote: ela muda a cada execução, e é isso que faz o {clipboard:next} recomeçar — copiar a mesma coisa não recomeça.",
             "completo", L(Abrir(),
                 Copia("Lote {time}{enter}PED-101{enter}PED-102{enter}PED-103", 4, "o lote e 3 pedidos"),
                 Var("atendente", "{input:Seu nome}"),
@@ -316,12 +316,12 @@ static class Gen
                 Var("pedido", "{clipboard:next}", "a próxima; no fim vira vazio e o While sai"),
                 EndLoop(),
                 Txt("{var:n} pedidos atendidos.{enter}"),
-                A("RunProfile", a => { a.Key = "18b · Assinatura"; a.RepeatCount = 1; a.Comment = "o subperfil lê {var:atendente}"; }))),
+                A("RunProfile", a => { a.Key = "18b · Assinatura"; a.RepeatCount = 1; a.Comment = "a macro chamada lê {var:atendente}"; }))),
 
         new("18b · Assinatura", "✍️",
-            "Subperfil chamado pelo 18. Roda dentro da mesma execução, então lê as variáveis de quem chamou. Rodado sozinho, sai sem o nome do atendente.",
+            "Macro chamada pelo Run Macro da 18. Roda dentro da mesma execução, então lê as variáveis de quem chamou. Rodada sozinha, sai sem o nome do atendente.",
             "completo", L(Abrir(),
-                Txt("— {var:atendente}, {date}{enter}{enter}", "{var:atendente} vem do perfil 18"))),
+                Txt("— {var:atendente}, {date}{enter}{enter}", "{var:atendente} vem da macro 18"))),
     };
 
     // ── conferencia de tokens pelo resolvedor do proprio app ─────────────────────────────
