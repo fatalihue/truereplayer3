@@ -1,5 +1,6 @@
 import { Search } from 'lucide-react';
 import { APP_NAME } from '../appIdentity';
+import { fmtNum, t } from '../i18n';
 import { useApp, useShell } from './store';
 import { BrandMark } from './BrandMark';
 import { preload } from './lazyModule';
@@ -26,7 +27,7 @@ export function TitleBar() {
         <button
           type="button"
           className="shell-search no-drag"
-          aria-label="Search macros, steps and commands"
+          aria-label={t('titlebar.search')}
           aria-keyshortcuts="Control+K"
           onClick={palette.open}
           onPointerEnter={() => { void preload(loadPalette); }}
@@ -34,8 +35,8 @@ export function TitleBar() {
         >
           {/* lucide's, like the rail's: a CSS mask here was the opening's first SVG image (~2 ms). */}
           <Search aria-hidden="true" />
-          <span className="shell-search-text" data-form="long">Search macros, steps and commands</span>
-          <span className="shell-search-text" data-form="short">Search</span>
+          <span className="shell-search-text" data-form="long">{t('titlebar.search')}</span>
+          <span className="shell-search-text" data-form="short">{t('titlebar.searchShort')}</span>
           <kbd className="shell-search-kbd">Ctrl</kbd>
           <kbd className="shell-search-kbd">K</kbd>
         </button>
@@ -62,11 +63,15 @@ function StateBadge({ status, clicker }: { status: 'ready' | 'recording' | 'repl
   const countdown = useShell(s => (status === 'replaying' && clicker ? Math.ceil(s.live.clickerStats.countdownMs / 1000) : 0));
   const ended = useShell(s => s.runClock.replayEnded);
   let text: string;
-  if (status === 'recording') text = open ? `Recording · ${open}` : 'Recording';
+  if (status === 'recording') text = open ? t('titlebar.state.recordingMacro', { name: open }) : t('titlebar.state.recording');
   else if (status === 'replaying') {
-    if (clicker) text = paused ? `Paused · ${clicks.toLocaleString('en-US')}` : countdown > 0 ? `Starting in ${countdown} s` : `Clicking · ${clicks.toLocaleString('en-US')}`;
-    else text = `${paused ? 'Waiting' : 'Replaying'}${open ? ` · ${open}` : ''}`;
-  } else text = clicker ? 'Clicker' : 'Ready';
+    if (clicker) {
+      text = paused ? t('titlebar.state.paused', { clicks: fmtNum(clicks) })
+        : countdown > 0 ? t('titlebar.state.startingIn', { seconds: countdown })
+        : t('titlebar.state.clicking', { clicks: fmtNum(clicks) });
+    } else if (paused) text = open ? t('titlebar.state.waitingMacro', { name: open }) : t('titlebar.state.waiting');
+    else text = open ? t('titlebar.state.replayingMacro', { name: open }) : t('titlebar.state.replaying');
+  } else text = clicker ? t('titlebar.state.clicker') : t('titlebar.state.ready');
   const live = status !== 'ready' || undefined;
   return (
     <div

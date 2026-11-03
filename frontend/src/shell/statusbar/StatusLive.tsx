@@ -1,7 +1,7 @@
 import { useAutomations } from '../../logic/useAutomations';
 import { useRemaps } from '../../logic/useRemaps';
 import { useSettings } from '../../logic/useSettings';
-import { useTt } from '../../state/LanguageContext';
+import { t } from '../../i18n';
 import { preload } from '../lazyModule';
 import { useApp } from '../store';
 import { loadSettingsPage, openSettings } from '../ui';
@@ -23,53 +23,42 @@ export function Switches() {
   const settings = useSettings();
   const automations = useAutomations();
   const remaps = useRemaps();
-  const tt = useTt();
   // The remaps pause with the Shortcuts off (and while recording): on, but not in effect.
   const remapsPaused = remapsOn && !shortcuts;
   return (
-    <div className="sb-switches" role="group" aria-label="Master switches">
+    <div className="sb-switches" role="group" aria-label={t('statusbar.switches')}>
       <button
         type="button"
         className="sb-switch"
         aria-pressed={shortcuts}
         data-off={shortcuts ? undefined : ''}
         data-paused={byClicker ? '' : undefined}
-        data-tip={byClicker
-          ? tt("Paused while the Clicker page is open: the macros' hotkeys and hotstrings wait for it to close.", 'Pausados enquanto a página do Clicker está aberta: os atalhos e hotstrings dos macros esperam ela fechar.')
-          : shortcuts
-          ? tt("The macros' hotkeys and hotstrings fire. Off pauses them, and the Key Remaps too.", 'Os atalhos e hotstrings dos macros disparam. Desligado, eles param, e os Key Remaps também.')
-          : tt("Off: the macros' hotkeys and hotstrings won't fire, and the Key Remaps are paused.", 'Desligado: os atalhos e hotstrings dos macros não disparam, e os Key Remaps ficam pausados.')}
+        data-tip={byClicker ? t('statusbar.shortcutsPausedTip') : shortcuts ? t('statusbar.shortcutsOnTip') : t('statusbar.shortcutsOffTip')}
         onClick={() => settings.change('profileKeyEnabled', !shortcuts)}
       >
         <span className="sb-dot" />
-        Shortcuts {byClicker ? 'Paused by Clicker' : shortcuts ? 'On' : 'Off'}
+        {byClicker ? t('statusbar.shortcutsPaused') : shortcuts ? t('statusbar.shortcutsOn') : t('statusbar.shortcutsOff')}
       </button>
       <button
         type="button"
         className="sb-switch"
         aria-pressed={automationsOn}
-        data-tip={automationsOn
-          ? tt('The armed automations run their macros when their trigger comes. Off holds them all.', 'As automações armadas rodam seus macros quando o gatilho chega. Desligado, todas esperam.')
-          : tt('Off: no automation runs, armed or not.', 'Desligado: nenhuma automação roda, armada ou não.')}
+        data-tip={automationsOn ? t('statusbar.automationsOnTip') : t('statusbar.automationsOffTip')}
         onClick={() => automations.setEnabled(!automationsOn)}
       >
         <span className="sb-dot" />
-        Automations {automationsOn ? `On · ${armed} armed` : 'Off'}
+        {automationsOn ? t('statusbar.automationsOn', { count: armed }) : t('statusbar.automationsOff')}
       </button>
       <button
         type="button"
         className="sb-switch"
         aria-pressed={remapsOn}
         data-paused={remapsPaused ? '' : undefined}
-        data-tip={remapsPaused
-          ? tt('On, but paused while the Shortcuts are off.', 'Ligados, mas pausados enquanto os Shortcuts estão desligados.')
-          : remapsOn
-            ? tt('The key remaps are in effect. They also pause while recording.', 'Os remaps de teclas valem. Também pausam durante a gravação.')
-            : tt('Off: every key does what it always does.', 'Desligado: cada tecla faz o que sempre fez.')}
+        data-tip={remapsPaused ? t('statusbar.remapsPausedTip') : remapsOn ? t('statusbar.remapsOnTip') : t('statusbar.remapsOffTip')}
         onClick={() => remaps.setEnabled(!remapsOn)}
       >
         <span className="sb-dot" />
-        Key Remaps {remapsPaused ? 'paused' : remapsOn ? `On · ${remapsActive} active` : 'Off'}
+        {remapsPaused ? t('statusbar.remapsPaused') : remapsOn ? t('statusbar.remapsOn', { count: remapsActive }) : t('statusbar.remapsOff')}
       </button>
     </div>
   );
@@ -83,17 +72,12 @@ export function Switches() {
 export function Extension() {
   const connection = useExtension(s => s.connection);
   const outdated = useExtension(s => s.outdated);
-  const tt = useTt();
   if (connection === 'unknown' && !outdated) return null;
   const state = outdated ? 'reload' : connection;
-  const text = state === 'reload' ? 'Extension needs reload' : state === 'connected' ? 'Extension connected' : 'Extension not connected';
+  const text = state === 'reload' ? t('statusbar.extensionReload') : state === 'connected' ? t('statusbar.extensionConnected') : t('statusbar.extensionNotConnected');
   const tip = state === 'reload'
-    ? tt(`Version ${outdated?.current} is loaded and this app expects ${outdated?.expected}. Reload it in chrome://extensions.`,
-         `A versão ${outdated?.current} está carregada e este app espera a ${outdated?.expected}. Recarregue em chrome://extensions.`)
-    : state === 'connected'
-      ? tt('The browser extension is connected', 'A extensão do navegador está conectada')
-      : tt('Browser actions fail and browser conditions read as not found. Click to connect the extension.',
-           'Ações de navegador falham e condições de navegador leem como não encontradas. Clique para conectar a extensão.');
+    ? t('statusbar.extensionReloadTip', { current: String(outdated?.current), expected: String(outdated?.expected) })
+    : state === 'connected' ? t('statusbar.extensionConnectedTip') : t('statusbar.extensionNotConnectedTip');
   return (
     <button
       type="button"

@@ -1,0 +1,44 @@
+import type en from '../en-US/statusbar.ts';
+import type { Catalogo } from '../tipos.ts';
+
+export default {
+  switches: 'Chaves gerais',
+
+  shortcutsOn: 'Atalhos ativados',
+  shortcutsOff: 'Atalhos desativados',
+  shortcutsPaused: 'Atalhos pausados pelo Clicker',
+  shortcutsOnTip: 'As hotkeys e as hotstrings das macros disparam. Desativar pausa todas elas, e os Key Remaps também.',
+  shortcutsOffTip: 'Desativados: as hotkeys e as hotstrings das macros não disparam, e os Key Remaps ficam pausados.',
+  shortcutsPausedTip: 'Pausados enquanto a página do Clicker está aberta: as hotkeys e as hotstrings das macros esperam ela fechar.',
+
+  automationsOn: {
+    zero: 'Automações ativadas · 0 armadas',
+    one: 'Automações ativadas · {{count}} armada',
+    other: 'Automações ativadas · {{count}} armadas',
+  },
+  automationsOff: 'Automações desativadas',
+  automationsOnTip: 'As automações armadas rodam suas macros quando o gatilho chega. Desativadas, todas esperam.',
+  automationsOffTip: 'Desativadas: nenhuma automação roda, armada ou não.',
+
+  remapsOn: {
+    zero: 'Key Remaps ativados · 0 ativos',
+    one: 'Key Remaps ativados · {{count}} ativo',
+    other: 'Key Remaps ativados · {{count}} ativos',
+  },
+  remapsOff: 'Key Remaps desativados',
+  remapsPaused: 'Key Remaps pausados',
+  remapsOnTip: 'Os Key Remaps valem. Também pausam durante a gravação.',
+  remapsOffTip: 'Desativados: cada tecla faz o que sempre fez.',
+  remapsPausedTip: 'Ativados, mas pausados enquanto os atalhos estão desativados.',
+
+  extensionConnected: 'Extensão conectada',
+  extensionNotConnected: 'Extensão desconectada',
+  extensionReload: 'Extensão desatualizada',
+  extensionConnectedTip: 'A extensão do navegador está conectada',
+  extensionNotConnectedTip: 'As ações de navegador falham, e as condições de navegador leem como não encontradas. Conecte a extensão.',
+  extensionReloadTip: 'A versão {{current}} está carregada, e este app espera a {{expected}}. Recarregue em chrome://extensions.',
+
+  saved: 'Salvo às {{time}}',
+  savedTip: 'As alterações são salvas na hora',
+  notSaved: 'Não salvo',
+} satisfies Catalogo<typeof en>;

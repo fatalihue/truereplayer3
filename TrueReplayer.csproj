@@ -162,6 +162,10 @@
          shipped the previous dist with nothing to say so. -->
     <FrontendSources Include="frontend\tools\**\*.mjs" />
     <FrontendSources Include="frontend\public\**\*" />
+    <!-- The text catalog and the tools that put it in the page, one build per language (plan of
+         languages, §3.3). -->
+    <FrontendSources Include="i18n\**\*.ts" />
+    <FrontendSources Include="tools\vite-i18n.mjs;tools\i18n-lib.mjs;tools\gen-i18n.mjs" />
   </ItemGroup>
 
   <!-- Run "npm run build" before the dist→wwwroot copy when any frontend source
@@ -175,7 +179,7 @@
           BeforeTargets="CopyFrontendDist;CopyFrontendDistPublish"
           Condition="Exists('frontend\package.json')"
           Inputs="frontend\package.json;frontend\package-lock.json;frontend\vite.config.ts;frontend\tsconfig.json;frontend\tsconfig.app.json;frontend\tsconfig.node.json;frontend\index.html;@(FrontendSources)"
-          Outputs="frontend\dist\index.html">
+          Outputs="frontend\dist\en-US\index.html">
     <Message Text="Frontend sources changed — running 'npm run build' in frontend/..." Importance="high" />
     <!-- cmd /c is required on Windows because npm is a .cmd shim, not a real exe.
          The MSBuild Exec task on Linux/macOS would still resolve `npm` directly
@@ -198,7 +202,8 @@
        change the result — only the failure mode. -->
   <Target Name="CopyFrontendDist" AfterTargets="Build" Condition="Exists('frontend\dist')">
     <ItemGroup>
-      <FrontendFiles Include="frontend\dist\**\*" />
+      <!-- dist\qps is the pseudo-localized page the tests sweep (npm run build:qps): never shipped. -->
+      <FrontendFiles Include="frontend\dist\**\*" Exclude="frontend\dist\qps\**" />
     </ItemGroup>
     <Copy SourceFiles="@(FrontendFiles)" DestinationFiles="@(FrontendFiles->'$(OutDir)wwwroot\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
     <ItemGroup>
@@ -211,7 +216,7 @@
   </Target>
   <Target Name="CopyFrontendDistPublish" AfterTargets="Publish" Condition="Exists('frontend\dist')">
     <ItemGroup>
-      <FrontendFilesPublish Include="frontend\dist\**\*" />
+      <FrontendFilesPublish Include="frontend\dist\**\*" Exclude="frontend\dist\qps\**" />
     </ItemGroup>
     <Copy SourceFiles="@(FrontendFilesPublish)" DestinationFiles="@(FrontendFilesPublish->'$(PublishDir)wwwroot\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
     <ItemGroup>
@@ -296,6 +301,12 @@
        building a path or naming the app outside Source/AppIdentity.cs fails the build, because one
        path that slipped through would write into TrueReplayer 2's data. The page's half runs at the
        end of npm run build. -->
+  <!-- The engine's texts (Source/Strings.g.cs) come from the same catalog as the page's (i18n/, plan
+       of languages §3.5). The generator checks the catalog and rewrites the file only when it changed,
+       so the compile always sees the catalog as it is. -->
+  <Target Name="I18nStrings" BeforeTargets="CoreCompile">
+    <Exec Command="node tools/gen-i18n.mjs" />
+  </Target>
   <Target Name="IdentityGate" BeforeTargets="CoreCompile">
     <Exec Command="node tools/identidade-gate.mjs cs" />
   </Target>

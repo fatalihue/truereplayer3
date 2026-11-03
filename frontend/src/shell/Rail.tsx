@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { ArrowRightLeft, ListChecks, MousePointerClick, Settings, Zap } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
-import { useTt } from '../state/LanguageContext';
+import { t } from '../i18n';
 import { preload } from './lazyModule';
 import { useApp } from './store';
 import { openPage, PAGE_CHUNKS, setLibraryPeek, useUi } from './ui';
@@ -9,11 +9,11 @@ import { useShellBand } from './useShellBand';
 
 // ② The rail: the five destinations.
 const DESTINATIONS = [
-  { id: 'macros', label: 'Macros', Icon: ListChecks },
-  { id: 'clicker', label: 'Clicker', Icon: MousePointerClick },
-  { id: 'automations', label: 'Automations', Icon: Zap },
-  { id: 'remaps', label: 'Key Remaps', Icon: ArrowRightLeft },
-  { id: 'settings', label: 'Settings', Icon: Settings },
+  { id: 'macros', label: t('common.pages.macros'), Icon: ListChecks },
+  { id: 'clicker', label: t('common.pages.clicker'), Icon: MousePointerClick },
+  { id: 'automations', label: t('common.pages.automations'), Icon: Zap },
+  { id: 'remaps', label: t('common.pages.remaps'), Icon: ArrowRightLeft },
+  { id: 'settings', label: t('common.pages.settings'), Icon: Settings },
 ] as const;
 
 /**
@@ -26,7 +26,6 @@ const DESTINATIONS = [
  * Automations carries how many are armed while they run (settings-019), as the status bar says it.
  */
 export function Rail() {
-  const tt = useTt();
   const band = useShellBand();
   const peek = useUi(s => s.libraryPeek);
   const page = useUi(s => s.page);
@@ -54,7 +53,7 @@ export function Rail() {
     if (load) void preload(load);
   };
   return (
-    <nav className="shell-rail" aria-label="Destinations">
+    <nav className="shell-rail" aria-label={t('rail.nav')}>
       {DESTINATIONS.map(({ id, label, Icon }) => {
         const badge = id === 'automations' && armed > 0;
         return (
@@ -65,8 +64,8 @@ export function Rail() {
             aria-current={page === id ? 'page' : undefined}
             aria-expanded={id === 'macros' && peeks && !clicker ? peek : undefined}
             data-library-toggle={id === 'macros' && peeks ? '' : undefined}
-            data-tip={id === 'macros' && clicker ? tt('Back to the macros — the Clicker stops', 'Volta aos macros — o Clicker para')
-              : badge ? tt(`${label} · ${armed} armed`, `${label} · ${armed} armadas`)
+            data-tip={id === 'macros' && clicker ? t('rail.backToMacros')
+              : badge ? t('rail.automationsArmed', { count: armed })
               : label}
             data-tip-pos="right"
             onPointerEnter={() => warm(id)}

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { APP_VERSION } from '../appVersion';
-import { useTt } from '../state/LanguageContext';
+import { fmtHora, t } from '../i18n';
 import { preload, useLoaded } from './lazyModule';
 import { useExtensionWatch } from './statusbar/extensionState';
 import { useShell } from './store';
@@ -18,7 +18,6 @@ const loadStatusLive = () => import('./statusbar/StatusLive');
  */
 export function StatusBar() {
   const saved = useShell(s => s.saved);
-  const tt = useTt();
   const live = useLoaded(loadStatusLive);
   const booted = useShell(s => s.booted);
   useExtensionWatch();
@@ -37,8 +36,8 @@ export function StatusBar() {
       <span className="shell-statusbar-spacer" />
       {live && <live.Extension />}
       {saved && (saved.ok
-        ? <span className="shell-saved" data-tip={tt('Changes save as you go', 'As alterações são salvas sozinhas')}>Saved {clock(saved.at)}</span>
-        : <span className="shell-saved" data-error="true" data-tip={saved.error}>Not saved</span>)}
+        ? <span className="shell-saved" data-tip={t('statusbar.savedTip')}>{t('statusbar.saved', { time: clock(saved.at) })}</span>
+        : <span className="shell-saved" data-error="true" data-tip={saved.error}>{t('statusbar.notSaved')}</span>)}
       <span className="shell-version">{APP_VERSION}</span>
     </footer>
   );
@@ -47,5 +46,5 @@ export function StatusBar() {
 function clock(at: string | undefined): string {
   if (!at) return '';
   const when = new Date(at);
-  return Number.isNaN(when.getTime()) ? '' : when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return Number.isNaN(when.getTime()) ? '' : fmtHora(when);
 }

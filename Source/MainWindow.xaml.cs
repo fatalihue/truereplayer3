@@ -900,7 +900,8 @@ namespace TrueReplayer
             WebView.CoreWebView2.SetVirtualHostNameToFolderMapping(
                 "app.local", wwwrootPath,
                 Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
-            _targetUrl = "https://app.local/index.html";
+            // One build of the page per language (wwwroot/<language>/index.html, plan of languages §3.3).
+            _targetUrl = $"https://app.local/{Services.S.Language}/index.html";
             StartupClock.Mark("navigate");
             WebView.CoreWebView2.Navigate(_targetUrl);
 #endif

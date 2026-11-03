@@ -1,4 +1,5 @@
 import { PictureInPicture2 } from 'lucide-react';
+import { t } from '../i18n';
 import { useWindow } from '../logic/useWindow';
 
 /**
@@ -12,8 +13,8 @@ export default function CompactButton() {
     <button
       type="button"
       className="shell-compact no-drag"
-      aria-label="Compact view"
-      data-tip="Compact view · also in Ctrl+K"
+      aria-label={t('titlebar.compact')}
+      data-tip={t('titlebar.compactTip')}
       onClick={() => win.setCompact(true)}
     >
       <PictureInPicture2 aria-hidden="true" />

@@ -30,6 +30,15 @@
 // scoped to the rule instead, as a later config object that turns only no-restricted-syntax off
 // for those paths. Do not turn it back into a top-level `ignores`.
 //
+// ── Rule 3: tr/texto-solto, interface text outside the catalog ──────────────────────────────────
+// The interface speaks en-US and pt-BR (plan .claude/planos/idiomas-tr3-2026-11-02.md, §3.2), and
+// its text comes from the catalog in i18n/ through t(): one build per language, the text put in at
+// compile time. Text written straight into JSX — a child, or aria-label / data-tip / placeholder /
+// title / alt — would stay in English in the pt-BR build, and so would the old tt('en', 'pt') pairs,
+// which are reported too. What is only glossary (step names, keys, brands, the features: i18n/
+// glossario.ts) is the same in both languages and passes. The screens not yet moved to the catalog
+// are in the suppressions, and each slice of the plan lowers the count.
+//
 // Pre-existing violations live in eslint-gate-suppressions.json (generated with --suppress-all).
 // Today's count is frozen and any NEW one fails the build. To clear one: fix it, then run
 // `npm run lint:gate:prune`.
@@ -37,6 +46,7 @@ import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
 import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
+import { lerTs } from '../tools/i18n-lib.mjs'
 
 /** #rgb / #rrggbb / #rrggbbaa. */
 const HEX = String.raw`#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b`
@@ -54,11 +64,67 @@ const COLOUR_SELECTORS = [HEX, FN, TW].flatMap(re => [
   { selector: `TemplateElement[value.raw=/${re}/]`, message: MSG },
 ])
 
+// What may stay as written: the glossary, less the words that are also plain English ("Stop" the step
+// and "Stop" the verb), plus the units.
+const G = await lerTs(new URL('../i18n/glossario.ts', import.meta.url))
+const COMUNS = new Set(['Pause', 'Stop', 'Return', 'Next', 'Break', 'If', 'Else', 'While', 'Assert', 'Click', 'Key', 'Text', 'Scroll', 'Variable', 'Random', 'Time'])
+const coringa = (w) => [w, w[0].toUpperCase() + w.slice(1)].flatMap(x => [x, x + 's'])
+const TERMOS = [...G.PASSOS, ...G.NOMES_ADD_STEP, ...G.CONDICOES, ...G.TECLAS, ...G.RECURSOS, ...G.MARCAS, ...Object.keys(G.CORINGAS).flatMap(coringa), 'ms', 'px']
+  .filter(t => !COMUNS.has(t)).sort((a, b) => b.length - a.length)
+const escapar = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, (c) => '\\' + c)
+const SEM_TERMOS = new RegExp(String.raw`(?<![\p{L}\p{N}])(?:${TERMOS.map(escapar).join('|')})(?![\p{L}\p{N}])`, 'gu')
+/** Text that needs the catalog: two letters in a row once the tokens and the glossary are out. */
+const solto = (texto) => /\p{L}{2}/u.test(texto.replace(/\{[^{}]*\}/g, ' ').replace(SEM_TERMOS, ' '))
+const ATRIBUTOS = new Set(['aria-label', 'data-tip', 'placeholder', 'title', 'alt'])
+/** A key of the catalog, as t() takes it: 'area.key' or 'area.group.key'. */
+const CHAVE = /^[a-z][\w-]*(\.[\w-]+)+$/
+
+const textoSolto = {
+  meta: { type: 'problem', messages: { solto: 'Interface text outside the catalog: "{{texto}}". It goes in i18n/ and comes through t() (eslint.gate.config.js, rule 3).' } },
+  create(context) {
+    const report = (node, texto) => context.report({ node, messageId: 'solto', data: { texto: texto.trim().replace(/\s+/g, ' ').slice(0, 50) } })
+    // The strings an expression shows, not the ones handed to a call: t('…') is the catalog, and a
+    // call's other arguments are its own business.
+    const strings = (node, out = []) => {
+      if (!node || typeof node !== 'object') return out
+      if (node.type === 'Literal' && typeof node.value === 'string') out.push([node, node.value])
+      else if (node.type === 'TemplateLiteral') {
+        for (const q of node.quasis) out.push([q, q.value.cooked ?? q.value.raw])
+        for (const e of node.expressions) strings(e, out)
+      } else if (node.type === 'ConditionalExpression') { strings(node.consequent, out); strings(node.alternate, out) }
+      else if (node.type === 'LogicalExpression' || node.type === 'BinaryExpression') { strings(node.left, out); strings(node.right, out) }
+      else if (node.type === 'TSAsExpression' || node.type === 'TSNonNullExpression') strings(node.expression, out)
+      return out
+    }
+    const conferir = (expr) => { for (const [n, s] of strings(expr)) if (solto(s)) report(n, s) }
+    return {
+      JSXText(node) { if (solto(node.value)) report(node, node.value) },
+      JSXAttribute(node) {
+        if (node.name.type !== 'JSXIdentifier' || !ATRIBUTOS.has(node.name.name) || !node.value) return
+        if (node.value.type === 'Literal') { if (typeof node.value.value === 'string' && solto(node.value.value)) report(node.value, node.value.value) }
+        else if (node.value.type === 'JSXExpressionContainer') conferir(node.value.expression)
+      },
+      JSXExpressionContainer(node) {
+        if (node.parent.type === 'JSXElement' || node.parent.type === 'JSXFragment') conferir(node.expression)
+      },
+      // The old pairs: tt('English', 'Português'), and the t = useTt() of two pages.
+      CallExpression(node) {
+        const c = node.callee
+        if (c.type !== 'Identifier') return
+        const primeiro = node.arguments[0]
+        const ehChave = primeiro?.type === 'Literal' && typeof primeiro.value === 'string' && CHAVE.test(primeiro.value)
+        if (c.name === 'tt' || (c.name === 't' && node.arguments.length === 2 && !ehChave)) report(node, 'tt(…)')
+      },
+    }
+  },
+}
+
 export default defineConfig([
   globalIgnores(['dist']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [tseslint.configs.base, reactHooks.configs.flat.recommended],
+    plugins: { tr: { rules: { 'texto-solto': textoSolto } } },
     // Silencing rules above leaves their existing eslint-disable comments "unused", which would
     // otherwise report here as noise about rules this gate does not even judge.
     linterOptions: { reportUnusedDisableDirectives: 'off' },
@@ -71,6 +137,7 @@ export default defineConfig([
       'react-hooks/exhaustive-deps': 'error',
       'react-hooks/rules-of-hooks': 'error', // fundamental and already clean — keep it guarded
       'no-restricted-syntax': ['error', ...COLOUR_SELECTORS],
+      'tr/texto-solto': 'error',
       // Everything else the recommended set turns on is silenced HERE (not in the main config,
       // where it stays visible to `npm run lint`) so the gate fails for exactly two reasons.
       // Extending the recommended set at all is what makes the codebase's existing
