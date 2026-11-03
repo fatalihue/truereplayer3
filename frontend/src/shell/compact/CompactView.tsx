@@ -1,5 +1,6 @@
 import { useEffect, useState, type MouseEvent } from 'react';
 import { ChevronDown, Maximize2 } from 'lucide-react';
+import { fmtNum, t } from '../../i18n';
 import { useClicker } from '../../logic/useClicker';
 import { useMacro } from '../../logic/useMacro';
 import { useRecording } from '../../logic/useRecording';
@@ -57,61 +58,73 @@ export default function CompactView() {
 
   const elapsed = formatClock(runSeconds(clock, now));
   const current = highlight != null ? highlight + 1 : 0;
-  const stepsText = `${steps} step${steps === 1 ? '' : 's'}`;
+  // The state, in bold, and its detail after " · " (empty for none).
   let state: string;
   let detail = '';
   let why = '';
   let actions: Action[] = [];
   let showClock = false;
   if (status === 'recording') {
-    state = 'Recording';
-    detail = ` · ${elapsed} · ${stepsText}`;
-    actions = [{ label: 'Stop', keys: settings.recordingHotkey, run: record, tone: 'stop' }];
+    state = t('compact.state.recording');
+    detail = t('compact.detail.recording', { clock: elapsed, count: steps });
+    actions = [{ label: t('common.actions.stop'), keys: settings.recordingHotkey, run: record, tone: 'stop' }];
   } else if (status === 'replaying' && clicker) {
     const seconds = Math.max(1, clicks.elapsedMs / 1000);
-    const of = settings.cursorClickUseLoops && Number(settings.cursorClickLoops) > 0 ? ` of ${Number(settings.cursorClickLoops).toLocaleString('en-US')}` : '';
-    state = 'Clicking';
-    detail = ` · ${Math.round(clicks.count / seconds)}/s · ${clicks.count.toLocaleString('en-US')}${of}`;
+    const rate = fmtNum(Math.round(clicks.count / seconds));
+    const limit = settings.cursorClickUseLoops && Number(settings.cursorClickLoops) > 0 ? Number(settings.cursorClickLoops) : 0;
+    state = t('compact.state.clicking');
+    detail = limit
+      ? t('compact.detail.clickingOf', { rate, clicks: fmtNum(clicks.count), total: fmtNum(limit) })
+      : t('compact.detail.clicking', { rate, clicks: fmtNum(clicks.count) });
     actions = [
-      { label: pause.isPaused ? 'Resume' : 'Pause', keys: settings.cursorClickPauseHotkey, run: pause.isPaused ? replay.resume : clickerCmds.pause },
-      { label: 'Stop', keys: settings.cursorClickStartHotkey, run: replay.toggle, tone: 'stop' },
+      { label: pause.isPaused ? t('common.actions.resume') : t('common.actions.pause'), keys: settings.cursorClickPauseHotkey, run: pause.isPaused ? replay.resume : clickerCmds.pause },
+      { label: t('common.actions.stop'), keys: settings.cursorClickStartHotkey, run: replay.toggle, tone: 'stop' },
     ];
     showClock = true;
   } else if (status === 'replaying' && pause.isPaused) {
-    const left = pause.timeoutMs > 0 ? Math.max(0, Math.ceil((pause.timeoutMs - (Math.max(now, pause.startedAt) - pause.startedAt)) / 1000)) : 0;
-    const ways = [pause.hotkey ? keycaps(pause.hotkey) : '', pause.timeoutMs > 0 ? `${left} s` : ''].filter(Boolean).join(' or ');
-    state = `Waiting at step ${current}`;
-    detail = ways ? ` · ${ways}` : '';
+    // What lets the Pause go: its key, the seconds left of its timeout, both or neither.
+    const left = pause.timeoutMs > 0 ? Math.max(0, Math.ceil((pause.timeoutMs - (Math.max(now, pause.startedAt) - pause.startedAt)) / 1000)) : null;
+    const key = pause.hotkey ? keycaps(pause.hotkey) : '';
+    state = t('compact.state.waiting', { step: current });
+    detail = key && left !== null ? t('compact.detail.keyOrSeconds', { key, seconds: left })
+      : key || (left !== null ? `${left} s` : '');
     actions = [
-      { label: 'Continue', keys: pause.hotkey || undefined, run: replay.resume, tone: 'accent' },
-      { label: 'Stop', run: replay.toggle, tone: 'stop' },
+      { label: t('common.actions.continue'), keys: pause.hotkey || undefined, run: replay.resume, tone: 'accent' },
+      { label: t('common.actions.stop'), run: replay.toggle, tone: 'stop' },
     ];
   } else if (status === 'replaying') {
-    state = 'Replaying';
-    detail = (loop.active ? ` · loop ${loop.current} of ${loop.total === 0 ? '∞' : loop.total}` : '') + (current > 0 ? ` · step ${current} of ${steps}` : '');
-    actions = [{ label: 'Stop', keys: settings.replayHotkey, run: replay.toggle, tone: 'stop' }];
+    const loops = loop.total === 0 ? '∞' : loop.total;
+    state = t('compact.state.replaying');
+    detail = loop.active && current > 0 ? t('compact.detail.loopStep', { loop: loop.current, loops, step: current, steps })
+      : loop.active ? t('compact.detail.loop', { current: loop.current, total: loops })
+      : current > 0 ? t('compact.detail.step', { current, total: steps })
+      : '';
+    actions = [{ label: t('common.actions.stop'), keys: settings.replayHotkey, run: replay.toggle, tone: 'stop' }];
     showClock = true;
   } else if (clicker) {
-    state = 'Clicker open';
-    detail = settings.cursorClickStartHotkey ? ` · ${keycaps(settings.cursorClickStartHotkey)} starts` : '';
-    actions = [{ label: 'Start', keys: settings.cursorClickStartHotkey, run: replay.toggle, tone: 'accent' }];
+    state = t('compact.state.clickerOpen');
+    detail = settings.cursorClickStartHotkey ? t('compact.detail.keyStarts', { key: keycaps(settings.cursorClickStartHotkey) }) : '';
+    actions = [{ label: t('compact.start'), keys: settings.cursorClickStartHotkey, run: replay.toggle, tone: 'accent' }];
   } else if (!name) {
-    state = 'No macro open';
-    detail = profiles.length ? ' · choose one above' : '';
+    state = t('compact.noMacro');
+    detail = profiles.length ? t('compact.detail.chooseAbove') : '';
   } else if (lastRun?.outcome === 'failed' && lastRun.profile === name && lastRun.failedRow != null) {
-    state = `Stopped at step ${lastRun.failedRow}`;
+    state = t('compact.state.stoppedAt', { step: lastRun.failedRow });
     why = lastRun.failedMessage ?? '';
     actions = [
-      { label: 'Open run report', run: () => { app.setCompact(false); dock.show('report'); } },
-      { label: 'Run again', run: replay.toggle, tone: 'accent' },
+      { label: t('compact.openReport'), run: () => { app.setCompact(false); dock.show('report'); } },
+      { label: t('compact.runAgain'), run: replay.toggle, tone: 'accent' },
     ];
   } else {
     const at = lastRun?.profile === name && lastRun.startedAt ? new Date(lastRun.startedAt) : null;
-    state = 'Ready';
-    detail = ` · ${stepsText}${at && !Number.isNaN(at.getTime()) ? ` · last run ${at.toTimeString().slice(0, 5)}` : ''}`;
+    state = t('compact.state.ready');
+    // The time is the 24-hour clock's ("14:02"), as it has always been here.
+    detail = at && !Number.isNaN(at.getTime())
+      ? t('compact.detail.stepsLastRun', { count: steps, time: at.toTimeString().slice(0, 5) })
+      : t('compact.detail.steps', { count: steps });
     actions = [
-      { label: 'Replay', keys: settings.replayHotkey, run: replay.toggle, tone: 'accent' },
-      { label: 'Record', run: record, tone: 'record' },
+      { label: t('common.actions.replay'), keys: settings.replayHotkey, run: replay.toggle, tone: 'accent' },
+      { label: t('common.actions.record'), run: record, tone: 'record' },
     ];
   }
 
@@ -120,20 +133,21 @@ export default function CompactView() {
     setPicker(p => (p ? null : { anchor: anchorBelow(button, 'start'), button }));
   };
   const entries: MenuEntry[] = profiles.map(p => ({ label: p.name, checked: p.name === name, onSelect: () => macro.open(p.name) }));
-  const title = clicker ? 'Clicker' : name || 'No macro open';
+  // Clicker is the same in both languages (glossary).
+  const title = clicker ? 'Clicker' : name || t('compact.noMacro');
 
   return (
-    <section className="cmp" aria-label={compactView ? 'Compact view' : 'Compact layout'} data-view={compactView || undefined} data-state={clicker && running ? 'clicking' : status}>
+    <section className="cmp" aria-label={compactView ? t('compact.view') : t('compact.layout')} data-view={compactView || undefined} data-state={clicker && running ? 'clicking' : status}>
       {/* In the compact view Windows draws its own × at the top right (it hides to the tray there):
           the top leaves it room. */}
       <header className={`cmp-top${compactView ? ' drag-region' : ''}`} style={compactView ? { paddingRight: compactInset - 1 } : undefined}>
-        <button type="button" className="cmp-macro no-drag" aria-label={`Choose macro, ${title}`} aria-haspopup="menu" disabled={running || clicker} onClick={choose}>
+        <button type="button" className="cmp-macro no-drag" aria-label={t('compact.chooseMacroNamed', { name: title })} aria-haspopup="menu" disabled={running || clicker} onClick={choose}>
           <span className="cmp-macro-name">{title}</span>
           {!running && !clicker && <ChevronDown aria-hidden="true" />}
         </button>
         {compactView && (
           <>
-            <button type="button" className="cmp-icon no-drag" aria-label="Back to the full window" data-tip="Back to the full window" onClick={() => app.setCompact(false)}>
+            <button type="button" className="cmp-icon no-drag" aria-label={t('compact.back')} data-tip={t('compact.back')} onClick={() => app.setCompact(false)}>
               <Maximize2 aria-hidden="true" />
             </button>
           </>
@@ -141,7 +155,7 @@ export default function CompactView() {
       </header>
       <p className="cmp-state">
         <span className="cmp-dot" />
-        <span className="cmp-state-text"><strong>{state}</strong>{detail}</span>
+        <span className="cmp-state-text"><strong>{state}</strong>{detail && ` · ${detail}`}</span>
         {showClock && <span className="cmp-clock">{elapsed}</span>}
       </p>
       {why && <p className="cmp-why" title={why}>{why}</p>}
@@ -155,7 +169,7 @@ export default function CompactView() {
           ))}
         </div>
       )}
-      {picker && <Menu anchor={picker.anchor} entries={entries} label="Choose macro" toggle={picker.button} onClose={() => setPicker(null)} />}
+      {picker && <Menu anchor={picker.anchor} entries={entries} label={t('compact.chooseMacro')} toggle={picker.button} onClose={() => setPicker(null)} />}
     </section>
   );
 }

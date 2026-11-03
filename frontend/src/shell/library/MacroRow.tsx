@@ -1,17 +1,18 @@
 import type { MouseEvent, ReactNode } from 'react';
 import { ArrowUpFromDot, CornerDownLeft, Hourglass, Repeat, Repeat2, Zap, type LucideIcon } from 'lucide-react';
 import type { ProfileEntry, TriggerMode } from '../../bridge/messageTypes';
+import { t } from '../../i18n';
 import { keycaps, targetLabel } from './model';
 
-const MODES: Partial<Record<TriggerMode, { Icon: LucideIcon; en: string; pt: string }>> = {
-  onRelease: { Icon: ArrowUpFromDot, en: 'On release', pt: 'Ao soltar' },
-  whilePressed: { Icon: Zap, en: 'While pressed', pt: 'Enquanto pressionado' },
-  toggle: { Icon: Repeat, en: 'Toggle', pt: 'Alternar' },
-  doubleTap: { Icon: Repeat2, en: 'Double-tap', pt: 'Toque duplo' },
-  hold: { Icon: Hourglass, en: 'Hold (long-press)', pt: 'Segurar (pressão longa)' },
+// The trigger modes that show an icon (On press, the default, has none), named as the Inspector's
+// trigger names them.
+const MODES: Partial<Record<TriggerMode, { Icon: LucideIcon; label: string }>> = {
+  onRelease: { Icon: ArrowUpFromDot, label: t('library.modes.onRelease') },
+  whilePressed: { Icon: Zap, label: t('library.modes.whilePressed') },
+  toggle: { Icon: Repeat, label: t('library.modes.toggle') },
+  doubleTap: { Icon: Repeat2, label: t('library.modes.doubleTap') },
+  hold: { Icon: Hourglass, label: t('library.modes.hold') },
 };
-
-type Tt = (en: string, pt: string) => string;
 
 /**
  * One macro in the library: what it looks like, what fires it, and that it is the open one. The
@@ -23,13 +24,12 @@ type Tt = (en: string, pt: string) => string;
  * hundred macros renders a hundred of these at launch, and each extra component per row was a
  * hundred more to mount.
  */
-export function MacroRow({ entry, open, locked, dragging, tt, onOpen, onMenu, onPress }: {
+export function MacroRow({ entry, open, locked, dragging, onOpen, onMenu, onPress }: {
   entry: ProfileEntry;
   open: boolean;
   /** A recording or a replay is running: the open macro cannot change. */
   locked: boolean;
   dragging: boolean;
-  tt: Tt;
   onOpen: (name: string) => void;
   onMenu: (e: MouseEvent<HTMLElement>, name: string) => void;
   onPress: (e: MouseEvent<HTMLElement>, name: string) => void;
@@ -52,26 +52,23 @@ export function MacroRow({ entry, open, locked, dragging, tt, onOpen, onMenu, on
       {iconOf(entry)}
       {nameOf(entry.name, entry.description ?? '')}
       {entry.triggerArmed && (
-        <span className="lib-armed" role="img" aria-label="Automation armed" data-tip={tt('Automation armed', 'Automação armada')} data-tip-pos="end" />
+        <span className="lib-armed" role="img" aria-label={t('library.row.armed')} data-tip={t('library.row.armed')} data-tip-pos="end" />
       )}
       {mode && (
-        <span className="lib-mode" data-tip={tt(mode.en, mode.pt)} data-tip-pos="end">
-          <mode.Icon aria-label={mode.en} />
+        <span className="lib-mode" data-tip={mode.label} data-tip-pos="end">
+          <mode.Icon aria-label={mode.label} />
         </span>
       )}
       {entry.hotkey && chip(keycaps(entry.hotkey), {
         conflict: entry.hotkeyConflict,
-        tip: entry.hotkeyConflict
-          ? tt('Another macro uses this hotkey for the same window — only one fires',
-               'Outro macro usa este hotkey na mesma janela — só um dispara')
-          : undefined,
+        tip: entry.hotkeyConflict ? t('library.row.conflict', { chip: keycaps(entry.hotkey) }) : undefined,
       })}
       {entry.hotstring && chip(entry.hotstring, {
         hotstring: true,
         icon: entry.hotstringInstant ? <Zap aria-hidden="true" /> : <CornerDownLeft aria-hidden="true" />,
         tip: entry.hotstringInstant
-          ? tt('Hotstring — fires as you type it', 'Hotstring — dispara ao digitar')
-          : tt('Hotstring — fires on Enter, Space or Tab', 'Hotstring — dispara com Enter, Espaço ou Tab'),
+          ? t('library.row.hotstringInstant', { chip: entry.hotstring })
+          : t('library.row.hotstringEnd', { chip: entry.hotstring }),
       })}
     </button>
   );
@@ -80,7 +77,8 @@ export function MacroRow({ entry, open, locked, dragging, tt, onOpen, onMenu, on
 /**
  * A trigger chip. A long one is cut at its START ("…Shift+F1"): the modifiers repeat across the
  * library, the key at the end is what tells two apart, and the name beside it needs the room. The
- * tooltip says what the chip is and, when it is cut, all of it.
+ * tooltip says what the chip is and, when it is cut, all of it: `tip` is the whole of it, the chip's
+ * text included; without one, the tooltip is the text, shown only when it is cut.
  */
 function chip(text: string, { tip, conflict, hotstring, icon }: { tip?: string; conflict?: boolean; hotstring?: boolean; icon?: ReactNode }) {
   return (
@@ -88,7 +86,7 @@ function chip(text: string, { tip, conflict, hotstring, icon }: { tip?: string; 
       {icon}
       {/* bdi keeps the text left-to-right inside the right-to-left box, so a "/id" hotstring or the
           "+" key at the end of "Ctrl++" are not moved to the other side. */}
-      <span className="lib-chip-text" data-tip={tip ? `${text} — ${tip}` : text} data-tip-reveal={tip ? undefined : ''} data-tip-pos="end">
+      <span className="lib-chip-text" data-tip={tip ?? text} data-tip-reveal={tip ? undefined : ''} data-tip-pos="end">
         <bdi>{text}</bdi>
       </span>
     </span>

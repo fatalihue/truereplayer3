@@ -56,7 +56,8 @@ const lerBuild = (lang) => {
 const fonte = [];
 const andarFonte = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) andarFonte(p); else if (/\.tsx?$/.test(e.name) && !e.name.endsWith('.g.ts')) fonte.push(fs.readFileSync(p, 'utf8')); } };
 andarFonte(path.join(front, 'src'));
-const noCodigo = fonte.join('\n');
+// As JSX shows it: an entity is its character, and a text broken over lines is one line.
+const noCodigo = fonte.join('\n').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 const textoEn = lerBuild('en-US');
 const textoPt = lerBuild('pt-BR');
 // The fixed pieces of a text, between its blanks, as a build writes them in a string literal; short

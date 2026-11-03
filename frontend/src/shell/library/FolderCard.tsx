@@ -1,7 +1,7 @@
 import type { CSSProperties, MouseEvent, ReactNode } from 'react';
 import { ChevronDown, ChevronRight, Folder, MoreHorizontal, Plus } from 'lucide-react';
 import type { ProfileFolder } from '../../bridge/messageTypes';
-import { useTt } from '../../state/LanguageContext';
+import { t } from '../../i18n';
 import { targetLabel } from './model';
 
 /**
@@ -23,7 +23,6 @@ export function FolderCard({ folder, count, allOff, dropping, dragging, onToggle
   onNewMacro: (folder: string) => void;
   children: ReactNode;
 }) {
-  const tt = useTt();
   const Chevron = folder.collapsed ? ChevronRight : ChevronDown;
   return (
     <section
@@ -59,16 +58,16 @@ export function FolderCard({ folder, count, allOff, dropping, dragging, onToggle
               data-tip-pos="end"
             />
           )}
-          <span className="lib-folder-count" aria-label={count === 1 ? '1 macro' : `${count} macros`}>{count}</span>
+          <span className="lib-folder-count" aria-label={t('library.folder.count', { count })}>{count}</span>
         </button>
         {/* D3: the folder menu by right-click and by ⋯, which takes the count's place on hover. */}
         <button
           type="button"
           className="lib-folder-more"
           tabIndex={-1}
-          aria-label={`More actions for ${folder.name}`}
+          aria-label={t('library.folder.more', { name: folder.name })}
           aria-haspopup="menu"
-          data-tip={tt('Folder actions', 'Ações da pasta')}
+          data-tip={t('library.folder.actions')}
           onClick={(e) => onMenu(e, folder.name)}
         >
           <MoreHorizontal aria-hidden="true" />
@@ -82,11 +81,11 @@ export function FolderCard({ folder, count, allOff, dropping, dragging, onToggle
             className="lib-new-in-folder"
             tabIndex={-1}
             data-always={count === 0 || undefined}
-            aria-label={`New macro in ${folder.name}`}
+            aria-label={t('library.folder.newMacroIn', { name: folder.name })}
             onClick={() => onNewMacro(folder.name)}
           >
             <Plus aria-hidden="true" />
-            New macro
+            {t('library.newMacro')}
           </button>
         </div>
       )}

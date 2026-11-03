@@ -13,6 +13,7 @@
 // Pure and React-free on purpose: the ladder is the part worth testing head-lessly, and a
 // component import would drag JSX into a node harness.
 
+import { fmtNum, t } from '../i18n';
 import type { SendMode, SendMethod } from './sendTextTypes';
 
 // Re-exported so the modules that already import SendMode from here keep working.
@@ -27,18 +28,14 @@ export interface StatusNote {
   tone: StatusTone;
 }
 
-// The WHY sentences, English, shared by the ladder's tooltips (as the `en` half of tt) and by the
-// Preview tab's Delivery block, where they are VISIBLE text and therefore English literal (the
-// app's label rule). One copy on purpose: the hint sweep of 2026-09-05 made these the canonical
-// sentences, and a second spelling in the Preview tab is exactly how two surfaces drift.
-export const WHY_RICH_SPLITS_EN =
-  'Rich needs ONE run of text. A key or delay token with text on both sides splits it, so this pastes as plain. Move the token to an end, split the action, or use Markdown/Discord.';
-export const WHY_TYPE_DROPS_RICH_EN =
-  'Type has no clipboard, so HTML formatting is never sent. It returns with Paste; Markdown/Discord keep their marks while typing.';
-export const WHY_PLAIN_UNDER_TYPE_EN =
-  'Kept with the action, not sent while Plain. This action types, so use Markdown or Discord — Rich cannot be typed.';
-export const WHY_PLAIN_UNDER_PASTE_EN =
-  'Kept with the action, not sent while Plain. Switch to Rich, Markdown or Discord to send it.';
+// The WHY sentences, shared by the ladder's tooltips and by the Preview tab's Delivery block, where
+// they are visible text. One key each in the catalog (i18n/<language>/list.ts, sendText), on purpose:
+// the hint sweep of 2026-09-05 made these the canonical sentences, and a second spelling in the
+// Preview tab is exactly how two surfaces drift.
+const whyRichSplits = () => t('list.sendText.whyRichSplits');
+const whyTypeDropsRich = () => t('list.sendText.whyTypeDropsRich');
+const whyPlainUnderType = () => t('list.sendText.whyPlainUnderType');
+const whyPlainUnderPaste = () => t('list.sendText.whyPlainUnderPaste');
 
 export interface StatusInputs {
   sendMode: SendMode;
@@ -56,9 +53,11 @@ export interface StatusInputs {
   richWillDegrade: boolean;
 }
 
+// `_tt`, the old pairs' function, is no longer read: the text comes from the catalog (the cleanup
+// drops the parameter).
 export function pickStatusNote(
   { sendMode, sendMethod, hasFormatting, tokenCount, richWillDegrade }: StatusInputs,
-  tt: (en: string, ptBr: string) => string,
+  _tt?: (en: string, ptBr: string) => string,
 ): StatusNote | null {
   // RUNG 1 — the silent one. The engine attaches the HTML flavor only when the resolved payload
   // is EXACTLY ONE text run (ActionExecution.cs:7163), so a key or delay token with text on both
@@ -70,11 +69,8 @@ export function pickStatusNote(
   if (richWillDegrade && sendMethod === 'paste') {
     return {
       tone: 'warn',
-      text: 'Formatting will be dropped at replay',
-      tip: tt(
-        WHY_RICH_SPLITS_EN,
-        'Rich precisa de UM bloco de texto. Um token de tecla ou delay com texto dos dois lados divide o bloco, e a ação cola como texto puro. Mova o token para uma ponta, divida a ação ou use Markdown/Discord.',
-      ),
+      text: t('list.sendText.richDropped'),
+      tip: whyRichSplits(),
     };
   }
 
@@ -85,11 +81,8 @@ export function pickStatusNote(
   if (sendMethod === 'type' && sendMode === 'rich' && hasFormatting) {
     return {
       tone: 'warn',
-      text: 'Typing sends no formatting',
-      tip: tt(
-        WHY_TYPE_DROPS_RICH_EN,
-        'Type não usa a área de transferência, então a formatação HTML nunca é enviada. Ela volta com Paste; Markdown/Discord mantêm as marcas ao digitar.',
-      ),
+      text: t('list.sendText.typingNoFormatting'),
+      tip: whyTypeDropsRich(),
     };
   }
 
@@ -100,21 +93,13 @@ export function pickStatusNote(
   if (sendMode === 'plain' && hasFormatting) {
     return {
       tone: 'warn',
-      text: 'Plain delivery — formatting is kept, but not sent',
+      text: t('list.sendText.plainKept'),
       // The REMEDY is method-dependent even though the diagnosis is not: under Type, "switch to
       // Rich" is advice that delivers nothing (rung 2 is the proof — typing has no clipboard, so
       // there is no HTML flavor to attach). Rungs 1 and 2 got their method leg with the transport
       // axis; this one is the third, and it needs it here rather than as a fourth rung because the
       // CONDITION is genuinely method-independent — only the way out changes.
-      tip: sendMethod === 'type'
-        ? tt(
-          WHY_PLAIN_UNDER_TYPE_EN,
-          'Fica salva na ação, não é enviada em Plain. Esta ação digita, então use Markdown ou Discord — Rich não se digita.',
-        )
-        : tt(
-          WHY_PLAIN_UNDER_PASTE_EN,
-          'Fica salva na ação, não é enviada em Plain. Troque para Rich, Markdown ou Discord para enviar.',
-        ),
+      tip: sendMethod === 'type' ? whyPlainUnderType() : whyPlainUnderPaste(),
     };
   }
 
@@ -122,7 +107,7 @@ export function pickStatusNote(
   if (tokenCount > 0) {
     return {
       tone: 'muted',
-      text: 'Click any chip in the editor to edit its parameters',
+      text: t('list.sendText.chipHint'),
     };
   }
 
@@ -150,25 +135,25 @@ export interface DeliveryFacts {
 
 export function describeDelivery({ sendMode, sendMethod, hasFormatting, richWillDegrade, charDelayMs }: DeliveryInputs): DeliveryFacts {
   const transport = sendMethod === 'type'
-    ? (charDelayMs ? `Typed key by key · ${charDelayMs} ms per character` : 'Typed key by key · no pause')
-    : 'Pasted with Ctrl+V';
-  const flavor = sendMode === 'rich' ? 'Rich · formatting travels as HTML'
-    : sendMode === 'markdown' ? 'Markdown · marks like *bold* in the text'
-    : sendMode === 'discord' ? 'Discord · marks like **bold** in the text'
-    : 'Plain · text only';
+    ? (charDelayMs ? t('list.sendText.typedPaced', { ms: fmtNum(charDelayMs) }) : t('list.sendText.typedUnpaced'))
+    : t('list.sendText.pasted');
+  const flavor = sendMode === 'rich' ? t('list.sendText.flavorRich')
+    : sendMode === 'markdown' ? t('list.sendText.flavorMarkdown')
+    : sendMode === 'discord' ? t('list.sendText.flavorDiscord')
+    : t('list.sendText.flavorPlain');
   let formatting: DeliveryFacts['formatting'];
   if (!hasFormatting) {
-    formatting = { verdict: 'None in this text', why: null, tone: 'muted' };
+    formatting = { verdict: t('list.sendText.noneInText'), why: null, tone: 'muted' };
   } else if (richWillDegrade && sendMethod === 'paste') {
-    formatting = { verdict: 'Dropped at replay', why: WHY_RICH_SPLITS_EN, tone: 'warn' };   // rung 1
+    formatting = { verdict: t('list.sendText.droppedAtReplay'), why: whyRichSplits(), tone: 'warn' };   // rung 1
   } else if (sendMethod === 'type' && sendMode === 'rich') {
-    formatting = { verdict: 'Not sent', why: WHY_TYPE_DROPS_RICH_EN, tone: 'warn' };        // rung 2
+    formatting = { verdict: t('list.sendText.notSent'), why: whyTypeDropsRich(), tone: 'warn' };        // rung 2
   } else if (sendMode === 'plain') {
-    formatting = { verdict: 'Kept, not sent', why: sendMethod === 'type' ? WHY_PLAIN_UNDER_TYPE_EN : WHY_PLAIN_UNDER_PASTE_EN, tone: 'warn' };   // rung 3
+    formatting = { verdict: t('list.sendText.keptNotSent'), why: sendMethod === 'type' ? whyPlainUnderType() : whyPlainUnderPaste(), tone: 'warn' };   // rung 3
   } else if (sendMode === 'rich') {
-    formatting = { verdict: 'Sent as HTML with the paste', why: null, tone: 'ok' };
+    formatting = { verdict: t('list.sendText.sentAsHtml'), why: null, tone: 'ok' };
   } else {
-    formatting = { verdict: 'Sent as marks in the text', why: null, tone: 'ok' };
+    formatting = { verdict: t('list.sendText.sentAsMarks'), why: null, tone: 'ok' };
   }
   return { transport, flavor, formatting };
 }

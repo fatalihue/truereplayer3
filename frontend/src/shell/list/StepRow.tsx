@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { ActionItem } from '../../bridge/messageTypes';
+import { LANG, t } from '../../i18n';
 import { hasConditionFields } from '../../utils/conditionalBlocks';
 import { formatMs, getActionTypeColors, isCombinedClick, isFocusClickEligible } from '../../utils/displayUtils';
 import { useShell } from '../store';
@@ -8,7 +9,8 @@ import { stepDetails } from './details';
 import { useSelection } from './selection';
 import { NO_DELAY_TYPES, stepIcon, stepName } from './stepTypes';
 
-type Tt = (en: string, pt: string) => string;
+/** The build's language as formatMs still names it (plan §3.4: it loses the parameter later). */
+const MS_LANGUAGE = LANG === 'pt-BR' ? 'pt-BR' : 'en';
 
 /**
  * One step of the list (⑦). It only draws: the list handles the pointer and the keys for every
@@ -16,7 +18,7 @@ type Tt = (en: string, pt: string) => string;
  * plain values, so a step that did not change keeps its props and is not redrawn; whether it is
  * selected, running or paused it reads from the stores itself, so those change two rows, not all.
  */
-export function StepRow({ step, index, k, depth, kind, owner, rails, broken, tip, skipped, dataRows, language, tt }: {
+export function StepRow({ step, index, k, depth, kind, owner, rails, broken, tip, skipped, dataRows }: {
   step: ActionItem;
   index: number;
   /** The step's key (its id). */
@@ -30,19 +32,20 @@ export function StepRow({ step, index, k, depth, kind, owner, rails, broken, tip
   tip: string | undefined;
   skipped: boolean;
   dataRows: number;
-  language: 'en' | 'pt-BR';
-  tt: Tt;
 }) {
   const selected = useSelection(s => s.keys.has(k));
   const cursor = useSelection(s => s.cursor === k);
   const running = useShell(s => s.highlight === index);
   const paused = useShell(s => s.highlight === index && s.app.pauseState.isPaused) && step.actionType === 'Pause';
-  const t = step.actionType;
-  const colors = getActionTypeColors(t);
-  const icon = stepIcon(t);
+  const type = step.actionType;
+  const colors = getActionTypeColors(type);
+  const icon = stepIcon(type);
   const openers = rails ? rails.split(',') : [];
   const own = kind !== null;
-  const times = (t === 'Keystroke' || t === 'RunProfile' || isCombinedClick(t)) && (step.repeatCount ?? 1) > 1 && !step.runOverData;
+  const times = (type === 'Keystroke' || type === 'RunProfile' || isCombinedClick(type)) && (step.repeatCount ?? 1) > 1 && !step.runOverData;
+  const perRow = type === 'RunProfile' && !!step.runOverData;
+  const negated = hasConditionFields(type) && !!step.conditionNegate;
+  const delay = !NO_DELAY_TYPES.has(type) && step.delay > 0;
   const level = own ? depth : depth - 1;
   return (
     <div
@@ -66,9 +69,9 @@ export function StepRow({ step, index, k, depth, kind, owner, rails, broken, tip
     >
       <span className="step-num">
         {running
-          ? <span className="step-icon step-run" data-icon={paused ? 'pause' : 'play'} role="img" aria-label={paused ? 'Paused' : 'Running'} />
+          ? <span className="step-icon step-run" data-icon={paused ? 'pause' : 'play'} role="img" aria-label={paused ? t('list.row.paused') : t('list.row.running')} />
           : <span className="step-num-text">{index + 1}</span>}
-        <span className="step-check" aria-hidden="true" data-tip={tt(`Select step ${index + 1}`, `Selecionar o passo ${index + 1}`)} />
+        <span className="step-check" aria-hidden="true" data-tip={t('list.row.select', { number: index + 1 })} />
       </span>
       <span className="step-type">
         {openers.map((opener, i) => {
@@ -86,22 +89,22 @@ export function StepRow({ step, index, k, depth, kind, owner, rails, broken, tip
         })}
         <span className="step-pill" style={{ background: colors.bg, color: colors.fg }} data-tip={tip}>
           {icon && <span className="step-icon" data-icon={icon} />}
-          {stepName(t)}
-          {hasConditionFields(t) && step.conditionNegate && <span className="step-not">NOT</span>}
+          {stepName(type)}
+          {negated && <span className="step-not">{t('list.row.not')}</span>}
           {times && <span className="step-times">×{step.repeatCount}</span>}
-          {t === 'RunProfile' && step.runOverData && <span className="step-times">· per row</span>}
-          {step.isFocusClick && isFocusClickEligible(t) && (
-            <span className="step-icon" data-icon="focus" role="img" aria-label="Focus click" data-tip={tt('Focus click: clicks twice, a few pixels apart', 'Focus click: clica duas vezes, a poucos pixels')} />
+          {perRow && <span className="step-times">{t('list.row.perRow')}</span>}
+          {step.isFocusClick && isFocusClickEligible(type) && (
+            <span className="step-icon" data-icon="focus" role="img" aria-label={t('list.focusClick')} data-tip={t('list.row.focusClickTip')} />
           )}
-          {step.atCursor && isCombinedClick(t) && (
-            <span className="step-icon" data-icon="mouse-pointer-2" role="img" aria-label="At the cursor" data-tip={tt('Clicks at the cursor position', 'Clica na posição do cursor')} />
+          {step.atCursor && isCombinedClick(type) && (
+            <span className="step-icon" data-icon="mouse-pointer-2" role="img" aria-label={t('list.row.atCursor')} data-tip={t('list.row.atCursorTip')} />
           )}
         </span>
-        {skipped && <span className="step-icon step-skipped" data-icon="eye-off" role="img" aria-label="Skipped" />}
+        {skipped && <span className="step-icon step-skipped" data-icon="eye-off" role="img" aria-label={t('list.row.skipped')} />}
       </span>
-      <span className="step-what">{stepDetails(step, dataRows, language, tt)}</span>
+      <span className="step-what">{stepDetails(step, dataRows, MS_LANGUAGE)}</span>
       <span className="step-delay">
-        {!NO_DELAY_TYPES.has(t) && step.delay > 0 && <>{formatMs(step.delay, language)}<span className="step-ms">ms</span></>}
+        {delay && <>{formatMs(step.delay, MS_LANGUAGE)}<span className="step-ms">ms</span></>}
       </span>
       <span className="step-note">{step.comment}</span>
     </div>

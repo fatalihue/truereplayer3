@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronRight, type LucideIcon } from 'lucide-react';
+import { t } from '../i18n';
 import { placeAtAnchor, placeBeside, type MenuAnchor, type Size, type Spot } from './menuAnchor';
 
 export interface MenuItem {
@@ -241,7 +242,7 @@ function MenuList({ entries, label, place, focusFirst, onClose, onBack, panel }:
             >
               <span className="shell-menu-icon" style={entry.iconColor ? { color: entry.iconColor } : undefined}>{Icon && <Icon aria-hidden="true" />}</span>
               <span className="shell-menu-label" style={entry.font ? { fontFamily: `'${entry.font}', monospace` } : undefined}>
-                {entry.notBuilt ? `${entry.label} — not built yet` : armed === i ? entry.confirm : entry.label}
+                {entry.notBuilt ? t('shell.notBuilt', { what: entry.label }) : armed === i ? entry.confirm : entry.label}
               </span>
               {entry.shortcut && <kbd className="kbd shell-menu-kbd" aria-hidden="true">{entry.shortcut}</kbd>}
               {entry.checked && <Check className="shell-menu-end" aria-hidden="true" />}

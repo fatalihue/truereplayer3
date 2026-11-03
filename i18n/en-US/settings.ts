@@ -1,6 +1,16 @@
 // Settings (shell/pages/settings/). Por enquanto só a linha do idioma, em General › Interface (fatia
 // I1); o resto da página vem para o catálogo na fatia I4.
 export default {
+  // As categorias da página (a coluna da esquerda), que o Ctrl+K também cita.
+  categories: {
+    general: 'General',
+    hotkeys: 'Hotkeys',                        // coringa
+    appearance: 'Appearance',
+    recording: 'Recording and playback',
+    screen: 'Screen Text',                     // glossário
+    browser: 'Browser extension',
+    diagnostics: 'Diagnostics',
+  },
   language: {
     label: 'Language',  // rótulo da linha e nome da lista (o leitor de tela lê) · nome
     hint: 'The language of the whole app. Windows follows the language of Windows.',  // sob o rótulo

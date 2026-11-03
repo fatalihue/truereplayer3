@@ -92,7 +92,10 @@ const textoSolto = {
         for (const q of node.quasis) out.push([q, q.value.cooked ?? q.value.raw])
         for (const e of node.expressions) strings(e, out)
       } else if (node.type === 'ConditionalExpression') { strings(node.consequent, out); strings(node.alternate, out) }
-      else if (node.type === 'LogicalExpression' || node.type === 'BinaryExpression') { strings(node.left, out); strings(node.right, out) }
+      // What reaches the screen: a + joins text, a && shows its right side only; a comparison
+      // (page !== 'macros') shows nothing of its literals.
+      else if (node.type === 'LogicalExpression') { if (node.operator !== '&&') strings(node.left, out); strings(node.right, out) }
+      else if (node.type === 'BinaryExpression') { if (node.operator === '+') { strings(node.left, out); strings(node.right, out) } }
       else if (node.type === 'TSAsExpression' || node.type === 'TSNonNullExpression') strings(node.expression, out)
       return out
     }

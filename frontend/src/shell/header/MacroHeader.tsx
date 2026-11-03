@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppWindow, CornerDownLeft, Zap } from 'lucide-react';
 import type { ProfileEntry } from '../../bridge/messageTypes';
+import { t } from '../../i18n';
 import { useMacro } from '../../logic/useMacro';
-import { useLanguage, useTt } from '../../state/LanguageContext';
 import { lastRunKind } from '../../utils/lastRunChip';
 import { keycaps, nameTaken, targetLabel } from '../library/model';
 import { useApp, useShell } from '../store';
 import { nameFocused, useUi } from '../ui';
+import { isUntitledName } from '../untitled';
 import {
-  formatClock, formatDuration, lastRunOutcome, onePassMs, passesOf, runsPerRow, stepCount, timeOfDay,
+  formatClock, formatDuration, lastRunText, onePassMs, passesOf, runsPerRow, stepCount,
 } from './model';
 import { Transport } from './Transport';
 import { runSeconds, useNow } from './useNow';
@@ -23,15 +24,12 @@ export function MacroHeader() {
   const locked = useApp(a => a.status !== 'ready');
   if (!open) return null;
   return (
-    <header className="hdr" aria-label="Macro">
+    <header className="hdr" aria-label={t('header.region')}>
       <MacroTitle name={open} locked={locked} chips={<MacroChips name={open} />} meta={<MacroMeta name={open} />} />
       <Transport name={open} />
     </header>
   );
 }
-
-// The names the engine gives a new macro: the field says it can be typed over.
-const UNTITLED = /^Untitled macro( \d+)?$/;
 
 /**
  * The name, an input that reads as the title (biblioteca-064). A new macro arrives as "Untitled
@@ -80,10 +78,11 @@ function MacroTitle({ name, locked, chips, meta }: { name: string; locked: boole
     setDraft({ text: next, of: name, typing: false });
   };
 
+  // A new macro's name, the one the app gave it (in either language): the field says it can be typed over.
   const note = taken
-    ? <p className="hdr-meta" data-error="">A macro with that name already exists.</p>
-    : UNTITLED.test(name) && typed === null
-      ? <p className="hdr-meta">Type a name. It's saved already.</p>
+    ? <p className="hdr-meta" data-error="">{t('header.name.taken')}</p>
+    : isUntitledName(name) && typed === null
+      ? <p className="hdr-meta">{t('header.name.untitled')}</p>
       : null;
 
   return (
@@ -93,7 +92,7 @@ function MacroTitle({ name, locked, chips, meta }: { name: string; locked: boole
           <input
             ref={field}
             className="hdr-name-field"
-            aria-label="Macro name"
+            aria-label={t('header.name.label')}
             spellCheck={false}
             autoComplete="off"
             value={draft ? draft.text : name}
@@ -128,7 +127,6 @@ function MacroTitle({ name, locked, chips, meta }: { name: string; locked: boole
 function MacroChips({ name }: { name: string }) {
   const entry = useApp(a => a.profiles.find(p => p.name === name));
   const automationsOn = useApp(a => a.automation.enabled);
-  const tt = useTt();
   if (!entry) return null;
   return (
     <>
@@ -137,10 +135,8 @@ function MacroChips({ name }: { name: string }) {
           className="hdr-chip"
           data-kind="hotkey"
           data-conflict={entry.hotkeyConflict || undefined}
-          data-tip={entry.hotkeyConflict
-            ? tt('Another macro uses this hotkey for the same window — only one fires',
-                 'Outro macro usa este hotkey na mesma janela — só um dispara')
-            : tt('Hotkey', 'Hotkey')}
+          // "Hotkey" is the same in both languages (glossary).
+          data-tip={entry.hotkeyConflict ? t('header.chips.hotkeyConflict') : 'Hotkey'}
         >
           {keycaps(entry.hotkey)}
         </span>
@@ -149,28 +145,24 @@ function MacroChips({ name }: { name: string }) {
         <span
           className="hdr-chip"
           data-kind="hotstring"
-          data-tip={entry.hotstringInstant
-            ? tt('Hotstring — fires as you type it', 'Hotstring — dispara ao digitar')
-            : tt('Hotstring — fires on Enter, Space or Tab', 'Hotstring — dispara com Enter, Espaço ou Tab')}
+          data-tip={entry.hotstringInstant ? t('header.chips.hotstringInstant') : t('header.chips.hotstringOnEnd')}
         >
           {entry.hotstringInstant ? <Zap aria-hidden="true" /> : <CornerDownLeft aria-hidden="true" />}
           <bdi>{entry.hotstring}</bdi>
         </span>
       )}
-      {entry.hasEffectiveTarget && <TargetChip entry={entry} tt={tt} />}
+      {entry.hasEffectiveTarget && <TargetChip entry={entry} />}
       {entry.hasTrigger && (
         <span
           className="hdr-chip"
           data-kind="automation"
           data-armed={(entry.triggerArmed && automationsOn) || undefined}
           data-tip={!entry.triggerArmed
-            ? tt('Its automation is not armed', 'A automação dele não está armada')
-            : automationsOn
-              ? tt('Its automation is armed', 'A automação dele está armada')
-              : tt('Automations are switched off', 'As automações estão desligadas')}
+            ? t('header.chips.automationNotArmed')
+            : automationsOn ? t('header.chips.automationArmed') : t('header.chips.automationsOff')}
         >
           <Zap aria-hidden="true" />
-          1 automation
+          {t('header.chips.automation')}
         </span>
       )}
     </>
@@ -178,10 +170,10 @@ function MacroChips({ name }: { name: string }) {
 }
 
 /** The window it targets, by the name people know it by: the title it matches, else the app. */
-function TargetChip({ entry, tt }: { entry: ProfileEntry; tt: (en: string, pt: string) => string }) {
+function TargetChip({ entry }: { entry: ProfileEntry }) {
   const process = entry.effectiveTargetProcessName;
   const title = entry.effectiveTargetWindowTitle;
-  const shown = title || (process ? process.replace(/\.exe$/i, '') : '') || 'Window';
+  const shown = title || (process ? process.replace(/\.exe$/i, '') : '') || t('header.chips.window');
   const folder = entry.effectiveTargetSource === 'folder' ? entry.effectiveTargetFolderName : null;
   const what = targetLabel(process, title) + (process && title ? ` · “${title}”` : '');
   return (
@@ -190,14 +182,17 @@ function TargetChip({ entry, tt }: { entry: ProfileEntry; tt: (en: string, pt: s
       data-kind="target"
       data-inherited={folder != null || undefined}
       data-tip={folder != null
-        ? tt(`Window target, from the folder ${folder}: ${what}`, `Janela-alvo, da pasta ${folder}: ${what}`)
-        : tt(`Window target: ${what}`, `Janela-alvo: ${what}`)}
+        ? t('header.chips.targetFromFolder', { folder, what })
+        : t('header.chips.target', { what })}
     >
       <AppWindow aria-hidden="true" />
       <bdi>{shown}</bdi>
     </span>
   );
 }
+
+// Where the user's own text goes in a sentence of the catalog: a character no name has.
+const CUT = '\u0001';
 
 /**
  * The line under the name: the steps, what one pass costs, and how the last run of this macro went
@@ -211,40 +206,38 @@ function MacroMeta({ name }: { name: string }) {
   const table = useApp(a => a.dataTable);
   const lastRun = useShell(s => s.lastRun);
   const dataTab = useUi(s => s.macroTab === 'data');
-  const tt = useTt();
-  const { language } = useLanguage();
   if (status === 'recording') return <RecordingMeta steps={actions.length} />;
   // On the Data Loop tab, in the mode that walks the rows one run at a time: the row the next
   // replay uses ("18 steps · next replay uses row 3, João Pereira").
   if (dataTab && !table.loopOverData && table.rows.length > 0) {
     const row = Math.max(0, table.cursorRow ?? 0);
     const first = table.rows[row]?.find(cell => cell.trim() !== '')?.trim();
-    return (
-      <p className="hdr-meta">
-        {actions.length === 0 ? 'No steps yet' : stepCount(actions.length)} · next replay uses row {row + 1}{first ? <>, <bdi>{first}</bdi></> : null}
-      </p>
-    );
+    if (!first) return <p className="hdr-meta">{t('header.meta.nextRow', { count: actions.length, row: row + 1 })}</p>;
+    // The row's first value is the user's: isolated in a <bdi>, where the catalog's sentence puts it.
+    const [before, after = ''] = t('header.meta.nextRowNamed', { count: actions.length, row: row + 1, name: CUT }).split(CUT);
+    return <p className="hdr-meta">{before}<bdi>{first}</bdi>{after}</p>;
   }
-  if (actions.length === 0) return <p className="hdr-meta">No steps yet</p>;
+  if (actions.length === 0) return <p className="hdr-meta">{t('header.meta.noSteps')}</p>;
   const pass = onePassMs(actions);
   const perRow = runsPerRow(table);
   const passes = passesOf(loop, table);
-  const per = perRow ? ' per row' : passes > 1 ? ' per loop' : '';
-  const why = tt('Delays + ~30 ms per step, plus holds and × N gaps. Moves and waits are not counted.',
-                 'Atrasos + ~30 ms por passo, mais holds e os intervalos do × N. Movimentos e esperas não entram.');
-  const estimateTip = passes > 1
-    ? tt(`${passes} ${perRow ? 'rows' : 'loops'}: about ${formatDuration(pass * passes, language)} in all. `, `${passes} ${perRow ? 'linhas' : 'loops'}: cerca de ${formatDuration(pass * passes, language)} no total. `) + why
-    : why;
+  const duration = formatDuration(pass);
+  const about = perRow ? t('header.meta.aboutPerRow', { duration })
+    : passes > 1 ? t('header.meta.aboutPerLoop', { duration })
+    : t('header.meta.about', { duration });
+  const estimateTip = passes <= 1 ? t('header.meta.estimateWhy')
+    : perRow ? t('header.meta.estimateRows', { count: passes, duration: formatDuration(pass * passes) })
+    : t('header.meta.estimateLoops', { count: passes, duration: formatDuration(pass * passes) });
   const run = status === 'ready' && lastRun && lastRun.profile === name ? lastRun : null;
   return (
     <p className="hdr-meta">
       {stepCount(actions.length)}
       {' · '}
-      <span data-tip={estimateTip}>about {formatDuration(pass, language)}{per}</span>
+      <span data-tip={estimateTip}>{about}</span>
       {run && (
         <>
           {' · '}
-          <span data-run={lastRunKind(run)}>last run {timeOfDay(run.startedAt)}, {lastRunOutcome(run, name)}</span>
+          <span data-run={lastRunKind(run)}>{lastRunText(run, name)}</span>
         </>
       )}
     </p>
@@ -256,7 +249,7 @@ function RecordingMeta({ steps }: { steps: number }) {
   const now = useNow(true);
   return (
     <p className="hdr-meta" data-recording="">
-      Recording · {formatClock(runSeconds(clock, now))} · {stepCount(steps)}
+      {t('header.meta.recording', { clock: formatClock(runSeconds(clock, now)), count: steps })}
     </p>
   );
 }

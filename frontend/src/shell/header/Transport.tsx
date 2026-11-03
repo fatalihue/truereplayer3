@@ -1,10 +1,10 @@
 import { useEffect, useState, type MouseEvent } from 'react';
 import { preload, useLoaded } from '../lazyModule';
 import { ChevronDown, MoreHorizontal, Play, Square } from 'lucide-react';
+import { t } from '../../i18n';
 import { useMacro } from '../../logic/useMacro';
 import { useRecording } from '../../logic/useRecording';
 import { useReplay } from '../../logic/useReplay';
-import { useTt } from '../../state/LanguageContext';
 import { keycaps } from '../library/model';
 import { insertPoint } from '../list/selection';
 import { macroMenuEntries } from '../macroMenu';
@@ -43,7 +43,6 @@ export function Transport({ name }: { name: string }) {
   // The new steps go after the selection, or at the end (the list's insertion point).
   const record = () => recording.toggleAt(insertPoint(useShell.getState().app.actions));
   const replay = useReplay();
-  const tt = useTt();
   const [panel, setPanel] = useState<(Opened & { kind: 'record' | 'replay' }) | null>(null);
   const [menu, setMenu] = useState<Opened | null>(null);
   const RunOptions = useLoaded(loadRunOptions)?.default;
@@ -70,17 +69,16 @@ export function Transport({ name }: { name: string }) {
   // In the Clicker mode the engine's Replay starts the Clicker, which has no page yet (phase 3): the
   // button waits for the macros to come back, and says how.
   const clickerTip = settings.modeToggleHotkey
-    ? tt(`The Clicker is on — ${keycaps(settings.modeToggleHotkey)} brings the macros back`,
-         `O Clicker está ligado — ${keycaps(settings.modeToggleHotkey)} traz os macros de volta`)
-    : tt('The Clicker is on — Macros, in the rail, brings them back', 'O Clicker está ligado — o Macros, no trilho, traz os macros de volta');
-  const count = perRow ? 'per row' : passes > 1 ? `×${passes}` : null;
+    ? t('header.clickerOnKey', { keys: keycaps(settings.modeToggleHotkey) })
+    : t('header.clickerOnRail');
+  const count = perRow ? t('header.perRow') : passes > 1 ? `×${passes}` : null;
 
   return (
     <div className="hdr-transport">
       {isRecording ? (
         <button type="button" className="hdr-run" data-tone="record" data-busy="" onClick={record}>
           <Square aria-hidden="true" />
-          Stop
+          {t('common.actions.stop')}
           {settings.recordingHotkey && <kbd className="kbd">{keycaps(settings.recordingHotkey)}</kbd>}
         </button>
       ) : (
@@ -92,13 +90,13 @@ export function Transport({ name }: { name: string }) {
             onClick={record}
           >
             <span className="hdr-rec-dot" aria-hidden="true" />
-            Record
+            {t('common.actions.record')}
           </button>
           {!isReplaying && (
             <button
               type="button"
               className="hdr-more"
-              aria-label="Recording options"
+              aria-label={t('header.recordOptions')}
               aria-haspopup="dialog"
               aria-expanded={panel?.kind === 'record'}
               onPointerEnter={loadNow}
@@ -115,7 +113,7 @@ export function Transport({ name }: { name: string }) {
         <>
           <button type="button" className="hdr-run" data-tone={clicker ? 'clicker' : 'replay'} data-busy="" onClick={replay.toggle}>
             <Square aria-hidden="true" />
-            Stop
+            {t('common.actions.stop')}
             {settings.replayHotkey && <kbd className="kbd">{keycaps(settings.replayHotkey)}</kbd>}
           </button>
           {RunProgress && <RunProgress />}
@@ -126,17 +124,17 @@ export function Transport({ name }: { name: string }) {
             type="button"
             className="hdr-run"
             disabled={!buttons.replayEnabled || clicker || isRecording}
-            data-tip={clicker ? clickerTip : perRow ? tt('One pass per row of the Data Loop table', 'Uma passada por linha da tabela do Data Loop') : undefined}
+            data-tip={clicker ? clickerTip : perRow ? t('header.perRowTip') : undefined}
             onClick={replay.toggle}
           >
             <Play aria-hidden="true" />
-            Replay
+            {t('common.actions.replay')}
             {count && <span className="hdr-count">{count}</span>}
           </button>
           <button
             type="button"
             className="hdr-more"
-            aria-label="Run options"
+            aria-label={t('header.runOptions')}
             aria-haspopup="dialog"
             aria-expanded={panel?.kind === 'replay'}
             onPointerEnter={loadNow}
@@ -149,13 +147,13 @@ export function Transport({ name }: { name: string }) {
       )}
       {/* The last "Loop 3 of 3" stays after the run, until the next one starts, as in today's status bar (casca-122). */}
       {!isReplaying && !clicker && loop.active && (
-        <span className="hdr-loop-done">Loop {loop.current} of {loop.total === 0 ? '∞' : loop.total}</span>
+        <span className="hdr-loop-done">{t('header.loopDone', { current: loop.current, total: loop.total === 0 ? '∞' : loop.total })}</span>
       )}
 
       <button
         type="button"
         className="hdr-menu"
-        aria-label="Macro actions"
+        aria-label={t('header.macroActions')}
         aria-haspopup="menu"
         aria-expanded={!!menu}
         onClick={openMenu}
@@ -179,12 +177,11 @@ function MacroActions({ name, opened, onClose }: { name: string; opened: Opened;
   const clicker = useApp(a => a.settings.useCursorClick);
   const hasSteps = useApp(a => a.actions.length > 0);
   const macro = useMacro();
-  const tt = useTt();
   return (
     <Menu
       anchor={opened.anchor}
-      entries={macroMenuEntries({ name, profiles, order, active: name, locked, clicker, hasSteps, macro, tt })}
-      label="Macro actions"
+      entries={macroMenuEntries({ name, profiles, order, active: name, locked, clicker, hasSteps, macro })}
+      label={t('header.macroActions')}
       focusFirst={opened.keyboard}
       toggle={opened.button}
       onClose={onClose}

@@ -1,4 +1,5 @@
 import type { ActionItem, ProfileDataTable, ProfileLoopState } from '../../bridge/messageTypes';
+import { LANG, t } from '../../i18n';
 import type { LastRunSummary } from '../../logic/useReplay';
 import { actionCostMs } from '../../utils/actionCost';
 import { skippedRowMask } from '../../utils/conditionalBlocks';
@@ -41,16 +42,18 @@ export function passesOf(loop: ProfileLoopState, table: ProfileDataTable): numbe
 /** The Loops field: the count while they are on, 1 while they are off — the passes they make. */
 export const loopsShown = (loop: ProfileLoopState) => (loop.enabled ? loop.count : '1');
 
-// The decimal mark follows the interface's language, as the list's delays do ("3.5 s", "3,5 s").
-const SECONDS = {
-  en: new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }),
-  'pt-BR': new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }),
-} as const;
+// The decimal mark and the clock are this build's language's ("3.5 s" / "3,5 s", "2:02 PM" / "14:02").
+// Made on first use, never at the opening: an Intl object is not free.
+let tenths: Intl.NumberFormat | undefined;
+let clock: Intl.DateTimeFormat | undefined;
 
-/** "450 ms", "3.5 s", "2 min 5 s", "1 h 4 min". */
-export function formatDuration(ms: number, language: 'en' | 'pt-BR' = 'en'): string {
+/**
+ * "450 ms", "3.5 s", "2 min 5 s", "1 h 4 min", in this build's language. The second parameter is the
+ * old language of the tips, kept for the callers not yet moved to the catalog; the build decides now.
+ */
+export function formatDuration(ms: number, _language: 'en' | 'pt-BR' = 'en'): string {
   if (ms < 1000) return `${Math.round(ms)} ms`;
-  if (ms < 59_950) return `${SECONDS[language].format(Math.round(ms / 100) / 10)} s`;
+  if (ms < 59_950) return `${(tenths ??= new Intl.NumberFormat(LANG, { maximumFractionDigits: 1 })).format(Math.round(ms / 100) / 10)} s`;
   const seconds = Math.round(ms / 1000);
   if (seconds < 3600) {
     const s = seconds % 60;
@@ -69,29 +72,48 @@ export function formatClock(totalSeconds: number): string {
   return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
 }
 
-/** "14:02" (or "2:02 PM"), in the user's own clock. */
+/** "2:02 PM" (or "14:02"), in this build's language's clock. */
 export function timeOfDay(iso: string): string {
   const at = new Date(iso);
-  return Number.isNaN(at.getTime()) ? '' : at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return Number.isNaN(at.getTime()) ? '' : (clock ??= new Intl.DateTimeFormat(LANG, { hour: 'numeric', minute: '2-digit' })).format(at);
 }
 
 /** "1 step", "18 steps". */
-export const stepCount = (n: number) => (n === 1 ? '1 step' : `${n} steps`);
+export const stepCount = (n: number) => t('header.meta.steps', { count: n });
 
 /**
- * How the last run of the open macro ended, after "last run 14:02,". The user's own Stop outranks
- * failures the skip policy absorbed (utils/lastRunChip). A run that halted inside a macro it ran
- * names that macro: its steps are not the ones on screen.
+ * How the last run of the open macro ended, on its own ("stopped by you"), for a line that puts it
+ * after " · " (the Dock's). The user's own Stop outranks failures the skip policy absorbed
+ * (utils/lastRunChip). A run that halted inside a macro it ran names that macro: its steps are not
+ * the ones on screen.
  */
 export function lastRunOutcome(run: LastRunSummary, open: string): string {
   switch (lastRunKind(run)) {
     case 'halted':
       return run.failedProfile && run.failedProfile !== open
-        ? `stopped at step ${run.failedRow} in ${run.failedProfile}`
-        : `stopped at step ${run.failedRow}`;
-    case 'failed': return 'it failed';
-    case 'stopped': return 'stopped by you';
-    case 'partial': return `${stepCount(run.failedCount)} failed`;
-    default: return 'no errors';
+        ? t('header.outcome.haltedIn', { step: run.failedRow ?? 0, macro: run.failedProfile })
+        : t('header.outcome.halted', { step: run.failedRow ?? 0 });
+    case 'failed': return t('header.outcome.failed');
+    case 'stopped': return t('header.outcome.stopped');
+    case 'partial': return t('header.outcome.partial', { count: run.failedCount });
+    default: return t('header.outcome.ok');
+  }
+}
+
+/**
+ * The header's "last run 14:02, no errors": when the last run of the open macro was and how it ended
+ * (as lastRunOutcome decides), one sentence per ending.
+ */
+export function lastRunText(run: LastRunSummary, open: string): string {
+  const time = timeOfDay(run.startedAt);
+  switch (lastRunKind(run)) {
+    case 'halted':
+      return run.failedProfile && run.failedProfile !== open
+        ? t('header.meta.lastRun.haltedIn', { time, step: run.failedRow ?? 0, macro: run.failedProfile })
+        : t('header.meta.lastRun.halted', { time, step: run.failedRow ?? 0 });
+    case 'failed': return t('header.meta.lastRun.failed', { time });
+    case 'stopped': return t('header.meta.lastRun.stopped', { time });
+    case 'partial': return t('header.meta.lastRun.partial', { time, count: run.failedCount });
+    default: return t('header.meta.lastRun.ok', { time });
   }
 }

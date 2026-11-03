@@ -3,10 +3,10 @@ import { createPortal } from 'react-dom';
 import {
   AppWindow, Ban, Palette, Pencil, Power, Trash2,
 } from 'lucide-react';
+import { t } from '../../i18n';
 import { useImport } from '../../logic/useImport';
 import { useMacro } from '../../logic/useMacro';
 import { useSteps } from '../../logic/useSteps';
-import { useTt } from '../../state/LanguageContext';
 import { useToast } from '../../state/ToastContext';
 import { loadInspectorBody, loadWindowEditors } from '../inspector/inspectorState';
 import { preload } from '../lazyModule';
@@ -52,7 +52,7 @@ export function Library() {
   const macro = useMacro();
   const steps = useSteps();
   const { showToast } = useToast();
-  const tt = useTt();
+  // Only for macroMenuEntries, which still takes the old pairs' function until they are gone everywhere.
   const imports = useImport();
   const band = useShellBand();
   // Laid over the steps for a moment: from the folded library's Expand, or from the rail where the
@@ -120,7 +120,7 @@ export function Library() {
   // Inspector (lista-049). The open macro cannot call itself.
   const runMacroAt = (name: string, at: number) => {
     if (name === active) {
-      showToast(tt('A macro can’t run itself', 'Um macro não pode rodar a si mesmo'), 'error');
+      showToast(t('library.cantRunItself'), 'error');
       return;
     }
     arrival.expect(at, active);
@@ -138,7 +138,7 @@ export function Library() {
     setMenu({ kind, button, anchor: anchorBelow(button, kind === 'new' ? 'start' : 'end'), keyboard, seq: ++seq.current });
   };
 
-  const macroEntries = (name: string) => macroMenuEntries({ name, profiles, order, active, locked, clicker, hasSteps, macro, tt });
+  const macroEntries = (name: string) => macroMenuEntries({ name, profiles, order, active, locked, clicker, hasSteps, macro });
 
   const folderEntries = (name: string): MenuEntry[] => {
     const folder = order.folders.find(f => f.name === name);
@@ -146,21 +146,21 @@ export function Library() {
     const members = sections.folders.find(s => s.folder.name === name)?.macros ?? [];
     const allOff = members.length > 0 && members.every(m => m.isDisabled);
     return [
-      { label: 'Rename…', icon: Pencil, onSelect: () => openDialog({ kind: 'renameFolder', name }) },
+      { label: t('common.actions.renameEllipsis'), icon: Pencil, onSelect: () => openDialog({ kind: 'renameFolder', name }) },
       {
-        label: 'Color',
+        label: t('library.folderMenu.color'),
         icon: Palette,
         panel: (close) => <ColorGrid menu value={folder.color} onPick={(color) => { close(); macro.setFolderColor(name, color); }} />,
       },
       'separator',
       // The Inspector's fields, in a dialog: the folder's target has no Ctrl+Z, so it is saved by Set target.
-      { label: 'Window target…', icon: AppWindow, onSelect: () => openDialog({ kind: 'folderTarget', name }) },
+      { label: t('library.folderMenu.windowTarget'), icon: AppWindow, onSelect: () => openDialog({ kind: 'folderTarget', name }) },
       'separator',
       allOff
-        ? { label: 'Enable all', icon: Power, onSelect: () => macro.toggleFolderDisabled(name) }
-        : { label: 'Disable all', icon: Ban, onSelect: () => macro.toggleFolderDisabled(name) },
+        ? { label: t('library.folderMenu.enableAll'), icon: Power, onSelect: () => macro.toggleFolderDisabled(name) }
+        : { label: t('library.folderMenu.disableAll'), icon: Ban, onSelect: () => macro.toggleFolderDisabled(name) },
       'separator',
-      { label: 'Delete folder', icon: Trash2, danger: true, onSelect: () => macro.deleteFolder(name) },
+      { label: t('library.folderMenu.delete'), icon: Trash2, danger: true, onSelect: () => macro.deleteFolder(name) },
     ];
   };
 
@@ -170,10 +170,10 @@ export function Library() {
     : menu.kind === 'folder' ? folderEntries(menu.name)
     : menu.kind === 'new' ? newEntries : moreEntries;
   const menuLabel = !menu ? '' : menu.kind === 'macro' || menu.kind === 'folder' ? menu.name
-    : menu.kind === 'new' ? 'New' : 'More macro actions';
+    : menu.kind === 'new' ? t('common.actions.new') : t('library.panel.more');
 
   return (
-    <aside className="shell-library" aria-label="Macros" data-folded={showFolded || undefined} data-peek={peeking || undefined}>
+    <aside className="shell-library" aria-label={t('common.pages.macros')} data-folded={showFolded || undefined} data-peek={peeking || undefined}>
       {!hidden && showFolded && (
         <LibraryFolded
           macros={ordered}

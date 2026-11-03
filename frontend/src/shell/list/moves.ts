@@ -1,4 +1,5 @@
 import type { ActionItem } from '../../bridge/messageTypes';
+import { fmtNum, t } from '../../i18n';
 import { deleteIntent, type useSteps } from '../../logic/useSteps';
 import { snapIndicesToBlocks } from '../../utils/conditionalBlocks';
 import type { BlockMap } from './blocks';
@@ -28,7 +29,8 @@ export function moveSteps(steps: ActionItem[], sel: number[], dir: 'up' | 'down'
 /**
  * Deletes what a selection means (deleteIntent) — the Delete key, the step menu and the batch
  * editor — says so when whole blocks went with it, and clears the selection. Returns how many
- * steps went, or 0 when whole blocks went too (that was said already).
+ * steps went, or 0 when whole blocks went too (that was said already). The text comes from the
+ * catalog; `_tt`, the old pairs' function, is no longer read (the cleanup drops it).
  */
 export function deleteSteps(
   steps: ActionItem[],
@@ -36,14 +38,11 @@ export function deleteSteps(
   blocks: BlockMap,
   cmds: ReturnType<typeof useSteps>,
   tell: (text: string) => void,
-  tt: (en: string, pt: string) => string,
+  _tt?: (en: string, pt: string) => string,
 ): number {
   const intent = deleteIntent(sel, steps, (o) => blocks.closerOf.get(o));
   const wider = intent.message.type === 'actions:delete' && intent.count > sel.length;
-  if (wider) {
-    tell(tt(`Deleted ${intent.count} steps — the selection touched a block marker, so whole blocks went with it.`,
-            `${intent.count} passos apagados — a seleção tocou um marcador de bloco, então blocos inteiros foram junto.`));
-  }
+  if (wider) tell(t('list.toasts.deletedBlocks', { n: fmtNum(intent.count) }));
   cmds.removeSteps(intent);
   selection.clear();
   return wider ? 0 : intent.count;

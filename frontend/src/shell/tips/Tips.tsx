@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Circle, Play, X } from 'lucide-react';
+import { t } from '../../i18n';
 import { useReplay } from '../../logic/useReplay';
 import { keycaps } from '../library/model';
 import { useApp, useShell } from '../store';
 import { focusName, openMacroSettings } from '../ui';
+import { isUntitledName } from '../untitled';
 import { endTip, pendingTips } from './tipsState';
 import './tips.css';
 
-// The names the engine gives a new macro: after a first recording, its name is the next thing to type.
-const UNTITLED = /^Untitled macro( \d+)?$/;
+// Where the key goes in "Press {{key}} to stop.": the sentence comes whole from the catalog with this
+// mark in the key's place, and is cut there, so the key is drawn as a key cap wherever the language
+// puts it. A private-use character: no text has one.
+const KEY_MARK = '\uE000';
 
 interface After {
   macro: string;
@@ -58,7 +62,8 @@ export default function Tips() {
           card.current = { macro: now.activeProfile, steps: made };
           setAfter(card.current);
           setTried(false);
-          if (UNTITLED.test(now.activeProfile)) focusName(now.activeProfile);
+          // The name the app gave it (in either language) is the next thing to type.
+          if (isUntitledName(now.activeProfile)) focusName(now.activeProfile);
         }
         return;
       }
@@ -73,20 +78,21 @@ export default function Tips() {
   }, []);
 
   if (status === 'recording' && recordTip) {
+    const [keyBefore, keyAfter = ''] = t('tips.recording.pressKey', { key: KEY_MARK }).split(KEY_MARK);
     return (
       <div className="tip" data-tone="record" role="status">
         <span className="tip-dot" aria-hidden="true" />
         <span className="tip-text">
-          <span className="tip-title">Do the task now, in any app</span>
+          <span className="tip-title">{t('tips.recording.title')}</span>
           <span className="tip-body">
-            Each click and key becomes a step below. {recordKey ? <>Press <kbd className="kbd">{keycaps(recordKey)}</kbd> to stop.</> : 'Press Stop to finish.'}
+            {t('tips.recording.body')} {recordKey ? <>{keyBefore}<kbd className="kbd">{keycaps(recordKey)}</kbd>{keyAfter}</> : t('tips.recording.pressStop')}
           </span>
         </span>
         <button
           type="button"
           className="tip-hide"
-          aria-label="Hide this tip"
-          data-tip="Hide this tip"
+          aria-label={t('tips.recording.hide')}
+          data-tip={t('tips.recording.hide')}
           onClick={() => { endTip('recording'); setRecordTip(false); }}
         >
           <X aria-hidden="true" />
@@ -98,32 +104,32 @@ export default function Tips() {
   if (!after || status === 'recording') return null;
   const shortcut = !!profiles.find(p => p.name === after.macro)?.hotkey;
   return (
-    <section className="tip tip-card" aria-label="Your first macro is saved">
+    <section className="tip tip-card" aria-label={t('tips.card.title')}>
       <div className="tip-card-head">
-        <span className="tip-title">Your first macro is saved</span>
-        <button type="button" className="tip-hide" aria-label="Hide these tips" data-tip="Hide these tips" onClick={() => show(null)}>
+        <span className="tip-title">{t('tips.card.title')}</span>
+        <button type="button" className="tip-hide" aria-label={t('tips.card.hide')} data-tip={t('tips.card.hide')} onClick={() => show(null)}>
           <X aria-hidden="true" />
         </button>
       </div>
       <ul className="tip-list">
         <li data-done="">
           <Check aria-hidden="true" />
-          <span className="tip-item">Recorded {after.steps === 1 ? '1 step' : `${after.steps} steps`}</span>
+          <span className="tip-item">{t('tips.card.recorded', { count: after.steps })}</span>
         </li>
         <li data-done={tried || undefined}>
           {tried ? <Check aria-hidden="true" /> : <Circle aria-hidden="true" />}
-          <span className="tip-item">Try it</span>
+          <span className="tip-item">{t('tips.card.tryIt')}</span>
           <button type="button" className="tip-action" disabled={status !== 'ready'} onClick={replay.toggle}>
             <Play aria-hidden="true" />
-            Replay
+            {t('common.actions.replay')}
             {replayKey && <kbd className="kbd">{keycaps(replayKey)}</kbd>}
           </button>
         </li>
         <li data-done={shortcut || undefined}>
           {shortcut ? <Check aria-hidden="true" /> : <Circle aria-hidden="true" />}
-          <span className="tip-item">Run it from any app</span>
+          <span className="tip-item">{t('tips.card.runAnywhere')}</span>
           <button type="button" className="tip-action" onClick={() => openMacroSettings(after.macro, 'hotkey')}>
-            {shortcut ? 'Change the shortcut' : 'Add a shortcut'}
+            {shortcut ? t('tips.card.changeShortcut') : t('tips.card.addShortcut')}
           </button>
         </li>
       </ul>

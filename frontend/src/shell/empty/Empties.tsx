@@ -1,4 +1,5 @@
 import { ListChecks, SearchX } from 'lucide-react';
+import { t } from '../../i18n';
 import { useRecording } from '../../logic/useRecording';
 import { keycaps } from '../library/model';
 import { useApp } from '../store';
@@ -20,12 +21,12 @@ export function EmptySteps() {
   return (
     <>
       <span className="steps-empty-icon"><ListChecks aria-hidden="true" /></span>
-      <p className="steps-empty-title">No steps yet</p>
-      <p>Record the task, or add steps one by one. Steps copied from another macro paste here with Ctrl+V.</p>
+      <p className="steps-empty-title">{t('empty.steps.title')}</p>
+      <p>{t('empty.steps.text')}</p>
       <div className="hdr-split" data-tone="record" data-disabled={!enabled || undefined}>
         <button type="button" className="hdr-run" disabled={!enabled} onClick={() => recording.toggleAt(0)}>
           <span className="hdr-rec-dot" aria-hidden="true" />
-          Record
+          {t('common.actions.record')}
           {key && <kbd className="kbd">{keycaps(key)}</kbd>}
         </button>
       </div>
@@ -38,8 +39,8 @@ export function LibraryNone() {
   return (
     <div className="lib-empty">
       <ListChecks aria-hidden="true" />
-      <span className="lib-empty-title">No macros yet</span>
-      <span>Each macro you make shows up here, saved as you go.</span>
+      <span className="lib-empty-title">{t('empty.library.title')}</span>
+      <span>{t('empty.library.text')}</span>
     </div>
   );
 }
@@ -53,14 +54,14 @@ export function LibraryNoMatch({ query, tags, onCreate, onClear }: { query: stri
   return (
     <div className="lib-empty">
       <SearchX aria-hidden="true" />
-      <span>No macros match “{text}”</span>
+      <span>{t('empty.noMatch.title', { query: text })}</span>
       {!tags && (
         <>
-          <button type="button" className="lib-link" onClick={() => { onCreate(text); onClear(); }}>Create macro “{text}”</button>
-          <button type="button" className="lib-link" onClick={() => openExamples(text)}>Look for it in the examples</button>
+          <button type="button" className="lib-link" onClick={() => { onCreate(text); onClear(); }}>{t('empty.noMatch.create', { name: text })}</button>
+          <button type="button" className="lib-link" onClick={() => openExamples(text)}>{t('empty.noMatch.examples')}</button>
         </>
       )}
-      <button type="button" className="lib-link" onClick={onClear}>Clear search</button>
+      <button type="button" className="lib-link" onClick={onClear}>{t('common.actions.clearSearch')}</button>
     </div>
   );
 }

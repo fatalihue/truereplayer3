@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { useBridge } from '../bridge/BridgeContext';
+import { t } from '../i18n';
 import { useMacro } from '../logic/useMacro';
 import { useSteps } from '../logic/useSteps';
 import { useWindowSnap } from '../logic/useWindowSnap';
-import { useTt } from '../state/LanguageContext';
 import { useToast } from '../state/ToastContext';
 import { isModalDialogOpen } from '../utils/modalDialog';
 import { preload } from './lazyModule';
@@ -49,7 +49,6 @@ export function ShellKeys() {
   const cmds = useSteps();
   const { subscribe } = useBridge();
   const { showToast } = useToast();
-  const tt = useTt();
   // The macro Ctrl+S asked to save, until its profile:saved arrives.
   const asked = useRef<{ name: string; at: number } | null>(null);
   // The layout's band edges, for the compact view's size (the engine reads the rem off them).
@@ -93,7 +92,7 @@ export function ShellKeys() {
         e.preventDefault();
         if (e.repeat || !app.activeProfile) return;
         if (app.settings.useCursorClick) {
-          showToast(tt('The Clicker is on — switch back to macros to save.', 'O Clicker está ligado — volte aos macros para salvar.'), 'error');
+          showToast(t('shell.keys.clickerOn'), 'error');
           return;
         }
         const active = document.activeElement;
@@ -141,7 +140,7 @@ export function ShellKeys() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [macro, cmds, showToast, tt]);
+  }, [macro, cmds, showToast]);
 
   useEffect(() => subscribe((message) => {
     if (message.type === 'profile:saved') {
@@ -150,14 +149,14 @@ export function ShellKeys() {
       asked.current = null;
       // An answer long after the key belongs to a later save, not to this one.
       if (Date.now() - wanted.at > 5000) return;
-      if (message.payload.ok) showToast(tt('Saved', 'Salvo'), 'success');
+      if (message.payload.ok) showToast(t('shell.keys.saved'), 'success');
       // The engine speaks (alert:show) on the first failure of a run of them; after that, the
-      // status bar says "Not saved" and this key is the one to answer.
-      else if (useShell.getState().saved?.ok === false) showToast(tt(`Not saved — ${message.payload.error ?? 'the file could not be written'}`, `Não salvo — ${message.payload.error ?? 'o arquivo não pôde ser gravado'}`), 'error');
+      // status bar says "Not saved" and this key is the one to answer, with the engine's error.
+      else if (useShell.getState().saved?.ok === false) showToast(t('shell.keys.notSaved', { error: message.payload.error ?? t('shell.keys.couldNotWrite') }), 'error');
     } else if (message.type === 'profile:reverted' && message.payload.ok) {
-      showToast(tt('Back to when you opened it', 'De volta a quando você o abriu'), 'success');
+      showToast(t('shell.keys.reverted'), 'success');
     }
-  }), [subscribe, showToast, tt]);
+  }), [subscribe, showToast]);
 
   return null;
 }

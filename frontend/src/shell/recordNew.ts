@@ -1,6 +1,7 @@
 import type { OutgoingMessage } from '../bridge/messageTypes';
 import { freeName } from './library/model';
 import { useShell } from './store';
+import { UNTITLED_MACRO } from './untitled';
 
 /**
  * Runs `then` once the macro is the open one (and, to record, a recording may start): the engine
@@ -26,7 +27,7 @@ export function whenOpen(name: string, record: boolean, then: () => void) {
 export function recordNewMacro(send: (message: OutgoingMessage) => void, create: (name: string) => void): boolean {
   const app = useShell.getState().app;
   if (app.status !== 'ready' || app.settings.useCursorClick) return false;
-  const name = freeName('Untitled macro', app.profiles.map(p => p.name));
+  const name = freeName(UNTITLED_MACRO, app.profiles.map(p => p.name));
   whenOpen(name, true, () => send({ type: 'recording:toggle', payload: { insertIndex: 0 } }));
   create(name);
   return true;

@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { ChevronDown, ChevronsDownUp, ChevronsUpDown, Hash, MoreHorizontal, Pin, Plus, Search, X } from 'lucide-react';
 import type { ProfileEntry, ProfileFolder, ProfileOrderData } from '../../bridge/messageTypes';
-import { useTt } from '../../state/LanguageContext';
+import { t } from '../../i18n';
 import { preload, useLoaded } from '../lazyModule';
 import { useShell } from '../store';
 import { loadDragGhost, loadEmpties } from '../ui';
@@ -51,7 +51,6 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
   /** A macro dropped on the steps: a Run Macro step there. */
   onRun: (macro: string, index: number) => void;
 }) {
-  const tt = useTt();
   const booted = useShell(s => s.booted);
   const [query, setQuery] = useState('');
   const panelRef = useRef<HTMLDivElement>(null);
@@ -110,7 +109,7 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
   // cut is a fact of the layout, so it is read for the one name under the pointer, as it arrives:
   // pointerover comes before the mouseover the tooltip layer reads data-tip on. Measuring every
   // name after each render cost ~30 ms of the launch and a layout of the whole list per switch.
-  const lockedTip = tt('Stop the run to open another macro', 'Pare a execução para abrir outro macro');
+  const lockedTip = t('library.panel.locked');
   const tipFor = (target: EventTarget) => {
     const cell = (target as Element).closest?.<HTMLElement>('[data-name-cell]');
     if (!cell) return;
@@ -139,9 +138,9 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
     const list = listRef.current;
     (list?.querySelector<HTMLElement>('.lib-macro[aria-current="true"]') ?? list?.querySelector<HTMLElement>(ITEM))?.focus({ preventScroll: false });
     const outside = (e: Event) => {
-      const t = e.target as Element;
+      const target = e.target as Element;
       // The rail's Macros is the toggle: its own click takes the panel away.
-      if (panelRef.current?.contains(t) || t.closest?.('.shell-menu-layer, [role="dialog"], [data-library-toggle]')) return;
+      if (panelRef.current?.contains(target) || target.closest?.('.shell-menu-layer, [role="dialog"], [data-library-toggle]')) return;
       onFold();
     };
     const escape = (e: globalThis.KeyboardEvent) => {
@@ -201,7 +200,6 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
       open={entry.name === active}
       locked={locked && entry.name !== active}
       dragging={drag.dragging?.kind === 'macro' && drag.dragging.name === entry.name}
-      tt={tt}
       onOpen={open}
       onMenu={onMacroMenu}
       onPress={drag.pressMacro}
@@ -222,7 +220,7 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
       data-peek={peek || undefined}
     >
       <div className="lib-header">
-        <span className="lib-title">Macros</span>
+        <span className="lib-title">{t('common.pages.macros')}</span>
         <button
           type="button"
           className="lib-new"
@@ -231,16 +229,16 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
           onClick={(e) => onNewMenu(e.currentTarget, e.detail === 0)}
         >
           <Plus aria-hidden="true" />
-          New
+          {t('common.actions.new')}
           <ChevronDown aria-hidden="true" />
         </button>
         <button
           type="button"
           className="lib-icon-button"
-          aria-label="More macro actions"
+          aria-label={t('library.panel.more')}
           aria-haspopup="menu"
           aria-expanded={menuFor === 'more'}
-          data-tip={tt('More macro actions', 'Mais ações de macros')}
+          data-tip={t('library.panel.more')}
           onClick={(e) => onMoreMenu(e.currentTarget, e.detail === 0)}
         >
           <MoreHorizontal aria-hidden="true" />
@@ -248,8 +246,8 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
         <button
           type="button"
           className="lib-icon-button"
-          aria-label={anyFolderOpen ? 'Collapse all folders' : 'Expand all folders'}
-          data-tip={anyFolderOpen ? tt('Collapse all folders', 'Recolher todas as pastas') : tt('Expand all folders', 'Expandir todas as pastas')}
+          aria-label={anyFolderOpen ? t('library.panel.collapseFolders') : t('library.panel.expandFolders')}
+          data-tip={anyFolderOpen ? t('library.panel.collapseFolders') : t('library.panel.expandFolders')}
           disabled={order.folders.length === 0}
           onClick={() => onAllFolders(anyFolderOpen)}
         >
@@ -263,8 +261,8 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
           <input
             ref={searchRef}
             type="text"
-            aria-label="Search macros"
-            placeholder="Search · # for tags"
+            aria-label={t('library.panel.search')}
+            placeholder={t('library.panel.searchHint')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
@@ -278,7 +276,7 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
             }}
           />
           {query && (
-            <button type="button" className="lib-search-clear" aria-label="Clear search" onClick={() => { setQuery(''); searchRef.current?.focus(); }}>
+            <button type="button" className="lib-search-clear" aria-label={t('common.actions.clearSearch')} onClick={() => { setQuery(''); searchRef.current?.focus(); }}>
               <X aria-hidden="true" />
             </button>
           )}
@@ -289,14 +287,14 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
         ref={listRef}
         className="lib-list"
         role="group"
-        aria-label="Macro list"
+        aria-label={t('library.panel.list')}
         onKeyDown={onListKey}
         onPointerOver={(e) => tipFor(e.target)}
         onFocus={(e) => {
-          const t = e.target as HTMLElement;
-          if (!t.matches(ITEM)) return;
-          lastFocus.current = t.dataset.name ?? t.dataset.folder ?? null;
-          for (const el of listRef.current?.querySelectorAll<HTMLElement>(ITEM) ?? []) el.tabIndex = el === t ? 0 : -1;
+          const item = e.target as HTMLElement;
+          if (!item.matches(ITEM)) return;
+          lastFocus.current = item.dataset.name ?? item.dataset.folder ?? null;
+          for (const el of listRef.current?.querySelectorAll<HTMLElement>(ITEM) ?? []) el.tabIndex = el === item ? 0 : -1;
         }}
       >
         {found ? (
@@ -309,7 +307,7 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
           <>
             {sections.pinned.length > 0 && (
               <>
-                <div className="lib-heading"><Pin aria-hidden="true" />Pinned</div>
+                <div className="lib-heading"><Pin aria-hidden="true" />{t('library.pinned')}</div>
                 {sections.pinned.map(row)}
               </>
             )}
@@ -336,7 +334,7 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
               {/* While a macro is dragged, Ungrouped is always there to drop it on — taking it out
                   of its folder — even when nothing is loose yet. */}
               {(sections.loose.length > 0 || draggingMacro) && (sections.pinned.length > 0 || sections.folders.length > 0) && (
-                <div className="lib-heading" data-after="">Ungrouped</div>
+                <div className="lib-heading" data-after="">{t('library.ungrouped')}</div>
               )}
               {sections.loose.map(row)}
             </div>

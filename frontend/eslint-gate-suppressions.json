@@ -31,7 +31,7 @@
   },
   "src/components/UpdateOverlay.tsx": {
     "tr/texto-solto": {
-      "count": 30
+      "count": 15
     }
   },
   "src/components/common/DialogShell.tsx": {
@@ -59,7 +59,7 @@
   },
   "src/components/lexical/ClipboardSurface.tsx": {
     "tr/texto-solto": {
-      "count": 58
+      "count": 57
     }
   },
   "src/components/lexical/LexicalTokenEditor.tsx": {
@@ -69,7 +69,7 @@
   },
   "src/components/lexical/TokenChipPopover.tsx": {
     "tr/texto-solto": {
-      "count": 43
+      "count": 29
     }
   },
   "src/components/lexical/popoverAtoms.tsx": {
@@ -80,36 +80,6 @@
   "src/components/lexical/tokenDescriptions.ts": {
     "tr/texto-solto": {
       "count": 1
-    }
-  },
-  "src/shell/Menu.tsx": {
-    "tr/texto-solto": {
-      "count": 2
-    }
-  },
-  "src/shell/NotBuilt.tsx": {
-    "tr/texto-solto": {
-      "count": 1
-    }
-  },
-  "src/shell/Shell.tsx": {
-    "tr/texto-solto": {
-      "count": 1
-    }
-  },
-  "src/shell/ShellKeys.tsx": {
-    "tr/texto-solto": {
-      "count": 4
-    }
-  },
-  "src/shell/coexist.tsx": {
-    "tr/texto-solto": {
-      "count": 4
-    }
-  },
-  "src/shell/compact/CompactView.tsx": {
-    "tr/texto-solto": {
-      "count": 5
     }
   },
   "src/shell/data/DataGrid.tsx": {
@@ -124,12 +94,12 @@
   },
   "src/shell/data/DataPaste.tsx": {
     "tr/texto-solto": {
-      "count": 29
+      "count": 28
     }
   },
   "src/shell/data/DataSettings.tsx": {
     "tr/texto-solto": {
-      "count": 51
+      "count": 50
     }
   },
   "src/shell/data/DataTools.tsx": {
@@ -144,57 +114,7 @@
   },
   "src/shell/dock/DockPanel.tsx": {
     "tr/texto-solto": {
-      "count": 24
-    }
-  },
-  "src/shell/empty/Empties.tsx": {
-    "tr/texto-solto": {
-      "count": 9
-    }
-  },
-  "src/shell/examples/Examples.tsx": {
-    "tr/texto-solto": {
-      "count": 19
-    }
-  },
-  "src/shell/firstrun/FirstRun.tsx": {
-    "tr/texto-solto": {
-      "count": 11
-    }
-  },
-  "src/shell/header/MacroHeader.tsx": {
-    "tr/texto-solto": {
       "count": 22
-    }
-  },
-  "src/shell/header/RunOptions.tsx": {
-    "tr/texto-solto": {
-      "count": 16
-    }
-  },
-  "src/shell/header/RunProgress.tsx": {
-    "tr/texto-solto": {
-      "count": 3
-    }
-  },
-  "src/shell/header/Transport.tsx": {
-    "tr/texto-solto": {
-      "count": 11
-    }
-  },
-  "src/shell/importTr2.tsx": {
-    "tr/texto-solto": {
-      "count": 7
-    }
-  },
-  "src/shell/insert/AddStepCatalog.tsx": {
-    "tr/texto-solto": {
-      "count": 9
-    }
-  },
-  "src/shell/insert/InsertRow.tsx": {
-    "tr/texto-solto": {
-      "count": 16
     }
   },
   "src/shell/inspector/BatchEditor.tsx": {
@@ -209,27 +129,27 @@
   },
   "src/shell/inspector/ClickEditor.tsx": {
     "tr/texto-solto": {
-      "count": 24
+      "count": 23
     }
   },
   "src/shell/inspector/ConditionEditor.tsx": {
     "tr/texto-solto": {
-      "count": 11
+      "count": 9
     }
   },
   "src/shell/inspector/ImageProbe.tsx": {
     "tr/texto-solto": {
-      "count": 24
+      "count": 22
     }
   },
   "src/shell/inspector/Inspector.tsx": {
     "tr/texto-solto": {
-      "count": 12
+      "count": 7
     }
   },
   "src/shell/inspector/InspectorBody.tsx": {
     "tr/texto-solto": {
-      "count": 19
+      "count": 14
     }
   },
   "src/shell/inspector/KeyEditor.tsx": {
@@ -254,7 +174,7 @@
   },
   "src/shell/inspector/SendTextEditor.tsx": {
     "tr/texto-solto": {
-      "count": 13
+      "count": 12
     }
   },
   "src/shell/inspector/WaitImageEditor.tsx": {
@@ -269,7 +189,7 @@
   },
   "src/shell/inspector/WaitTextEditor.tsx": {
     "tr/texto-solto": {
-      "count": 3
+      "count": 2
     }
   },
   "src/shell/inspector/WaitTiming.tsx": {
@@ -279,7 +199,7 @@
   },
   "src/shell/inspector/browserEditors.tsx": {
     "tr/texto-solto": {
-      "count": 35
+      "count": 31
     }
   },
   "src/shell/inspector/browserText.tsx": {
@@ -339,7 +259,7 @@
   },
   "src/shell/inspector/screenChecks.tsx": {
     "tr/texto-solto": {
-      "count": 60
+      "count": 55
     }
   },
   "src/shell/inspector/selectorField.tsx": {
@@ -349,7 +269,7 @@
   },
   "src/shell/inspector/simpleEditors.tsx": {
     "tr/texto-solto": {
-      "count": 13
+      "count": 12
     }
   },
   "src/shell/inspector/stateChecks.tsx": {
@@ -359,12 +279,12 @@
   },
   "src/shell/inspector/textInsert.tsx": {
     "tr/texto-solto": {
-      "count": 14
+      "count": 12
     }
   },
   "src/shell/inspector/textPreview.tsx": {
     "tr/texto-solto": {
-      "count": 19
+      "count": 16
     }
   },
   "src/shell/inspector/textSnippets.tsx": {
@@ -374,87 +294,12 @@
   },
   "src/shell/inspector/textTransform.tsx": {
     "tr/texto-solto": {
-      "count": 11
+      "count": 9
     }
   },
   "src/shell/inspector/windowEditors.tsx": {
     "tr/texto-solto": {
-      "count": 21
-    }
-  },
-  "src/shell/library/ColorGrid.tsx": {
-    "tr/texto-solto": {
-      "count": 1
-    }
-  },
-  "src/shell/library/ExportDialog.tsx": {
-    "tr/texto-solto": {
-      "count": 21
-    }
-  },
-  "src/shell/library/FolderCard.tsx": {
-    "tr/texto-solto": {
-      "count": 6
-    }
-  },
-  "src/shell/library/Library.tsx": {
-    "tr/texto-solto": {
-      "count": 1
-    }
-  },
-  "src/shell/library/LibraryDialogs.tsx": {
-    "tr/texto-solto": {
-      "count": 42
-    }
-  },
-  "src/shell/library/LibraryFolded.tsx": {
-    "tr/texto-solto": {
-      "count": 10
-    }
-  },
-  "src/shell/library/LibraryPanel.tsx": {
-    "tr/texto-solto": {
-      "count": 14
-    }
-  },
-  "src/shell/library/MacroRow.tsx": {
-    "tr/texto-solto": {
-      "count": 6
-    }
-  },
-  "src/shell/list/SendTextCell.tsx": {
-    "tr/texto-solto": {
-      "count": 2
-    }
-  },
-  "src/shell/list/StepList.tsx": {
-    "tr/texto-solto": {
-      "count": 19
-    }
-  },
-  "src/shell/list/StepRow.tsx": {
-    "tr/texto-solto": {
-      "count": 11
-    }
-  },
-  "src/shell/list/details.tsx": {
-    "tr/texto-solto": {
-      "count": 7
-    }
-  },
-  "src/shell/list/moves.ts": {
-    "tr/texto-solto": {
-      "count": 1
-    }
-  },
-  "src/shell/list/stepMenu.ts": {
-    "tr/texto-solto": {
-      "count": 28
-    }
-  },
-  "src/shell/macroMenu.ts": {
-    "tr/texto-solto": {
-      "count": 3
+      "count": 20
     }
   },
   "src/shell/pages/automations/AutomationCondition.tsx": {
@@ -464,17 +309,17 @@
   },
   "src/shell/pages/automations/AutomationsPage.tsx": {
     "tr/texto-solto": {
-      "count": 80
+      "count": 74
     }
   },
   "src/shell/pages/clicker/ClickerPage.tsx": {
     "tr/texto-solto": {
-      "count": 85
+      "count": 81
     }
   },
   "src/shell/pages/remaps/RemapsPage.tsx": {
     "tr/texto-solto": {
-      "count": 62
+      "count": 55
     }
   },
   "src/shell/pages/settings/SettingsPage.tsx": {
@@ -484,7 +329,7 @@
   },
   "src/shell/pages/settings/appearance.tsx": {
     "tr/texto-solto": {
-      "count": 57
+      "count": 51
     }
   },
   "src/shell/pages/settings/appearancePreview.tsx": {
@@ -505,26 +350,6 @@
   "src/shell/pages/settings/themeEditor.tsx": {
     "tr/texto-solto": {
       "count": 41
-    }
-  },
-  "src/shell/palette/CommandPalette.tsx": {
-    "tr/texto-solto": {
-      "count": 20
-    }
-  },
-  "src/shell/tips/Tips.tsx": {
-    "tr/texto-solto": {
-      "count": 19
-    }
-  },
-  "src/shell/watch.tsx": {
-    "tr/texto-solto": {
-      "count": 2
-    }
-  },
-  "src/utils/sendTextStatus.ts": {
-    "tr/texto-solto": {
-      "count": 4
     }
   }
 }

@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
+import { t } from '../../i18n';
 import { useSteps } from '../../logic/useSteps';
-import { useTt } from '../../state/LanguageContext';
 import { getActionTypeColors } from '../../utils/displayUtils';
 import { insideLoop } from '../list/blocks';
 import { insertPoint, useSelection } from '../list/selection';
@@ -34,13 +34,12 @@ export default function AddStepCatalog({ anchor, toggle, onClose }: {
   onClose: () => void;
 }) {
   const cmds = useSteps();
-  const tt = useTt();
   const steps = useApp(a => a.actions);
   const rows = useApp(a => a.dataTable.rows.length);
   const at = useSelection(s => insertPoint(steps, s.keys));
   // Break loop and Next iteration mean something only inside a loop (casca-079 and 080).
   const inLoop = insideLoop(steps, at);
-  const offOf = (item: CatalogItem) => (item.inLoop && !inLoop ? tt('Only inside a loop', 'Só dentro de um laço') : null);
+  const offOf = (item: CatalogItem) => (item.inLoop && !inLoop ? t('insert.onlyInLoop') : null);
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState<GroupId>(() => lastGroup);
   const [active, setActive] = useState(0);
@@ -97,24 +96,24 @@ export default function AddStepCatalog({ anchor, toggle, onClose }: {
     e.currentTarget.querySelector<HTMLElement>(`[data-group="${SHOWN_GROUPS[next].id}"]`)?.focus();
   };
 
-  const where = steps.length === 0 ? 'Inserts into the empty macro'
-    : at < steps.length ? `Inserts after step ${at}`
-    : `Inserts at the end, after step ${steps.length}`;
+  const where = steps.length === 0 ? t('insert.intoEmpty')
+    : at < steps.length ? t('insert.after', { step: at })
+    : t('insert.atEnd', { step: steps.length });
 
   return (
-    <Popover anchor={anchor} label="Add step" toggle={toggle} focusFirst onClose={onClose}>
+    <Popover anchor={anchor} label={t('insert.addStep')} toggle={toggle} focusFirst onClose={onClose}>
       <div className="cat">
         <label className="cat-search">
           <span className="step-icon" data-icon="search" />
           <input
             type="text"
             role="combobox"
-            aria-label="Search steps"
+            aria-label={t('insert.search')}
             aria-expanded="true"
             aria-controls="cat-list"
             aria-autocomplete="list"
             aria-activedescendant={current ? `cat-opt-${current.id}` : undefined}
-            placeholder={`Search ${OFFERED.length} step types`}
+            placeholder={t('insert.searchPlaceholder', { count: OFFERED.length })}
             spellCheck={false}
             autoComplete="off"
             value={query}
@@ -123,7 +122,7 @@ export default function AddStepCatalog({ anchor, toggle, onClose }: {
           />
         </label>
         <div className="cat-body">
-          <div role="tablist" aria-orientation="vertical" aria-label="Step groups" className="cat-groups" onKeyDown={onGroupKey}>
+          <div role="tablist" aria-orientation="vertical" aria-label={t('insert.groupsLabel')} className="cat-groups" onKeyDown={onGroupKey}>
             {SHOWN_GROUPS.map(g => {
               const on = !searching && g.id === group;
               return (
@@ -148,7 +147,7 @@ export default function AddStepCatalog({ anchor, toggle, onClose }: {
             ref={listRef}
             id="cat-list"
             role="listbox"
-            aria-label={searching ? 'Matching steps' : SHOWN_GROUPS.find(g => g.id === group)?.label}
+            aria-label={searching ? t('insert.matching') : SHOWN_GROUPS.find(g => g.id === group)?.label}
             className="cat-items"
             // The search keeps the focus: a press on an item only chooses it.
             onMouseDown={(e) => e.preventDefault()}
@@ -160,19 +159,19 @@ export default function AddStepCatalog({ anchor, toggle, onClose }: {
                 active={item === current}
                 off={offOf(item)}
                 // For Each Data Row says how many rows the table has (casca-078).
-                detail={item.type === 'ForEachRow' ? (rows === 0 ? 'the table is empty' : `${rows} row${rows === 1 ? '' : 's'}`) : undefined}
+                detail={item.type === 'ForEachRow' ? t('insert.tableRows', { count: rows }) : undefined}
                 group={searching ? GROUPS.find(g => g.id === item.group)?.label : undefined}
                 onHover={() => { if (active !== i) setActive(i); }}
                 onChoose={() => choose(item)}
               />
             ))}
-            {items.length === 0 && <p className="cat-empty">No step type matches “{query.trim()}”.</p>}
+            {items.length === 0 && <p className="cat-empty">{t('insert.noMatch', { query: query.trim() })}</p>}
           </div>
         </div>
         <div className="cat-foot">
           <span>{where}</span>
           <span className="cat-spacer" />
-          <span>Enter inserts · Esc closes</span>
+          <span>{t('insert.keysHint')}</span>
         </div>
       </div>
     </Popover>
@@ -211,7 +210,7 @@ function Item({ item, active, off, detail, group, onHover, onChoose }: {
         <span className="cat-name">{item.name}{group && <span className="cat-in"> · {group}</span>}</span>
         <span className="cat-desc">{item.desc}{detail && <> · {detail}</>}</span>
       </span>
-      {!built && <span className="cat-later">not built yet</span>}
+      {!built && <span className="cat-later">{t('insert.notBuilt')}</span>}
     </div>
   );
 }

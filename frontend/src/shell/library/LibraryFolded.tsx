@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 import { ChevronsRight } from 'lucide-react';
 import type { ProfileEntry, ProfileOrderData } from '../../bridge/messageTypes';
-import { useTt } from '../../state/LanguageContext';
+import { t } from '../../i18n';
 import { glyphCount, railInitials } from '../../utils/profileInitials';
 import { descriptionTip, folderOf, keycaps, targetLabel } from './model';
 
@@ -23,7 +23,6 @@ export function LibraryFolded({ macros, order, active, locked, peek, onExpand, o
   onOpen: (name: string) => void;
   onMenu: (e: MouseEvent<HTMLElement>, name: string) => void;
 }) {
-  const tt = useTt();
   const columnRef = useRef<HTMLDivElement>(null);
   const [room, setRoom] = useState(0);
 
@@ -54,16 +53,16 @@ export function LibraryFolded({ macros, order, active, locked, peek, onExpand, o
   const groupOf = (entry: ProfileEntry) => (order.pinned.includes(entry.name) ? 0 : folderOf(entry.name, order) ? 1 : 2);
 
   return (
-    <nav className="lib-folded" aria-label="Macros, collapsed">
+    <nav className="lib-folded" aria-label={t('library.folded.nav')}>
       {/* A toggle (data-library-toggle): the press is not the "elsewhere" that takes the panel away
           before its own click would lay it again. */}
       <button
         type="button"
         className="lib-icon-button"
-        aria-label={peek ? 'Close macro list' : 'Expand macro list'}
+        aria-label={peek ? t('library.folded.close') : t('library.folded.expand')}
         aria-expanded={peek}
         data-library-toggle=""
-        data-tip={peek ? tt('Close macro list', 'Fechar a lista de macros') : tt('Expand macro list', 'Abrir a lista de macros')}
+        data-tip={peek ? t('library.folded.close') : t('library.folded.expand')}
         data-tip-pos="right"
         onClick={onExpand}
       >
@@ -82,7 +81,7 @@ export function LibraryFolded({ macros, order, active, locked, peek, onExpand, o
             entry.hotstring ? `${entry.hotstringInstant ? '⚡' : '↵'}${entry.hotstring}` : null,
             folder?.name ?? null,
             entry.hasEffectiveTarget ? targetLabel(entry.effectiveTargetProcessName, entry.effectiveTargetWindowTitle) : null,
-            entry.isDisabled ? tt('disabled', 'desativado') : null,
+            entry.isDisabled ? t('library.folded.disabled') : null,
             descriptionTip(entry.description) || null,
           ].filter(Boolean).join(' · ');
           return (
@@ -117,12 +116,12 @@ export function LibraryFolded({ macros, order, active, locked, peek, onExpand, o
           <button
             type="button"
             className="lib-more"
-            aria-label={`${hidden.length} more macros`}
+            aria-label={t('library.folded.more', { count: hidden.length })}
             data-conflict={conflicts > 0 || undefined}
             data-tip={[
-              tt(`${hidden.length} more`, `${hidden.length} a mais`),
-              armed > 0 ? tt(`${armed} armed`, `${armed} armada${armed > 1 ? 's' : ''}`) : null,
-              conflicts > 0 ? tt(`${conflicts} in conflict`, `${conflicts} em conflito`) : null,
+              t('library.folded.moreTip', { n: hidden.length }),
+              armed > 0 ? t('library.folded.armed', { count: armed }) : null,
+              conflicts > 0 ? t('library.folded.conflicts', { n: conflicts }) : null,
             ].filter(Boolean).join(' · ')}
             data-tip-pos="right"
             onClick={onExpand}

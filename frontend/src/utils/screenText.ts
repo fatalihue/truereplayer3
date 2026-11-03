@@ -1,4 +1,5 @@
 import type { ActionItem } from '../bridge/messageTypes';
+import { t } from '../i18n';
 
 // Screen text (OCR) — the frontend half of Source/ScreenTextMatcher.cs. One home for the two
 // rules every surface needs to agree on: which operator a row REALLY means, and how it reads in
@@ -29,7 +30,7 @@ export function screenTextSummary(a: Pick<ActionItem, 'ocrReadAs' | 'conditionOp
     return operand ? `${sym} ${operand}` : '#';
   }
   if (!operand) return '';
-  return op === 'eq' ? `= "${operand}"` : op === 'regex' ? `regex ${operand}` : `has "${operand}"`;
+  return op === 'eq' ? `= "${operand}"` : op === 'regex' ? t('list.details.textRegex', { text: operand }) : t('list.details.textHas', { text: operand });
 }
 
 /** True when the row reads the screen: Wait for Text, a Screen Text condition, Set Variable in Screen mode. */

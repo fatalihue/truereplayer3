@@ -39,6 +39,8 @@ export const TECLAS = [
   'Ctrl', 'Alt', 'Shift', 'Win', 'Enter', 'Esc', 'Tab', 'Backspace', 'Del', 'Ins', 'Home', 'End',
   'PgUp', 'PgDn', 'PrtSc', 'ScrLk', 'NumLk', 'Caps', 'Space',
   ...Array.from({ length: 24 }, (_, i) => `F${i + 1}`),
+  // O teclado numérico, como o keycap escreve ("Ctrl+Alt+Shift+Num0").
+  ...Array.from({ length: 10 }, (_, i) => `Num${i}`), 'Num+', 'Num-', 'Num*', 'Num/', 'Num.',
 ] as const;
 
 /** Os recursos e painéis do TrueReplayer. Regra 2. "Macros" é igual nos dois idiomas. */

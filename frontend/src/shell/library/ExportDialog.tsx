@@ -5,7 +5,7 @@ import { Button } from '../../components/common/Button';
 import { DialogShell } from '../../components/common/DialogShell';
 import { KbdTag } from '../../components/common/KbdTag';
 import { CheckboxBox } from '../../components/Checkbox';
-import { useTt } from '../../state/LanguageContext';
+import { fmtNum, t } from '../../i18n';
 import { runsBroughtAlong } from './model';
 
 /**
@@ -24,7 +24,6 @@ export function ExportDialog({ profiles, order, initial, onExport, onClose }: {
   onExport: (names: string[], includeOrganization: boolean) => void;
   onClose: () => void;
 }) {
-  const tt = useTt();
   const [chosen, setChosen] = useState<Set<string>>(() => new Set(initial));
   const [filter, setFilter] = useState('');
   const [organization, setOrganization] = useState(true);
@@ -68,7 +67,7 @@ export function ExportDialog({ profiles, order, initial, onExport, onClose }: {
         <span className="ml-auto shrink-0 flex items-center gap-1.5">
           {entry?.hotkey && <KbdTag combo={entry.hotkey} unified />}
           {entry?.actionCount !== undefined && (
-            <span className="text-caption text-text-tertiary tabular-nums">{entry.actionCount === 1 ? '1 step' : `${entry.actionCount} steps`}</span>
+            <span className="text-caption text-text-tertiary tabular-nums">{t('library.export.steps', { count: entry.actionCount, n: fmtNum(entry.actionCount) })}</span>
           )}
         </span>
       </button>
@@ -78,19 +77,19 @@ export function ExportDialog({ profiles, order, initial, onExport, onClose }: {
   return (
     <DialogShell
       icon={<Upload size={14} style={{ color: 'var(--color-accent)' }} />}
-      title="Export macros"
+      title={t('library.export.title')}
       size="md"
       cardClassName="max-h-[calc(90vh/var(--ui-zoom))]"
       closeOnBackdrop={false}
       onClose={onClose}
       footerHint={
         <span className="tabular-nums">
-          {total} selected{hiddenChosen > 0 && <> · {hiddenChosen} hidden by filter</>}
+          {t('library.export.selected', { count: total })}{hiddenChosen > 0 && <> · {t('library.export.hiddenByFilter', { count: hiddenChosen })}</>}
         </span>
       }
       footer={
         <>
-          <Button variant="secondary" size="md" className="min-w-[5.25rem]" onClick={onClose}>Cancel</Button>
+          <Button variant="secondary" size="md" className="min-w-[5.25rem]" onClick={onClose}>{t('common.actions.cancel')}</Button>
           <Button
             variant="primary"
             size="md"
@@ -101,7 +100,7 @@ export function ExportDialog({ profiles, order, initial, onExport, onClose }: {
               onClose();
             }}
           >
-            Export
+            {t('common.actions.export')}
           </Button>
         </>
       }
@@ -113,12 +112,12 @@ export function ExportDialog({ profiles, order, initial, onExport, onClose }: {
             type="text"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter macros…"
-            aria-label="Filter macros"
+            placeholder={t('library.export.filterPlaceholder')}
+            aria-label={t('library.export.filter')}
             className="input-field font-sans text-minor pl-7 pr-7"
           />
           {filter && (
-            <button type="button" aria-label="Clear filter" onClick={() => setFilter('')} className="absolute right-2 top-1/2 -translate-y-1/2 flex text-text-disabled hover:text-text-secondary">
+            <button type="button" aria-label={t('library.export.clearFilter')} onClick={() => setFilter('')} className="absolute right-2 top-1/2 -translate-y-1/2 flex text-text-disabled hover:text-text-secondary">
               <X size={12} />
             </button>
           )}
@@ -134,7 +133,7 @@ export function ExportDialog({ profiles, order, initial, onExport, onClose }: {
           className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg-surface border-b border-border-subtle text-left"
         >
           <CheckboxBox checked={allChosen} />
-          <span className="text-minor font-medium text-text-secondary">Select all</span>
+          <span className="text-minor font-medium text-text-secondary">{t('library.export.selectAll')}</span>
           <span className="ml-auto text-caption text-text-tertiary tabular-nums">{visibleChosen}/{visible.length}</span>
         </button>
       </div>
@@ -142,13 +141,13 @@ export function ExportDialog({ profiles, order, initial, onExport, onClose }: {
       <div className="flex-1 overflow-y-auto px-4 py-1 min-h-[10rem]">
         {visible.length === 0 && (
           <div className="py-6 flex flex-col items-center gap-2 text-caption text-text-tertiary">
-            <span>{profiles.length === 0 ? 'No macros to export.' : `No macros match "${filter}"`}</span>
-            {filter && <Button variant="ghost" onClick={() => setFilter('')}>Clear filter</Button>}
+            <span>{profiles.length === 0 ? t('library.export.none') : t('library.export.noMatch', { filter })}</span>
+            {filter && <Button variant="ghost" onClick={() => setFilter('')}>{t('library.export.clearFilter')}</Button>}
           </div>
         )}
         {pinned.length > 0 && (
           <div className="mb-1">
-            <div className="px-2 py-1 label-micro text-text-tertiary">Pinned</div>
+            <div className="px-2 py-1 label-micro text-text-tertiary">{t('library.pinned')}</div>
             {pinned.map(row)}
           </div>
         )}
@@ -174,7 +173,7 @@ export function ExportDialog({ profiles, order, initial, onExport, onClose }: {
         })}
         {loose.length > 0 && (
           <div className="mb-1">
-            {folders.length > 0 && <div className="px-2 py-1 label-micro text-text-tertiary">Ungrouped</div>}
+            {folders.length > 0 && <div className="px-2 py-1 label-micro text-text-tertiary">{t('library.ungrouped')}</div>}
             {loose.map(row)}
           </div>
         )}
@@ -187,17 +186,17 @@ export function ExportDialog({ profiles, order, initial, onExport, onClose }: {
           aria-checked={organization}
           onClick={() => setOrganization(v => !v)}
           className="w-full flex items-center gap-2 text-left"
-          data-tip={tt('Pins, folders, order and folder targets', 'Fixados, pastas, ordem e alvos de pasta')}
+          data-tip={t('library.export.organizationTip')}
         >
           <CheckboxBox checked={organization} />
-          <span className="text-minor text-text-secondary">Include folder organization</span>
+          <span className="text-minor text-text-secondary">{t('library.export.organization')}</span>
         </button>
         {along.length > 0 && (
           <div
             className="text-caption text-text-tertiary leading-relaxed"
-            data-tip={`${tt('Run by the chosen macros:', 'Rodados pelos macros escolhidos:')} ${along.join(', ')}`}
+            data-tip={t('library.export.alongTip', { names: along.join(', ') })}
           >
-            {along.length === 1 ? '+1 macro it runs is included' : `+${along.length} macros they run are included`}
+            {t('library.export.along', { count: along.length })}
           </div>
         )}
       </div>

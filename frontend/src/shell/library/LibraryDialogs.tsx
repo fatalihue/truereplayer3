@@ -1,12 +1,12 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { AppWindow, ChevronDown, Eraser, Folder, FolderPlus, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 import { useBridge } from '../../bridge/BridgeContext';
 import type { ProfileEntry, ProfileOrderData } from '../../bridge/messageTypes';
 import { DialogFooter, DialogShell } from '../../components/common/DialogShell';
 import { FieldError } from '../../components/common/FieldError';
+import { fmtNum, t } from '../../i18n';
 import { useMacro } from '../../logic/useMacro';
 import { useSteps } from '../../logic/useSteps';
-import { useTt } from '../../state/LanguageContext';
 import { useToast } from '../../state/ToastContext';
 import { DEFAULT_FOLDER_COLOR } from '../../themes';
 import { Switch } from '../inspector/fields';
@@ -37,11 +37,11 @@ export default function LibraryDialog({ dialog, profiles, order, onClose }: {
     case 'renameMacro':
       return (
         <NameDialog
-          title="Rename macro"
+          title={t('library.rename.macroTitle')}
           initial={dialog.name}
-          placeholder="New name…"
+          placeholder={t('library.rename.macroPlaceholder')}
           names={profiles.map(p => p.name)}
-          takenMessage="A macro with that name already exists."
+          takenMessage={t('library.rename.macroTaken')}
           onRename={(name) => macro.rename(dialog.name, name)}
           onClose={onClose}
         />
@@ -49,11 +49,11 @@ export default function LibraryDialog({ dialog, profiles, order, onClose }: {
     case 'renameFolder':
       return (
         <NameDialog
-          title="Rename folder"
+          title={t('library.rename.folderTitle')}
           initial={dialog.name}
-          placeholder="New folder name…"
+          placeholder={t('library.rename.folderPlaceholder')}
           names={order.folders.map(f => f.name)}
-          takenMessage="A folder with that name already exists."
+          takenMessage={t('library.rename.folderTaken')}
           onRename={(name) => macro.renameFolder(dialog.name, name)}
           onClose={onClose}
         />
@@ -71,6 +71,18 @@ export default function LibraryDialog({ dialog, profiles, order, onClose }: {
     case 'export':
       return <ExportDialog profiles={profiles} order={order} initial={dialog.names} onExport={macro.exportMacros} onClose={onClose} />;
   }
+}
+
+// A sentence of the catalog that shows a name highlighted ("Delete macro 'Farm'?") takes this
+// invisible mark as the blank, and withName puts the name's own element where the mark landed: each
+// language keeps its whole sentence, in its own order, and the name keeps its look.
+const NAME = '\u2063';
+
+/** The sentence with `name` (an element) where its {{name}} blank was filled with NAME. */
+function withName(sentence: string, name: ReactNode): ReactNode {
+  const at = sentence.indexOf(NAME);
+  if (at < 0) return sentence;
+  return <>{sentence.slice(0, at)}{name}{sentence.slice(at + NAME.length)}</>;
 }
 
 /** Focus the field and select what it holds, before the dialog takes the focus for itself. */
@@ -112,7 +124,7 @@ function NameDialog({ title, initial, placeholder, names, takenMessage, onRename
       title={title}
       size="sm"
       onClose={onClose}
-      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onClose }} primary={{ label: 'Rename', onClick: confirm, disabled: !value.trim() || taken }} />}
+      footer={<DialogFooter secondary={{ label: t('common.actions.cancel'), onClick: onClose }} primary={{ label: t('common.actions.rename'), onClick: confirm, disabled: !value.trim() || taken }} />}
     >
       <div className="p-4 flex flex-col">
         <input
@@ -150,10 +162,10 @@ function NewFolderDialog({ folders, onCreate, onClose }: {
   return (
     <DialogShell
       icon={<FolderPlus size={14} className="text-accent" />}
-      title="New folder"
+      title={t('library.newFolder')}
       size="sm"
       onClose={onClose}
-      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onClose }} primary={{ label: 'Create', onClick: confirm, disabled: !name.trim() || taken }} />}
+      footer={<DialogFooter secondary={{ label: t('common.actions.cancel'), onClick: onClose }} primary={{ label: t('library.newFolderDialog.create'), onClick: confirm, disabled: !name.trim() || taken }} />}
     >
       <div className="p-4 flex flex-col">
         <input
@@ -162,18 +174,18 @@ function NewFolderDialog({ folders, onCreate, onClose }: {
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); confirm(); } }}
-          placeholder="Folder name…"
-          aria-label="Folder name"
+          placeholder={t('library.newFolderDialog.placeholder')}
+          aria-label={t('library.newFolderDialog.name')}
           className="input-field font-sans mb-4"
         />
         <ColorGrid value={color} onPick={setColor} />
         <div className="lib-folder-preview" style={{ '--folder-color': color } as CSSProperties}>
           <ChevronDown aria-hidden="true" />
           <Folder aria-hidden="true" />
-          <span>{name.trim() || 'Folder name'}</span>
-          <span>preview</span>
+          <span>{name.trim() || t('library.newFolderDialog.name')}</span>
+          <span>{t('library.newFolderDialog.preview')}</span>
         </div>
-        <FieldError show={taken}>A folder with that name already exists.</FieldError>
+        <FieldError show={taken}>{t('library.rename.folderTaken')}</FieldError>
       </div>
     </DialogShell>
   );
@@ -187,17 +199,17 @@ function DeleteMacroDialog({ name, onDelete, onClose }: { name: string; onDelete
   return (
     <DialogShell
       icon={<Trash2 size={14} style={{ color: 'var(--color-recording-fg)' }} />}
-      title="Delete macro"
+      title={t('library.delete.title')}
       size="sm"
       onClose={onClose}
       onCardKeyDown={(e) => { if (e.key === 'Enter') e.stopPropagation(); }}
-      footer={<DialogFooter danger secondary={{ label: 'Cancel', onClick: onClose, autoFocus: true }} primary={{ label: 'Delete', onClick: () => { onDelete(); onClose(); } }} />}
+      footer={<DialogFooter danger secondary={{ label: t('common.actions.cancel'), onClick: onClose, autoFocus: true }} primary={{ label: t('common.actions.delete'), onClick: () => { onDelete(); onClose(); } }} />}
     >
       <div className="p-4 flex flex-col gap-2">
         <p className="text-body text-text-secondary">
-          Delete macro <span className="text-text-primary font-medium">'{name}'</span>?
+          {withName(t('library.delete.question', { name: NAME }), <span className="text-text-primary font-medium">'{name}'</span>)}
         </p>
-        <p className="text-minor text-text-tertiary">Its file and its images are deleted. This can't be undone.</p>
+        <p className="text-minor text-text-tertiary">{t('library.delete.note')}</p>
       </div>
     </DialogShell>
   );
@@ -212,17 +224,17 @@ function RevertMacroDialog({ name, onRevert, onClose }: { name: string; onRevert
   return (
     <DialogShell
       icon={<RotateCcw size={14} style={{ color: 'var(--color-recording-fg)' }} />}
-      title="Revert macro"
+      title={t('library.revert.title')}
       size="sm"
       onClose={onClose}
       onCardKeyDown={(e) => { if (e.key === 'Enter') e.stopPropagation(); }}
-      footer={<DialogFooter danger secondary={{ label: 'Cancel', onClick: onClose, autoFocus: true }} primary={{ label: 'Revert', onClick: () => { onRevert(); onClose(); } }} />}
+      footer={<DialogFooter danger secondary={{ label: t('common.actions.cancel'), onClick: onClose, autoFocus: true }} primary={{ label: t('library.revert.button'), onClick: () => { onRevert(); onClose(); } }} />}
     >
       <div className="p-4 flex flex-col gap-2">
         <p className="text-body text-text-secondary">
-          Put <span className="text-text-primary font-medium">'{name}'</span> back the way it was when you opened it?
+          {withName(t('library.revert.question', { name: NAME }), <span className="text-text-primary font-medium">'{name}'</span>)}
         </p>
-        <p className="text-minor text-text-tertiary">The changes since then are lost, and Ctrl+Z can't bring them back.</p>
+        <p className="text-minor text-text-tertiary">{t('library.revert.note')}</p>
       </div>
     </DialogShell>
   );
@@ -243,17 +255,17 @@ function ClearStepsDialog({ name, onClose }: { name: string; onClose: () => void
   return (
     <DialogShell
       icon={<Eraser size={14} style={{ color: 'var(--color-recording-fg)' }} />}
-      title="Clear all steps"
+      title={t('library.clear.title')}
       size="sm"
       onClose={onClose}
       onCardKeyDown={(e) => { if (e.key === 'Enter') e.stopPropagation(); }}
-      footer={<DialogFooter danger secondary={{ label: 'Cancel', onClick: onClose, autoFocus: true }} primary={{ label: 'Clear all', onClick: () => { if (!gone) clear({}); onClose(); } }} />}
+      footer={<DialogFooter danger secondary={{ label: t('common.actions.cancel'), onClick: onClose, autoFocus: true }} primary={{ label: t('library.clear.button'), onClick: () => { if (!gone) clear({}); onClose(); } }} />}
     >
       <div className="p-4 flex flex-col gap-2">
         <p className="text-body text-text-secondary">
-          Clear all {steps} step{steps === 1 ? '' : 's'} of <span className="text-text-primary font-medium">'{name}'</span>?
+          {withName(t('library.clear.question', { count: steps, n: fmtNum(steps), name: NAME }), <span className="text-text-primary font-medium">'{name}'</span>)}
         </p>
-        <p className="text-minor text-text-tertiary">Ctrl+Z brings them back.</p>
+        <p className="text-minor text-text-tertiary">{t('library.clear.note')}</p>
       </div>
     </DialogShell>
   );
@@ -274,7 +286,6 @@ function FolderTargetDialog({ folderName, profiles, order, onClose }: {
   onClose: () => void;
 }) {
   const macro = useMacro();
-  const tt = useTt();
   const { showToast } = useToast();
   const { subscribe } = useBridge();
   const folder = order.folders.find(f => f.name === folderName);
@@ -298,20 +309,20 @@ function FolderTargetDialog({ folderName, profiles, order, onClose }: {
   const problem = targetProblem(value);
 
   const asked = useRef(false);
-  const live = useRef({ onClose, showToast, tt, macro });
-  useEffect(() => { live.current = { onClose, showToast, tt, macro }; });
+  const live = useRef({ onClose, showToast, macro });
+  useEffect(() => { live.current = { onClose, showToast, macro }; });
   useEffect(() => subscribe((message) => {
     if (message.type !== 'profile:folderWindowTargetRemoved' || message.payload.folderName !== folderName || !asked.current) return;
     asked.current = false;
     const r = message.payload;
     const l = live.current;
     if (r.hadTarget) {
-      const label = r.processName || r.windowTitle || 'target';
-      l.showToast(l.tt(`Removed folder target (${label}) from "${r.folderName}"`, `Alvo da pasta (${label}) removido de "${r.folderName}"`), {
+      const label = r.processName || r.windowTitle || t('library.folderTarget.targetFallback');
+      l.showToast(t('library.folderTarget.removed', { target: label, name: r.folderName }), {
         type: 'success',
         duration: 10000,
         action: {
-          label: 'Undo',
+          label: t('common.actions.undo'),
           // Everything the removal wiped, the switches and the captured rect included.
           onClick: () => l.macro.setFolderWindowTarget({
             folderName: r.folderName, processName: r.processName, windowTitle: r.windowTitle, titleMatchMode: r.titleMatchMode,
@@ -343,59 +354,59 @@ function FolderTargetDialog({ folderName, profiles, order, onClose }: {
   return (
     <DialogShell
       icon={<AppWindow size={14} className="text-text-tertiary" />}
-      title="Folder window target"
+      title={t('library.folderTarget.title')}
       onClose={onClose}
       // A form of several fields: a stray click on the scrim must not drop them (Esc or Cancel only).
       closeOnBackdrop={false}
       footerStart={own ? (
         <button type="button" className="insp-link" style={{ color: 'var(--color-recording-fg)' }} onClick={() => { asked.current = true; macro.removeFolderWindowTarget(folderName); }}>
-          Remove
+          {t('common.actions.remove')}
         </button>
       ) : undefined}
       footer={<DialogFooter
-        secondary={{ label: 'Cancel', onClick: onClose }}
+        secondary={{ label: t('common.actions.cancel'), onClick: onClose }}
         primary={{
-          label: 'Set target',
+          label: t('library.folderTarget.set'),
           onClick: set,
           disabled: problem !== null || note,
-          tip: note ? tt("Read the note about this folder's macros first", 'Leia o aviso sobre os macros desta pasta primeiro') : undefined,
+          tip: note ? t('library.folderTarget.readNote') : undefined,
         }}
       />}
     >
       <div className="p-4 flex flex-col gap-3">
         <p className="text-minor text-text-secondary">
-          For every macro in <span className="text-text-primary font-medium">‘{folderName}’</span> without a target of its own.
+          {withName(t('library.folderTarget.intro', { name: NAME }), <span className="text-text-primary font-medium">‘{folderName}’</span>)}
         </p>
         <TargetFields id={`folder:${folderName}`} value={value} onChange={(patch) => { latest.current = { ...latest.current, ...patch }; setValue(latest.current); }} />
-        {row('Relative coordinates', relative, setRelative,
-          tt("The points of its macros' steps follow the window when it moves", 'Os pontos dos passos dos macros acompanham a janela quando ela se move'),
+        {row(t('library.folderTarget.relative'), relative, setRelative,
+          t('library.folderTarget.relativeTip'),
           !relative && targetProblem(value) === 'empty')}
         {note && (
           <div className="mset-convert" role="status">
             <span>
-              {inheriting} macro{inheriting === 1 ? '' : 's'} in this folder use{inheriting === 1 ? 's' : ''} its target, with X/Y set for {savedRelative ? 'relative' : 'absolute'} coords.
-              They are not converted: if a macro's clicks land in the wrong place, open it and run
-              “Convert coordinates to {savedRelative ? 'absolute' : 'relative'}” (Ctrl+K).
+              {savedRelative
+                ? t('library.folderTarget.noteWasRelative', { count: inheriting })
+                : t('library.folderTarget.noteWasAbsolute', { count: inheriting })}
             </span>
             <span className="mset-convert-actions">
-              <button type="button" className="insp-button" data-primary="" onClick={() => setNoteRead(true)}>Got it</button>
+              <button type="button" className="insp-button" data-primary="" onClick={() => setNoteRead(true)}>{t('library.folderTarget.gotIt')}</button>
             </span>
           </div>
         )}
-        {row('Bring to focus', bringToFocus, setBringToFocus,
-          tt('Brings the window to the front before a run. With it on, the hotkeys work from any window.', 'Traz a janela para a frente antes de rodar. Ligado, os atalhos funcionam de qualquer janela.'))}
-        {row('Restore position', restorePosition, setRestorePosition,
-          tt('Puts the window back where it was captured, before a run', 'Devolve a janela à posição capturada, antes de rodar'))}
-        {row('Restore size', restoreSize, setRestoreSize,
-          tt('Puts the window back to the captured size, before a run', 'Devolve a janela ao tamanho capturado, antes de rodar'))}
+        {row(t('library.folderTarget.focus'), bringToFocus, setBringToFocus,
+          t('library.folderTarget.focusTip'))}
+        {row(t('library.folderTarget.restorePosition'), restorePosition, setRestorePosition,
+          t('library.folderTarget.restorePositionTip'))}
+        {row(t('library.folderTarget.restoreSize'), restoreSize, setRestoreSize,
+          t('library.folderTarget.restoreSizeTip'))}
         <button
           type="button"
           className="insp-button"
           disabled={problem !== null}
-          data-tip={tt('Reads where the window is now, and its size, for Restore position and Restore size', 'Lê agora onde a janela está e o tamanho dela, para Restore position e Restore size')}
+          data-tip={t('library.folderTarget.updateTip')}
           onClick={() => macro.updateWindowSize({ folderName, processName: value.processName || undefined, windowTitle: value.windowTitle || undefined, titleMatchMode: value.titleMatchMode })}
         >
-          Update window size &amp; position
+          {t('library.folderTarget.update')}
         </button>
       </div>
     </DialogShell>

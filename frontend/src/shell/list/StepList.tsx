@@ -1,10 +1,10 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
 import type { ActionItem } from '../../bridge/messageTypes';
 import { useBridge } from '../../bridge/BridgeContext';
+import { fmtNum, t } from '../../i18n';
 import { newRequestId, useEditorTools } from '../../logic/useEditorTools';
 import { useMacro } from '../../logic/useMacro';
 import { useSteps } from '../../logic/useSteps';
-import { useLanguage, useTt } from '../../state/LanguageContext';
 import { useToast } from '../../state/ToastContext';
 import { skippedRowMask } from '../../utils/conditionalBlocks';
 import { Menu } from '../Menu';
@@ -23,8 +23,6 @@ import { stepKey, stepName } from './stepTypes';
 import { useStepDrag } from './useStepDrag';
 import './stepIcons.css';
 import './list.css';
-
-type Tt = (en: string, pt: string) => string;
 
 // The step's menu, with its icons and the tools behind it, is not part of opening the app (rule 6).
 const loadStepMenu = () => import('./stepMenu');
@@ -47,8 +45,6 @@ export function StepList() {
   const open = useApp(a => a.activeProfile);
   const status = useApp(a => a.status);
   const dataRows = useApp(a => a.dataTable.rows.length);
-  const { language } = useLanguage();
-  const tt = useTt();
   const cmds = useSteps();
   const macro = useMacro();
   const tools = useEditorTools();
@@ -60,7 +56,7 @@ export function StepList() {
   const locked = status !== 'ready';
   const blocks = blockMap(steps);
   const skipped = skippedRowMask(steps);
-  const tips = tipsOf(steps, blocks, tt);
+  const tips = tipsOf(steps, blocks);
   const owners = blocks.rows.map(r => r.owner);
   const [menu, setMenu] = useState<{ row: number; anchor: MenuAnchor; keyboard: boolean; macro: string | null } | null>(null);
   const [menuKit, setMenuKit] = useState<StepMenuKit | null>(null);
@@ -144,7 +140,7 @@ export function StepList() {
     pickRef.current = null;
     const { cancelled, refused, x, y } = message.payload;
     if (refused) {
-      showToast(tt('Another pick is open — finish it first.', 'Outra captura está aberta — termine-a primeiro.'), 'error');
+      showToast(t('list.toasts.pickBusy'), 'error');
       return;
     }
     if (cancelled || x == null || y == null) return;
@@ -152,17 +148,17 @@ export function StepList() {
     const index = now.findIndex(s => s.id === pending.id);
     if (index < 0) return;
     cmds.editMany({ index, id: pending.id, edits: [{ field: 'x', value: String(x) }, { field: 'y', value: String(y) }] });
-    showToast(tt(`Point set to ${x}, ${y}`, `Ponto definido em ${x}, ${y}`), { type: 'success', action: { label: 'Undo', onClick: () => cmds.undo({}) } });
-  }), [subscribe, cmds, showToast, tt]);
+    showToast(t('list.toasts.pointSet', { x, y }), { type: 'success', action: { label: t('common.actions.undo'), onClick: () => cmds.undo({}) } });
+  }), [subscribe, cmds, showToast]);
 
-  if (!open) return <p className="shell-steps-empty">Open a macro from the library.</p>;
+  if (!open) return <p className="shell-steps-empty">{t('list.openMacro')}</p>;
   // The Steps tab's panel (InsertRow has the tab).
   const panel = { id: 'macro-panel-steps', role: 'tabpanel', 'aria-labelledby': 'macro-tab-steps' } as const;
   if (steps.length === 0) {
     const EmptySteps = empties?.EmptySteps;
     return (
       <div className="steps-empty" data-drop={macroSlot ? '' : undefined} {...panel}>
-        {status === 'recording' ? <p>Waiting for the first click or key…</p> : EmptySteps && <EmptySteps />}
+        {status === 'recording' ? <p>{t('list.waitingFirst')}</p> : EmptySteps && <EmptySteps />}
       </div>
     );
   }
@@ -231,7 +227,7 @@ export function StepList() {
       if (sel.length === 0) return;
       e.preventDefault();
       if (locked) {
-        showToast(tt('Not deleted — the steps are locked while a run is on.', 'Nada apagado — os passos ficam travados durante uma execução.'), 'error');
+        showToast(t('list.toasts.locked'), 'error');
         return;
       }
       remove(sel);
@@ -282,7 +278,7 @@ export function StepList() {
     }
   };
 
-  const remove = (sel: number[]) => deleteSteps(steps, sel, blocks, cmds, (text) => showToast(text, 'info'), tt);
+  const remove = (sel: number[]) => deleteSteps(steps, sel, blocks, cmds, (text) => showToast(text, 'info'));
 
   const menuEntries = !menu || !menuKit ? [] : (() => {
     const sel = selectedIndices(steps);
@@ -298,7 +294,7 @@ export function StepList() {
         if (!id) return;
         const requestId = newRequestId();
         pickRef.current = { requestId, id };
-        tools.pickPosition({ requestId, captureFor: `for step ${row + 1}, ${stepName(steps[row].actionType)}` });
+        tools.pickPosition({ requestId, captureFor: t('list.pickFor', { number: row + 1, name: stepName(steps[row].actionType) }) });
       },
       edit: (row) => {
         // The step menu's Edit: the step is the selection, and the Inspector takes the focus.
@@ -309,7 +305,6 @@ export function StepList() {
       select: (indices) => selection.set(steps, indices),
       toast: (text, kind) => showToast(text, kind ?? 'info'),
       subscribe,
-      tt,
     });
   })();
 
@@ -318,16 +313,16 @@ export function StepList() {
       <div className="steps-scroll" ref={scrollRef}>
         <div className="steps-head">
           <SelectAll steps={steps} />
-          <span>Step</span>
-          <span>Details</span>
-          <span className="steps-head-delay">Delay</span>
-          <span>Note</span>
+          <span>{t('list.head.step')}</span>
+          <span>{t('list.head.details')}</span>
+          <span className="steps-head-delay">{t('list.head.delay')}</span>
+          <span>{t('list.head.note')}</span>
         </div>
         <div
           ref={bodyRef}
           className="steps-body"
           role="listbox"
-          aria-label="Steps"
+          aria-label={t('list.steps')}
           aria-multiselectable="true"
           aria-activedescendant={cursorKey ? `step-${cursorKey}` : undefined}
           tabIndex={0}
@@ -372,8 +367,6 @@ export function StepList() {
                   tip={tips[i]}
                   skipped={skipped[i]}
                   dataRows={dataRows}
-                  language={language}
-                  tt={tt}
                 />
               </Fragment>
             );
@@ -385,7 +378,7 @@ export function StepList() {
         <ghost.StepGhost step={steps[drag.drag.lead]} more={drag.drag.indices.length - 1} x={drag.drag.x} y={drag.drag.y} />
       )}
       {menu && menuEntries.length > 0 && (
-        <Menu anchor={menu.anchor} entries={menuEntries} label={`Step ${menu.row + 1}`} focusFirst={menu.keyboard} onClose={() => setMenu(null)} />
+        <Menu anchor={menu.anchor} entries={menuEntries} label={t('list.menuName', { number: menu.row + 1 })} focusFirst={menu.keyboard} onClose={() => setMenu(null)} />
       )}
     </div>
   );
@@ -429,7 +422,7 @@ function SelectAll({ steps }: { steps: ActionItem[] }) {
         type="button"
         role="checkbox"
         className="step-check step-check-all"
-        aria-label="Select all steps"
+        aria-label={t('list.head.selectAll')}
         aria-checked={all ? true : count > 0 ? 'mixed' : false}
         onClick={() => (all ? selection.clear() : selection.all(steps))}
       />
@@ -460,12 +453,12 @@ function Ghost({ ghost, anchor, locked, onAddElse, onAddElseIf }: { ghost: Ghost
         <span className="step-ghost-actions">
           <button type="button" className="step-ghost-button" tabIndex={-1} disabled={locked} onClick={onAddElseIf}>
             <span className="step-icon" data-icon="plus" />
-            Add Else If
+            {t('list.block.addElseIf')}
           </button>
           {ghost.canElse && (
             <button type="button" className="step-ghost-button" tabIndex={-1} disabled={locked} onClick={onAddElse}>
               <span className="step-icon" data-icon="plus" />
-              Add Else
+              {t('list.block.addElse')}
             </button>
           )}
         </span>
@@ -475,25 +468,23 @@ function Ghost({ ghost, anchor, locked, onAddElse, onAddElseIf }: { ghost: Ghost
 }
 
 /** A marker's orientation in its tooltip: where its block ends, what it closes, or what it is missing. */
-function tipsOf(steps: ActionItem[], blocks: BlockMap, tt: Tt): (string | undefined)[] {
+function tipsOf(steps: ActionItem[], blocks: BlockMap): (string | undefined)[] {
   return blocks.rows.map((b, i) => {
     if (!b.kind) return undefined;
-    const t = steps[i].actionType;
+    const type = steps[i].actionType;
     if (b.broken) {
-      if (b.kind === 'opener') return t === 'If' ? tt('No matching End If', 'Sem End If correspondente') : tt('No matching End Loop', 'Sem End Loop correspondente');
-      return t === 'EndLoop' ? tt('No matching loop', 'Sem loop correspondente') : tt('No matching If', 'Sem If correspondente');
+      if (b.kind === 'opener') return type === 'If' ? t('list.block.noEndIf') : t('list.block.noEndLoop');
+      return type === 'EndLoop' ? t('list.block.noLoop') : t('list.block.noIf');
     }
     const owner = b.owner as number;
     if (b.kind === 'opener') {
       const end = blocks.closerOf.get(i) as number;
-      return tt(`Ends at step ${end + 1}`, `Termina no passo ${end + 1}`);
+      return t('list.block.endsAt', { number: end + 1 });
     }
     if (b.kind === 'closer') {
       const inside = i - owner - 1;
-      const name = stepName(steps[owner].actionType);
-      return tt(`Closes ${name} · step ${owner + 1} · ${inside === 1 ? '1 step' : `${inside} steps`}`,
-                `Fecha ${name} · passo ${owner + 1} · ${inside === 1 ? '1 passo' : `${inside} passos`}`);
+      return t('list.block.closes', { count: inside, name: stepName(steps[owner].actionType), number: owner + 1, n: fmtNum(inside) });
     }
-    return tt(`Branch of If · step ${owner + 1}`, `Ramo do If · passo ${owner + 1}`);
+    return t('list.block.branch', { number: owner + 1 });
   });
 }

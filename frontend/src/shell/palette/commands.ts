@@ -1,13 +1,18 @@
+import { Ban, Copy, ExternalLink, Folder, FolderMinus, Pencil, Pin, PinOff, Power, RotateCcw, Trash2, Upload, X } from 'lucide-react';
 import type { ActionItem, ProfileEntry, ProfileOrderData } from '../../bridge/messageTypes';
+import { t } from '../../i18n';
 import { formatKeyCombo, isCoordinateClick } from '../../utils/displayUtils';
 import type { MenuEntry, MenuItem } from '../Menu';
 import { keycaps } from '../library/model';
 import { stepName } from '../list/stepTypes';
 
+/** The groups of Ctrl+K, in their order on screen (their names: palette.groups). */
+export type PaletteGroup = 'macros' | 'steps' | 'commands';
+
 /** One line of Ctrl+K: a macro to open, a step to go to, or a command to run. */
 export interface PaletteItem {
   id: string;
-  group: 'Macros' | 'Steps' | 'Commands';
+  group: PaletteGroup;
   label: string;
   /** What it is about, after the label ("Trade Roblox · step 17", "Macro", the folder). */
   detail?: string;
@@ -35,10 +40,10 @@ export function scoreOf(item: PaletteItem, tokens: string[]): number {
   const label = wordsOf(item.label);
   const rest = wordsOf(`${item.detail ?? ''} ${item.words ?? ''} ${item.keys ?? ''}`);
   let score = 0;
-  for (const t of tokens) {
-    if (label.some(w => w.startsWith(t))) score += 3;
-    else if (rest.some(w => w.startsWith(t))) score += 2;
-    else if (t.length >= 3 && [...label, ...rest].some(w => w.includes(t))) score += 1;
+  for (const token of tokens) {
+    if (label.some(w => w.startsWith(token))) score += 3;
+    else if (rest.some(w => w.startsWith(token))) score += 2;
+    else if (token.length >= 3 && [...label, ...rest].some(w => w.includes(token))) score += 1;
     else return 0;
   }
   return score + (fold(item.label).startsWith(tokens.join(' ')) ? 2 : 0);
@@ -52,11 +57,11 @@ export function macroItems(order: ProfileOrderData, ordered: ProfileEntry[], act
   for (const f of order.folders) for (const m of f.items) folderOf.set(m, f.name);
   return ordered.map(p => ({
     id: `macro:${p.name}`,
-    group: 'Macros' as const,
+    group: 'macros' as const,
     label: p.name,
-    detail: order.pinned.includes(p.name) ? 'Pinned' : folderOf.get(p.name),
+    detail: order.pinned.includes(p.name) ? t('palette.detail.pinned') : folderOf.get(p.name),
     keys: p.hotkey ? keycaps(p.hotkey) : undefined,
-    words: [p.hotstring, p.isDisabled ? 'disabled' : '', p.name === active ? 'open' : ''].filter(Boolean).join(' '),
+    words: [p.hotstring, p.isDisabled ? t('palette.words.disabled') : '', p.name === active ? t('palette.words.open') : ''].filter(Boolean).join(' '),
     run: () => open(p.name),
   }));
 }
@@ -65,12 +70,15 @@ export function macroItems(order: ProfileOrderData, ordered: ProfileEntry[], act
 
 /** What a step is about, as plain text: the point, the key, the text, the check. */
 function stepText(s: ActionItem): string {
-  const t = s.actionType;
-  if (isCoordinateClick(t)) return s.atCursor ? 'at the cursor' : `${s.x}, ${s.y}`;
-  if (t === 'Keystroke' || t === 'HoldKey' || t === 'KeyDown' || t === 'KeyUp') return formatKeyCombo(s.key);
-  if (t === 'Pause') return [s.key, s.timeout > 0 ? `${s.timeout} ms` : ''].filter(Boolean).join(' or ');
-  if (t === 'WaitImage') return `${Math.round((s.confidence || 0.8) * 100)}%`;
-  if (t === 'If' || t === 'ElseIf' || t === 'While' || t === 'Assert') {
+  const type = s.actionType;
+  if (isCoordinateClick(type)) return s.atCursor ? t('palette.step.atCursor') : `${s.x}, ${s.y}`;
+  if (type === 'Keystroke' || type === 'HoldKey' || type === 'KeyDown' || type === 'KeyUp') return formatKeyCombo(s.key);
+  if (type === 'Pause') {
+    const time = s.timeout > 0 ? `${s.timeout} ms` : '';
+    return s.key && time ? t('palette.step.keyOrTime', { key: s.key, time }) : s.key || time;
+  }
+  if (type === 'WaitImage') return `${Math.round((s.confidence || 0.8) * 100)}%`;
+  if (type === 'If' || type === 'ElseIf' || type === 'While' || type === 'Assert') {
     return [s.conditionType?.replace(/([a-z])([A-Z])/g, '$1 $2'), s.key, s.conditionOperand, s.windowProcessName, s.windowTitle, s.filePath].filter(Boolean).join(' · ');
   }
   return (s.key ?? '').replace(/\s+/g, ' ').slice(0, 80);
@@ -79,9 +87,9 @@ function stepText(s: ActionItem): string {
 export function stepItems(steps: ActionItem[], macro: string, go: (index: number) => void): PaletteItem[] {
   return steps.map((s, i) => ({
     id: `step:${s.id ?? i}`,
-    group: 'Steps' as const,
+    group: 'steps' as const,
     label: stepName(s.actionType),
-    detail: [stepText(s), `${macro} · step ${i + 1}`].filter(Boolean).join(' · '),
+    detail: [stepText(s), t('palette.detail.stepOf', { macro, n: i + 1 })].filter(Boolean).join(' · '),
     words: s.comment,
     stepIcon: null,
     run: () => go(i),
@@ -109,7 +117,7 @@ export function fromMenu(source: string, entries: MenuEntry[], make: (item: Menu
     out.push({
       // The menu is part of the id: the step's Duplicate and the macro's are two commands.
       id: `${source}:${[...path, entry.label].join('/')}`,
-      group: 'Commands',
+      group: 'commands',
       label: [...path, entry.label].join(' › '),
       icon: entry.icon,
       keys: entry.shortcut,
@@ -122,22 +130,27 @@ export function fromMenu(source: string, entries: MenuEntry[], make: (item: Menu
   return out;
 }
 
-/** The macro menu's items, said with the macro's name, as the concept writes them ("Export Trade Roblox…"). */
-export function macroPhrase(label: string, path: string[], name: string): string {
-  if (path[0] === 'Move to folder') return label === 'Remove from folder' ? `Take ${name} out of its folder` : `Move ${name} to ${label}`;
-  switch (label) {
-    case 'Rename…': return `Rename ${name}…`;
-    case 'Duplicate': return `Duplicate ${name}`;
-    case 'Pin': return `Pin ${name}`;
-    case 'Unpin': return `Unpin ${name}`;
-    case 'Export…': return `Export ${name}…`;
-    case 'Open in Explorer': return `Open ${name} in Explorer`;
-    case 'Revert to when I opened it': return `Revert ${name} to when you opened it`;
-    case 'Close macro': return `Close ${name}`;
-    case 'Disable': return `Disable ${name}`;
-    case 'Enable': return `Enable ${name}`;
-    case 'Delete macro…': return `Delete ${name}…`;
-    default: return `${label} · ${name}`;
+/**
+ * The macro menu's items, said with the macro's name, as the concept writes them ("Export Trade
+ * Roblox…"). Each item is known by its icon (shell/macroMenu.ts), not by its label, which is in the
+ * interface's language; a folder of Move to folder is one with the folder icon, its name the label.
+ */
+export function macroPhrase(item: MenuItem, name: string): string {
+  switch (item.icon) {
+    case Folder: return t('palette.macro.moveTo', { name, target: item.label });
+    case FolderMinus: return t('palette.macro.takeOut', { name });
+    case Pencil: return t('palette.macro.rename', { name });
+    case Copy: return t('palette.macro.duplicate', { name });
+    case Pin: return t('palette.macro.pin', { name });
+    case PinOff: return t('palette.macro.unpin', { name });
+    case Upload: return t('palette.macro.export', { name });
+    case ExternalLink: return t('palette.macro.explorer', { name });
+    case RotateCcw: return t('palette.macro.revert', { name });
+    case X: return t('palette.macro.close', { name });
+    case Ban: return t('palette.macro.disable', { name });
+    case Power: return t('palette.macro.enable', { name });
+    case Trash2: return t('palette.macro.delete', { name });
+    default: return t('palette.macro.item', { label: item.label, name });
   }
 }
 

@@ -1,16 +1,19 @@
 import { BookOpen, Download, FilePlus, FolderOpen, FolderPlus, Upload } from 'lucide-react';
 import type { ProfileEntry } from '../../bridge/messageTypes';
+import { t } from '../../i18n';
 import type { useMacro } from '../../logic/useMacro';
 import type { MenuEntry } from '../Menu';
 import { focusName, openDialog, openExamples, setLibraryPeek } from '../ui';
+import { UNTITLED_MACRO } from '../untitled';
 import { freeName } from './model';
 
 /**
- * A new macro: born saved and open, as "Untitled macro" (or the next free name), its name ready to
- * type in the header. From the library's New ▾, a folder's "+ New macro" and Ctrl+K.
+ * A new macro: born saved and open, as "Untitled macro" (or the next free name, in the interface's
+ * language), its name ready to type in the header. From the library's New ▾, a folder's "+ New
+ * macro" and Ctrl+K.
  */
 export function newMacro(macro: ReturnType<typeof useMacro>, profiles: ProfileEntry[], folder: string | null) {
-  const name = freeName('Untitled macro', profiles.map(p => p.name));
+  const name = freeName(UNTITLED_MACRO, profiles.map(p => p.name));
   macro.create(name, folder);
   focusName(name);
   setLibraryPeek(false);
@@ -29,16 +32,16 @@ export function libraryMenus({ profiles, macro, startImport }: {
 }): { newEntries: MenuEntry[]; moreEntries: MenuEntry[] } {
   return {
     newEntries: [
-      { label: 'New macro', icon: FilePlus, onSelect: () => newMacro(macro, profiles, null) },
+      { label: t('library.newMacro'), icon: FilePlus, onSelect: () => newMacro(macro, profiles, null) },
       // The 19 examples inside the app (decision 4), copied into the Examples folder when used.
-      { label: 'From an example…', icon: BookOpen, onSelect: () => openExamples() },
-      { label: 'New folder', icon: FolderPlus, onSelect: () => openDialog({ kind: 'newFolder' }) },
+      { label: t('library.menu.fromExample'), icon: BookOpen, onSelect: () => openExamples() },
+      { label: t('library.newFolder'), icon: FolderPlus, onSelect: () => openDialog({ kind: 'newFolder' }) },
     ],
     moreEntries: [
-      { label: 'Import macros…', icon: Download, disabled: !startImport, onSelect: () => startImport?.() },
-      { label: 'Export macros…', icon: Upload, disabled: profiles.length === 0, onSelect: () => openDialog({ kind: 'export', names: [] }) },
+      { label: t('library.menu.importMacros'), icon: Download, disabled: !startImport, onSelect: () => startImport?.() },
+      { label: t('library.menu.exportMacros'), icon: Upload, disabled: profiles.length === 0, onSelect: () => openDialog({ kind: 'export', names: [] }) },
       'separator',
-      { label: 'Open macros folder', icon: FolderOpen, onSelect: () => macro.openFolder() },
+      { label: t('library.menu.openFolder'), icon: FolderOpen, onSelect: () => macro.openFolder() },
     ],
   };
 }

@@ -1,8 +1,8 @@
 import { useState, type MouseEvent } from 'react';
 import { ChevronDown } from 'lucide-react';
 import type { SettingsState } from '../../bridge/messageTypes';
+import { t } from '../../i18n';
 import { useSettings } from '../../logic/useSettings';
-import { useTt } from '../../state/LanguageContext';
 import { keycaps } from '../library/model';
 import { Menu } from '../Menu';
 import { anchorBelow, type MenuAnchor } from '../menuAnchor';
@@ -28,7 +28,7 @@ export default function RunOptions({ kind, anchor, toggle, focusFirst, onClose }
   return (
     <Popover
       anchor={anchor}
-      label={kind === 'record' ? 'Recording options' : 'Run options'}
+      label={kind === 'record' ? t('header.recordOptions') : t('header.runOptions')}
       toggle={toggle}
       focusFirst={focusFirst}
       onClose={onClose}
@@ -39,11 +39,11 @@ export default function RunOptions({ kind, anchor, toggle, focusFirst, onClose }
 }
 
 const CAPTURE: { key: keyof SettingsState & string; label: string; detail?: string }[] = [
-  { key: 'recordMouse', label: 'Mouse clicks' },
-  { key: 'recordScroll', label: 'Mouse scroll' },
-  { key: 'recordKeyboard', label: 'Keyboard' },
-  { key: 'recordCombinedInput', label: 'One step per click or key', detail: 'Off records press and release apart' },
-  { key: 'browserSelectorEnabled', label: 'Browser actions', detail: 'Through the browser extension' },
+  { key: 'recordMouse', label: t('header.record.mouse') },
+  { key: 'recordScroll', label: t('header.record.scroll') },
+  { key: 'recordKeyboard', label: t('header.record.keyboard') },
+  { key: 'recordCombinedInput', label: t('header.record.combined'), detail: t('header.record.combinedDetail') },
+  { key: 'browserSelectorEnabled', label: t('header.record.browser'), detail: t('header.record.browserDetail') },
 ];
 
 /** Record ▾. The capture switches are the app's, for every macro, as they have always been. */
@@ -54,7 +54,7 @@ function RecordOptions() {
   const { change } = useSettings();
   return (
     <div className="ro-panel" data-kind="record">
-      <span className="ro-heading">Capture</span>
+      <span className="ro-heading">{t('header.record.capture')}</span>
       {CAPTURE.map(({ key, label, detail }) => (
         <CaptureOption
           key={key}
@@ -67,11 +67,11 @@ function RecordOptions() {
       <span className="ro-separator" role="separator" />
       {/* Where the recording goes: the insertion point, after the last selected step (lista-032). */}
       <span className="ro-note">
-        {steps.length === 0 ? 'Records into the empty macro'
-          : at < steps.length ? `Records at the insert point, after step ${at}`
-          : `Records at the end, after step ${steps.length}`}
+        {steps.length === 0 ? t('header.record.intoEmpty')
+          : at < steps.length ? t('header.record.atInsert', { step: at })
+          : t('header.record.atEnd', { step: steps.length })}
       </span>
-      <HotkeyLine label="Start or stop" combo={settings.recordingHotkey} />
+      <HotkeyLine label={t('header.record.hotkey')} combo={settings.recordingHotkey} />
     </div>
   );
 }
@@ -108,12 +108,11 @@ function ReplayOptions() {
   const open = useApp(a => a.activeProfile);
   const perRow = useApp(a => runsPerRow(a.dataTable));
   const { change } = useSettings();
-  const tt = useTt();
   const gameModeOn = loop.gameMode ?? settings.smoothMovement;
   const appJitter = settings.useDelayVariation ? Number(settings.delayVariation) || 0 : 0;
   return (
     <div className="ro-panel" data-kind="replay">
-      <span className="ro-heading">Run options · saved with the macro</span>
+      <span className="ro-heading">{t('header.replay.heading')}</span>
       <div className="ro-grid">
         <NumberField
           label="Loops"
@@ -122,7 +121,7 @@ function ReplayOptions() {
           min={1}
           max={999}
           owner={open}
-          tip={perRow ? tt('The Data Loop table runs the macro once per row instead.', 'A tabela do Data Loop roda o macro uma vez por linha no lugar disto.') : undefined}
+          tip={perRow ? t('header.replay.loopsTip') : undefined}
           onCommit={(n) => {
             if (n > 1) {
               change('profileLoopCount', String(n));
@@ -133,13 +132,13 @@ function ReplayOptions() {
           }}
         />
         <NumberField
-          label="Interval"
+          label={t('header.replay.interval')}
           unit="ms"
           value={loop.intervalEnabled ? loop.interval : '0'}
           min={0}
           max={60000}
           owner={open}
-          tip={tt('Between loops', 'Entre os loops')}
+          tip={t('header.replay.intervalTip')}
           onCommit={(n) => {
             if (n > 0) {
               change('profileLoopInterval', String(n));
@@ -150,56 +149,54 @@ function ReplayOptions() {
           }}
         />
         <NumberField
-          label="Jitter"
+          label={t('header.replay.jitter')}
           unit="%"
           value={String(loop.delayVariation ?? appJitter)}
           min={0}
           max={100}
           owner={open}
-          tip={tt('Random ±% on each delay — less robotic.', 'Variação ±% aleatória em cada atraso — menos robótico.')}
+          tip={t('header.replay.jitterTip')}
           onCommit={(n) => change('profileDelayVariation', n)}
         />
         {loop.scoped && (loop.delayVariation === null ? (
-          <span className="ro-default" data-tip={tt("The app's jitter. Type a number to give this macro its own.", 'O jitter do app. Digite um número para este macro ter o seu.')}>
-            Default
+          <span className="ro-default" data-tip={t('header.replay.appDefaultTip')}>
+            {t('header.replay.appDefault')}
           </span>
         ) : (
           <button
             type="button"
             className="ro-default"
             data-reset=""
-            data-tip={tt(`Back to the app's jitter (${appJitter} %)`, `Volta ao jitter do app (${appJitter} %)`)}
+            data-tip={t('header.replay.useDefaultTip', { value: appJitter })}
             onClick={() => change('profileDelayVariation', null)}
           >
-            Use default
+            {t('header.replay.useDefault')}
           </button>
         ))}
       </div>
       <Choice
-        label="Return cursor"
+        label={t('header.replay.returnCursor')}
         own={loop.restoreCursor}
         appDefault={settings.restoreCursor}
-        tip={tt('The cursor goes back to where it was when the run started.', 'O cursor volta para onde estava quando o run começou.')}
+        tip={t('header.replay.returnCursorTip')}
         onChange={(v) => change('profileRestoreCursor', v)}
       />
       <Choice
         label="Game Mode"
         own={loop.gameMode}
         appDefault={settings.smoothMovement}
-        tip={tt('The cursor walks a path so games accept the move. Off jumps at once.', 'O cursor percorre um caminho para jogos aceitarem o movimento. Desligado, salta direto.')}
+        tip={t('header.replay.gameModeTip')}
         onChange={(v) => change('profileGameMode', v)}
       />
       <Choice
-        label="Fast approach"
+        label={t('header.replay.fastApproach')}
         own={loop.fastApproach}
         appDefault={settings.fastApproach}
         disabled={!gameModeOn}
-        tip={gameModeOn
-          ? tt('Teleports long moves, walks only the last stretch. Turn off if a game misclicks.', 'Teletransporta movimentos longos, anda só o trecho final. Desligue se um jogo errar o clique.')
-          : tt('Only with Game Mode on.', 'Só com o Game Mode ligado.')}
+        tip={gameModeOn ? t('header.replay.fastApproachTip') : t('header.replay.fastApproachOff')}
         onChange={(v) => change('profileFastApproach', v)}
       />
-      <HotkeyLine label="Replay or stop" combo={settings.replayHotkey} />
+      <HotkeyLine label={t('header.replay.hotkey')} combo={settings.replayHotkey} />
     </div>
   );
 }
@@ -219,7 +216,9 @@ function Choice({ label, own, appDefault, tip, disabled, onChange }: {
 }) {
   const [shown, answer] = useAnswered(own);
   const [menu, setMenu] = useState<{ anchor: MenuAnchor; button: HTMLElement; keyboard: boolean } | null>(null);
-  const name = (v: boolean | null) => (v === null ? `Default (${appDefault ? 'on' : 'off'})` : v ? 'On' : 'Off');
+  const name = (v: boolean | null) => (v === null
+    ? (appDefault ? t('header.replay.choiceDefaultOn') : t('header.replay.choiceDefaultOff'))
+    : v ? t('header.replay.choiceOn') : t('header.replay.choiceOff'));
   const pick = (v: boolean | null) => {
     answer(v);
     if (v !== own) onChange(v);

@@ -3,6 +3,7 @@ import { BookOpen, Download, ListPlus, Upload } from 'lucide-react';
 import { APP_NAME, TR2_NAME } from '../../appIdentity';
 import { useBridge } from '../../bridge/BridgeContext';
 import type { Tr2ImportSummary } from '../../bridge/messageTypes';
+import { t } from '../../i18n';
 import { useMacro } from '../../logic/useMacro';
 import { useToast } from '../../state/ToastContext';
 import { openImport } from '../importState';
@@ -11,19 +12,25 @@ import { whenOpen } from '../recordNew';
 import { useApp } from '../store';
 import { armTips } from '../tips/tipsState';
 import { openExamples, useUi } from '../ui';
+import { UNTITLED_MACRO } from '../untitled';
 import './firstRun.css';
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
-/** What TrueReplayer 2 would bring, said in a line: "141 macros in 15 folders, settings, key remaps and theme". */
+/**
+ * What TrueReplayer 2 would bring, said in a line: "141 macros in 15 folders, settings, key remaps and
+ * theme". Each part comes whole from the catalog, and so does the "and" before the last one.
+ */
 function tr2Parts(s: Tr2ImportSummary): string {
+  const macros = s.macros > 0 ? t('shell.import.macros', { count: s.macros }) : '';
+  // Its own name, not a t() inside the blank: the build replaces a t() that is a blank's whole value
+  // only when it sits inside something else.
+  const folderCount = t('shell.import.folders', { count: s.folders });
   const parts = [
-    s.macros > 0 ? plural(s.macros, 'macro', 'macros') + (s.folders > 0 ? ` in ${plural(s.folders, 'folder', 'folders')}` : '') : '',
-    s.settings ? 'settings' : '',
-    s.remaps > 0 ? 'key remaps' : '',
-    s.appearance ? 'theme' : '',
+    macros && s.folders > 0 ? t('shell.import.macrosInFolders', { macros, folderCount }) : macros,
+    s.settings ? t('firstrun.tr2.settings') : '',
+    s.remaps > 0 ? t('firstrun.tr2.remaps') : '',
+    s.appearance ? t('firstrun.tr2.theme') : '',
   ].filter(Boolean);
-  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0] ?? '';
+  return parts.length > 1 ? t('firstrun.tr2.list', { first: parts.slice(0, -1).join(', '), last: parts[parts.length - 1] }) : parts[0] ?? '';
 }
 
 /**
@@ -59,14 +66,14 @@ export default function FirstRun() {
     return stop;
   }, [send, subscribe]);
 
-  // A new macro, born saved and open as "Untitled macro"; then the recording starts in it, or its
-  // catalog opens — pressed on the insert row's own Add step, once that row is drawn for it (the
-  // frame after the macro opens), so it opens where it always does.
+  // A new macro, born saved and open as "Untitled macro" (in the interface's language); then the
+  // recording starts in it, or its catalog opens — pressed on the insert row's own Add step, once that
+  // row is drawn for it (the frame after the macro opens), so it opens where it always does.
   const make = (then: 'record' | 'catalog') => {
     if (going) return;
     setGoing(true);
     window.setTimeout(() => setGoing(false), 4000);
-    const name = freeName('Untitled macro', profiles.map(p => p.name));
+    const name = freeName(UNTITLED_MACRO, profiles.map(p => p.name));
     if (then === 'record') whenOpen(name, true, () => send({ type: 'recording:toggle', payload: { insertIndex: 0 } }));
     else whenOpen(name, false, () => requestAnimationFrame(() => document.querySelector<HTMLButtonElement>('.ins-add')?.click()));
     macro.create(name, null);
@@ -82,13 +89,13 @@ export default function FirstRun() {
     setOver(false);
     const file = Array.from(e.dataTransfer.files).find(f => /\.trprofile$/i.test(f.name));
     const webview = window.chrome?.webview;
-    if (!file) showToast('Only a .trprofile file, a macro export, comes in here.', 'error');
+    if (!file) showToast(t('firstrun.dropOnly'), 'error');
     else if (!webview?.postMessageWithAdditionalObjects) startImport?.();
     else {
       try {
         webview.postMessageWithAdditionalObjects({ type: 'profile:importDropped', payload: {} }, [file]);
       } catch {
-        showToast('That file can’t be read from here. Save it to a folder first, or use Import….', 'error');
+        showToast(t('firstrun.dropUnreadable'), 'error');
       }
     }
   };
@@ -96,14 +103,14 @@ export default function FirstRun() {
   const record = (
     <Way
       key="record"
-      label="Record it"
+      label={t('firstrun.record.title')}
       tile={<span className="fr-tile" data-tone="record"><span className="hdr-rec-dot" aria-hidden="true" /></span>}
-      text="Do the task once. Every click and key you press becomes a step."
+      text={t('firstrun.record.text')}
       action={(
         <div className="hdr-split" data-tone="record" data-disabled={!ready || going || undefined}>
           <button type="button" className="hdr-run" disabled={!ready || going} onClick={() => make('record')}>
             <span className="hdr-rec-dot" aria-hidden="true" />
-            Record
+            {t('common.actions.record')}
             {recordKey && <kbd className="kbd">{keycaps(recordKey)}</kbd>}
           </button>
         </div>
@@ -113,36 +120,36 @@ export default function FirstRun() {
   const build = (
     <Way
       key="build"
-      label="Build it step by step"
+      label={t('firstrun.build.title')}
       tile={<span className="fr-tile" data-tone="accent"><ListPlus aria-hidden="true" /></span>}
-      text="Pick steps from the catalog — click, key, text, wait, if — and fill them in."
-      action={<button type="button" className="fr-button" disabled={!ready || going} onClick={() => make('catalog')}><span className="step-icon" data-icon="plus" />Add step</button>}
+      text={t('firstrun.build.text')}
+      action={<button type="button" className="fr-button" disabled={!ready || going} onClick={() => make('catalog')}><span className="step-icon" data-icon="plus" />{t('firstrun.build.button')}</button>}
     />
   );
   const example = (
     <Way
       key="example"
-      label="Start from an example"
+      label={t('firstrun.example.title')}
       tile={<span className="fr-tile"><BookOpen aria-hidden="true" /></span>}
-      text="19 short macros that show text tokens, variables, conditions and tables. Each one types into Notepad, so you can watch it work."
-      action={<button type="button" className="fr-button" onClick={() => openExamples()}>Browse examples</button>}
+      text={t('firstrun.example.text')}
+      action={<button type="button" className="fr-button" onClick={() => openExamples()}>{t('firstrun.example.button')}</button>}
     />
   );
   const fromTr2 = tr2?.tr2Found && (
     <Way
       key="tr2"
-      label={`Import from ${TR2_NAME}`}
+      label={t('shell.import.title', { tr2: TR2_NAME })}
       tile={<span className="fr-tile" data-tone="accent"><Download aria-hidden="true" /></span>}
-      text={`Your ${tr2Parts(tr2)}, as a copy: ${TR2_NAME} stays as it is.`}
-      note={tr2.tr2Running ? `Close ${TR2_NAME} first: its files must not change while they are copied.` : undefined}
-      action={<button type="button" className="fr-button" data-primary="" onClick={() => openImport()}>Import…</button>}
+      text={t('firstrun.tr2.text', { parts: tr2Parts(tr2), tr2: TR2_NAME })}
+      note={tr2.tr2Running ? t('shell.import.closeTr2First', { tr2: TR2_NAME }) : undefined}
+      action={<button type="button" className="fr-button" data-primary="" onClick={() => openImport()}>{t('common.actions.importEllipsis')}</button>}
     />
   );
 
   return (
     <main
       className="fr"
-      aria-label="Make your first macro"
+      aria-label={t('firstrun.title')}
       onDragOver={(e) => {
         if (!files(e)) return;
         e.preventDefault();
@@ -154,22 +161,22 @@ export default function FirstRun() {
     >
       <div className="fr-body">
         <header className="fr-head">
-          <h1 className="fr-title">Make your first macro</h1>
-          <p className="fr-lead">A macro is a list of steps — clicks, keys, text and waits — that {APP_NAME} plays back for you, as many times as you want.</p>
+          <h1 className="fr-title">{t('firstrun.title')}</h1>
+          <p className="fr-lead">{t('firstrun.lead', { app: APP_NAME })}</p>
         </header>
 
         <div className="fr-ways">{fromTr2 ? [fromTr2, record, example] : [record, build, example]}</div>
 
         <div className="fr-drop" data-over={over || undefined}>
           <Upload aria-hidden="true" />
-          <span>Have a macro file? Drop it here, or</span>
-          <button type="button" className="fr-button" disabled={!startImport} onClick={() => startImport?.()}>Import…</button>
+          <span>{t('firstrun.drop')}</span>
+          <button type="button" className="fr-button" disabled={!startImport} onClick={() => startImport?.()}>{t('common.actions.importEllipsis')}</button>
         </div>
 
-        <section className="fr-how" aria-label="How a macro runs">
-          <How n={1} label="Record" keys={recordKey} text="Starts and stops recording, from any app." />
-          <How n={2} label="Replay" keys={replayKey} text="Plays the macro. Press it again to stop." />
-          <How n={3} label="Shortcut" text="Give the macro its own key to run it from any app." />
+        <section className="fr-how" aria-label={t('firstrun.how.label')}>
+          <How n={1} label={t('common.actions.record')} keys={recordKey} text={t('firstrun.how.record')} />
+          <How n={2} label={t('common.actions.replay')} keys={replayKey} text={t('firstrun.how.replay')} />
+          <How n={3} label={t('firstrun.how.shortcut')} text={t('firstrun.how.shortcutText')} />
         </section>
       </div>
     </main>

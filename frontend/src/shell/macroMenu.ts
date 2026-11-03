@@ -3,13 +3,13 @@ import {
   PinOff, Power, RotateCcw, Trash2, Type, Upload, X,
 } from 'lucide-react';
 import type { ProfileEntry, ProfileOrderData } from '../bridge/messageTypes';
+import { t } from '../i18n';
 import type { useMacro } from '../logic/useMacro';
 import { folderOf } from './library/model';
 import { selection } from './list/selection';
 import type { MenuEntry } from './Menu';
 import { focusName, openDialog, openMacroSettings, openPage, type SettingsSection } from './ui';
 
-type Tt = (en: string, pt: string) => string;
 
 // The macro closed by hand, until another one opens.
 let closedByHand: string | null = null;
@@ -33,9 +33,10 @@ export const closedMacro = {
 
 /**
  * The macro's menu: a right-click on it in the library, and ⋯ in its header when it is the open
- * one. Renaming the open macro types in its header; any other gets the dialog.
+ * one. Renaming the open macro types in its header; any other gets the dialog. The labels come
+ * from the catalog (i18n/<language>/macro.ts and common.actions), and Ctrl+K shows the same items.
  */
-export function macroMenuEntries({ name, profiles, order, active, locked, clicker, hasSteps, macro, tt }: {
+export function macroMenuEntries({ name, profiles, order, active, locked, clicker, hasSteps, macro }: {
   name: string;
   profiles: ProfileEntry[];
   order: ProfileOrderData;
@@ -53,7 +54,6 @@ export function macroMenuEntries({ name, profiles, order, active, locked, clicke
    */
   hasSteps: boolean;
   macro: ReturnType<typeof useMacro>;
-  tt: Tt;
 }): MenuEntry[] {
   const entry = profiles.find(p => p.name === name);
   if (!entry) return [];
@@ -70,15 +70,15 @@ export function macroMenuEntries({ name, profiles, order, active, locked, clicke
   };
   // Why the steps can't change now: a run or a recording first, then the Clicker.
   const stepsLocked = locked || clicker;
-  const lockTip = locked ? tt('Stop the run first', 'Pare a execução antes') : tt('The Clicker is on', 'O Clicker está ligado');
+  const lockTip = locked ? t('macro.locked.run') : t('macro.locked.clicker');
   return [
-    { label: 'Rename…', icon: Pencil, onSelect: () => { if (isOpen) { openPage('macros'); focusName(name); } else openDialog({ kind: 'renameMacro', name }); } },
-    { label: 'Duplicate', icon: Copy, onSelect: () => macro.duplicate(name) },
+    { label: t('common.actions.renameEllipsis'), icon: Pencil, onSelect: () => { if (isOpen) { openPage('macros'); focusName(name); } else openDialog({ kind: 'renameMacro', name }); } },
+    { label: t('common.actions.duplicate'), icon: Copy, onSelect: () => macro.duplicate(name) },
     {
-      label: 'Move to folder',
+      label: t('macro.menu.moveToFolder'),
       icon: FolderInput,
       submenu: order.folders.length === 0
-        ? [{ label: 'No folders', disabled: true }]
+        ? [{ label: t('macro.menu.noFolders'), disabled: true }]
         : [
             ...order.folders.map((f): MenuEntry => ({
               label: f.name,
@@ -87,52 +87,52 @@ export function macroMenuEntries({ name, profiles, order, active, locked, clicke
               checked: inFolder?.name === f.name,
               onSelect: () => macro.moveToFolder(name, f.name),
             })),
-            ...(inFolder ? ['separator' as const, { label: 'Remove from folder', icon: FolderMinus, onSelect: () => macro.moveToFolder(name, null) }] : []),
+            ...(inFolder ? ['separator' as const, { label: t('macro.menu.removeFromFolder'), icon: FolderMinus, onSelect: () => macro.moveToFolder(name, null) }] : []),
           ],
     },
     order.pinned.includes(name)
-      ? { label: 'Unpin', icon: PinOff, onSelect: () => macro.unpin(name) }
-      : { label: 'Pin', icon: Pin, onSelect: () => macro.pin(name) },
+      ? { label: t('common.actions.unpin'), icon: PinOff, onSelect: () => macro.unpin(name) }
+      : { label: t('common.actions.pin'), icon: Pin, onSelect: () => macro.pin(name) },
     'separator',
-    { label: 'Hotkey…', icon: Keyboard, onSelect: () => openSettings('hotkey') },
-    { label: 'Hotstring…', icon: Type, onSelect: () => openSettings('hotstring') },
-    { label: 'Window target…', icon: AppWindow, onSelect: () => openSettings('target') },
-    { label: 'Edit info…', icon: Info, onSelect: () => openSettings('info') },
+    { label: t('macro.menu.hotkey'), icon: Keyboard, onSelect: () => openSettings('hotkey') },
+    { label: t('macro.menu.hotstring'), icon: Type, onSelect: () => openSettings('hotstring') },
+    { label: t('macro.menu.windowTarget'), icon: AppWindow, onSelect: () => openSettings('target') },
+    { label: t('macro.menu.editInfo'), icon: Info, onSelect: () => openSettings('info') },
     'separator',
-    { label: 'Export…', icon: Upload, onSelect: () => macro.exportMacros([name], true) },
-    { label: 'Open in Explorer', icon: ExternalLink, onSelect: () => macro.openFolder(name) },
+    { label: t('common.actions.exportEllipsis'), icon: Upload, onSelect: () => macro.exportMacros([name], true) },
+    { label: t('macro.menu.openInExplorer'), icon: ExternalLink, onSelect: () => macro.openFolder(name) },
     'separator',
     // Only the open macro has a copy from when it was opened, and its steps on screen; and only it
     // closes (D29).
     ...(isOpen ? [
       {
-        label: 'Close macro',
+        label: t('macro.menu.close'),
         icon: X,
         disabled: stepsLocked,
         tip: stepsLocked ? lockTip : undefined,
         onSelect: () => closedMacro.close(macro, name),
       },
       {
-        label: 'Revert to when I opened it',
+        label: t('macro.menu.revert'),
         icon: RotateCcw,
         disabled: stepsLocked,
         tip: stepsLocked ? lockTip : undefined,
         onSelect: () => openDialog({ kind: 'revertMacro', name }),
       },
       {
-        label: 'Clear all steps…',
+        label: t('macro.menu.clearSteps'),
         icon: Eraser,
         disabled: stepsLocked || !hasSteps,
         tip: stepsLocked ? lockTip
-          : !hasSteps ? tt('There are no steps to clear', 'Não há passos para limpar') : undefined,
+          : !hasSteps ? t('macro.locked.noSteps') : undefined,
         onSelect: () => openDialog({ kind: 'clearSteps', name }),
       },
       'separator' as const,
     ] : []),
     entry.isDisabled
-      ? { label: 'Enable', icon: Power, onSelect: () => macro.toggleDisabled(name) }
-      : { label: 'Disable', icon: Ban, onSelect: () => macro.toggleDisabled(name) },
+      ? { label: t('macro.menu.enable'), icon: Power, onSelect: () => macro.toggleDisabled(name) }
+      : { label: t('macro.menu.disable'), icon: Ban, onSelect: () => macro.toggleDisabled(name) },
     'separator',
-    { label: 'Delete macro…', icon: Trash2, danger: true, onSelect: () => openDialog({ kind: 'deleteMacro', name }) },
+    { label: t('macro.menu.delete'), icon: Trash2, danger: true, onSelect: () => openDialog({ kind: 'deleteMacro', name }) },
   ];
 }

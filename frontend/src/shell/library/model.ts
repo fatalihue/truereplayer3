@@ -1,5 +1,6 @@
 import type { ProfileEntry, ProfileFolder, ProfileOrderData } from '../../bridge/messageTypes';
 import { splitCombo } from '../../components/common/KbdTag';
+import { LANG, t } from '../../i18n';
 import { compactKey } from '../../utils/keyNames';
 import { cutGlyphs } from '../../utils/profileInitials';
 
@@ -22,8 +23,9 @@ export interface Sections {
 }
 
 // One collator for every comparison: localeCompare with options builds a new one per call, which
-// cost ~6 ms of the launch sorting the 139 macros of the measuring library.
-const collator = new Intl.Collator(undefined, { sensitivity: 'base' });
+// cost ~6 ms of the launch sorting the 139 macros of the measuring library. In the interface's
+// language, not the browser's.
+const collator = new Intl.Collator(LANG, { sensitivity: 'base' });
 const byName = (a: ProfileEntry, b: ProfileEntry) => collator.compare(a.name, b.name);
 
 /**
@@ -53,7 +55,7 @@ export function searchOf(query: string): ((entry: ProfileEntry) => boolean) | nu
     const tag = q.slice(1);
     // "#" alone shows everything: the user has typed the sign and not the tag yet.
     if (!tag) return () => true;
-    return entry => !!entry.tags?.some(t => t.toLowerCase().includes(tag));
+    return entry => !!entry.tags?.some(each => each.toLowerCase().includes(tag));
   }
   return entry => entry.name.toLowerCase().includes(q);
 }
@@ -78,8 +80,9 @@ export function folderOf(name: string, order: ProfileOrderData): ProfileFolder |
 }
 
 /**
- * A name nobody has yet: "Untitled macro", then "Untitled macro 2", "… 3". Names are files, and
- * Windows does not tell case apart, so neither does this.
+ * A name nobody has yet: "Untitled macro" (UNTITLED_MACRO, in the interface's language), then
+ * "Untitled macro 2", "… 3". Names are files, and Windows does not tell case apart, so neither does
+ * this.
  */
 export function freeName(base: string, taken: Iterable<string>): string {
   const used = new Set(Array.from(taken, n => n.toLowerCase()));
@@ -118,7 +121,7 @@ export function neighbourOf(gone: string, before: string[], now: Set<string>): s
 export function targetLabel(processName?: string | null, windowTitle?: string | null): string {
   if (processName) return /\.exe$/i.test(processName) ? processName : `${processName}.exe`;
   if (windowTitle) return windowTitle;
-  return 'Window target';
+  return t('library.windowTarget');
 }
 
 /** A hotkey as its keycaps read: "Ctrl+PgDn". */
@@ -129,8 +132,8 @@ export const keycaps = (combo: string) => splitCombo(combo).map(compactKey).join
  * or Macros in the rail when it has none (the default of a new install; casca-101).
  */
 export const clickerOnNote = (modeKey: string) => (modeKey
-  ? `The Clicker is on — ${keycaps(modeKey)} brings the macros back`
-  : 'The Clicker is on — Macros, in the rail, brings them back');
+  ? t('library.clickerOn.key', { keys: keycaps(modeKey) })
+  : t('library.clickerOn.rail'));
 
 /** The description on one tooltip line: whitespace folded, cut by what people see. */
 export function descriptionTip(description?: string | null): string {

@@ -4,6 +4,7 @@ import {
   Table2, Trash2,
 } from 'lucide-react';
 import type { ActionItem, IncomingMessage } from '../../bridge/messageTypes';
+import { fmtNum, t } from '../../i18n';
 import { deleteIntent, type useSteps } from '../../logic/useSteps';
 import { hasConditionFields, isStructuralRow, snapIndicesToBlocks } from '../../utils/conditionalBlocks';
 import { CLICK_FAMILY_TYPES, clickFormOf, isCoordinateClick, isFocusClickEligible } from '../../utils/displayUtils';
@@ -13,7 +14,6 @@ import { useShell } from '../store';
 import { scopeOf, type BlockMap } from './blocks';
 import { arrival } from './selection';
 
-type Tt = (en: string, pt: string) => string;
 
 export interface StepMenuContext {
   steps: ActionItem[];
@@ -35,7 +35,6 @@ export interface StepMenuContext {
   toast: (message: string, kind?: 'success' | 'error' | 'info') => void;
   /** The bridge's subscribe: what One row says about the notes waits for the engine's answer. */
   subscribe: (handler: (message: IncomingMessage) => void) => () => void;
-  tt: Tt;
 }
 
 /**
@@ -45,99 +44,99 @@ export interface StepMenuContext {
  * Every item acts on the selection when the step is in it, else on the step alone, and says how
  * many rows that is. The scope rules are the ones the list keeps everywhere: a lone If, loop or
  * Else If takes its own block, loop or arm, and anything that touches a marker takes whole blocks.
+ * The labels, tips and notices come from the catalog (i18n/<language>/list.ts, menu): a label that
+ * says how many is a plural there, "Duplicate" for one and "Duplicate (3)" for more.
  */
 export function stepMenuEntries(ctx: StepMenuContext): MenuEntry[] {
-  const { steps, blocks, row, targets, cmds, tt } = ctx;
+  const { steps, blocks, row, targets, cmds } = ctx;
   const step = steps[row];
   if (!step) return [];
-  const t = step.actionType;
-  const count = (n: number) => (n > 1 ? ` (${n})` : '');
+  const type = step.actionType;
   const duplicateSet = scopeOf(targets, steps, blocks);
   const del = deleteIntent(targets, steps, (o) => blocks.closerOf.get(o));
   const delScope = deleteScope(targets, steps);
   const allSkipped = targets.every(i => steps[i]?.isSkipped);
   const entries: MenuEntry[] = [
-    { label: 'Edit', icon: Pencil, shortcut: 'Enter', onSelect: () => ctx.edit(row) },
+    { label: t('common.actions.edit'), icon: Pencil, shortcut: 'Enter', onSelect: () => ctx.edit(row) },
   ];
 
   // A Run Macro opens the macro it calls (lista-074), when it is in the library: it always opens it,
   // and never closes the one open (D1).
-  const called = t === 'RunProfile' ? step.key ?? '' : '';
+  const called = type === 'RunProfile' ? step.key ?? '' : '';
   if (called && useShell.getState().app.profiles.some(p => p.name === called)) {
-    entries.push({ label: 'Open macro', icon: SquareArrowOutUpRight, onSelect: () => ctx.openMacro(called) });
+    entries.push({ label: t('list.menu.openMacro'), icon: SquareArrowOutUpRight, onSelect: () => ctx.openMacro(called) });
   }
 
   // A Set Variable in Cycle starts its list over (lista-070): right under Edit, as today. The
   // engine confirms it ("Cycle '<name>' reset to the first item").
-  if (t === 'SetVariable' && step.variableMode === 'cycle') {
+  if (type === 'SetVariable' && step.variableMode === 'cycle') {
     entries.push({
-      label: 'Reset cycle position',
+      label: t('list.menu.resetCycle'),
       icon: RotateCcw,
-      tip: tt('The next run starts at the first item of the list', 'A próxima execução começa no primeiro item da lista'),
+      tip: t('list.menu.resetCycleTip'),
       onSelect: () => cmds.resetCycle({ index: row }),
     });
   }
 
-  if (isStructuralRow(t)) {
+  if (isStructuralRow(type)) {
     const block = snapIndicesToBlocks([row], steps);
     if (block.length > 1) {
       entries.push({
-        label: 'Select block',
+        label: t('list.menu.selectBlock'),
         icon: Brackets,
-        tip: tt('Selects the whole block, both markers included', 'Seleciona o bloco inteiro, com os dois marcadores'),
+        tip: t('list.menu.selectBlockTip'),
         onSelect: () => {
           ctx.select(block);
-          ctx.toast(tt(`Selected ${block.length} steps`, `${block.length} passos selecionados`), 'success');
+          ctx.toast(t('list.menu.selectedBlock', { n: fmtNum(block.length) }), 'success');
         },
       });
     }
   }
 
-  if (isCoordinateClick(t)) {
-    if (!step.atCursor) entries.push({ label: 'Pick from screen', icon: Crosshair, onSelect: () => ctx.pick(row) });
+  if (isCoordinateClick(type)) {
+    if (!step.atCursor) entries.push({ label: t('list.menu.pickFromScreen'), icon: Crosshair, onSelect: () => ctx.pick(row) });
     entries.push(clickTypeEntry(ctx));
   }
 
+  const skipCount = targets.length;
   entries.push(
     'separator',
     {
-      label: `Duplicate${count(duplicateSet.length)}`,
+      label: t('list.menu.duplicate', { count: duplicateSet.length, n: fmtNum(duplicateSet.length) }),
       icon: Files,
-      tip: duplicateSet.length > targets.length
-        ? tt('The selection touches a block marker, so whole blocks are duplicated', 'A seleção toca um marcador de bloco, então blocos inteiros são duplicados')
-        : undefined,
+      tip: duplicateSet.length > targets.length ? t('list.menu.duplicateTip') : undefined,
       onSelect: () => cmds.duplicate({ indices: duplicateSet }),
     },
     // The engine says how many it copied (alert:show); a second toast here would repeat it.
-    { label: `Copy${count(targets.length)}`, icon: ClipboardCopy, shortcut: 'Ctrl+C', onSelect: () => cmds.copyInternal({ indices: targets }) },
-    { label: 'Paste below', icon: ClipboardPaste, shortcut: 'Ctrl+V', onSelect: () => cmds.paste({ insertIndex: row + 1 }) },
+    { label: t('list.menu.copy', { count: targets.length, n: fmtNum(targets.length) }), icon: ClipboardCopy, shortcut: 'Ctrl+C', onSelect: () => cmds.copyInternal({ indices: targets }) },
+    { label: t('list.menu.pasteBelow'), icon: ClipboardPaste, shortcut: 'Ctrl+V', onSelect: () => cmds.paste({ insertIndex: row + 1 }) },
     {
-      label: `${allSkipped ? 'Enable' : 'Skip'}${count(targets.length)}`,
+      label: allSkipped
+        ? t('list.menu.enable', { count: skipCount, n: fmtNum(skipCount) })
+        : t('list.menu.skip', { count: skipCount, n: fmtNum(skipCount) }),
       icon: allSkipped ? Eye : EyeOff,
-      tip: allSkipped
-        ? tt('Puts these steps back in the run', 'Devolve estes passos ao run')
-        : tt('Keeps the steps, skips them at run time', 'Mantém os passos, pula na execução'),
+      tip: allSkipped ? t('list.menu.enableTip') : t('list.menu.skipTip'),
       onSelect: () => {
         cmds.toggleSkip({ indices: targets });
         ctx.toast(allSkipped
-          ? tt(`Enabled ${targets.length} step(s)`, `${targets.length} passo(s) ativado(s)`)
-          : tt(`Skipped ${targets.length} step(s)`, `${targets.length} passo(s) pulado(s)`), 'success');
+          ? t('list.menu.enabled', { count: skipCount, n: fmtNum(skipCount) })
+          : t('list.menu.skipped', { count: skipCount, n: fmtNum(skipCount) }), 'success');
       },
     },
     'separator',
-    { label: 'Convert', icon: Repeat, submenu: convertEntries(ctx) },
-    { label: 'More', icon: MoreHorizontal, submenu: moreEntries(ctx) },
+    { label: t('list.menu.convert'), icon: Repeat, submenu: convertEntries(ctx) },
+    { label: t('common.actions.more'), icon: MoreHorizontal, submenu: moreEntries(ctx) },
     'separator',
     {
-      label: delScope === 'block' ? 'Delete block' : delScope === 'loop' ? 'Delete loop' : delScope === 'arm' ? 'Delete arm'
-        : `Delete${count(del.count)}`,
+      label: delScope === 'block' ? t('list.menu.deleteBlock') : delScope === 'loop' ? t('list.menu.deleteLoop') : delScope === 'arm' ? t('list.menu.deleteArm')
+        : t('list.menu.delete', { count: del.count, n: fmtNum(del.count) }),
       icon: Trash2,
       danger: true,
       shortcut: 'Del',
-      tip: delScope === 'block' ? tt('Deletes the whole If block, End If included', 'Apaga o bloco If inteiro, com o End If')
-        : delScope === 'loop' ? tt('Deletes the whole loop, End Loop included', 'Apaga o loop inteiro, com o End Loop')
-        : delScope === 'arm' ? tt('Deletes only this Else If arm', 'Apaga só este braço Else If')
-        : del.count > targets.length ? tt('The selection touches a block marker, so whole blocks go', 'A seleção toca um marcador de bloco, então blocos inteiros vão junto')
+      tip: delScope === 'block' ? t('list.menu.deleteBlockTip')
+        : delScope === 'loop' ? t('list.menu.deleteLoopTip')
+        : delScope === 'arm' ? t('list.menu.deleteArmTip')
+        : del.count > targets.length ? t('list.menu.deleteWiderTip')
         : undefined,
       onSelect: () => cmds.removeSteps(del),
     },
@@ -151,8 +150,9 @@ function clickTypeEntry({ steps, row, targets, cmds }: StepMenuContext): MenuEnt
   const options = form ? CLICK_FAMILY_TYPES.filter(o => isFocusClickEligible(o.value)) : CLICK_FAMILY_TYPES;
   const clicks = targets.filter(i => isCoordinateClick(steps[i]?.actionType ?? '') && clickFormOf(steps[i].actionType) === form);
   return {
-    label: `Change click type${clicks.length > 1 ? ` (${clicks.length})` : ''}`,
+    label: t('list.menu.changeClickType', { count: clicks.length, n: fmtNum(clicks.length) }),
     icon: MousePointerClick,
+    // The click types are glossary (Left Click, Hold Left…): the same in both languages.
     submenu: options.map((o): MenuEntry => {
       const target = o.value + form;
       const current = clicks.length > 0 && clicks.every(i => steps[i].actionType === target);
@@ -165,16 +165,16 @@ function clickTypeEntry({ steps, row, targets, cmds }: StepMenuContext): MenuEnt
  * Convert ▸: a click's shape (D14: One row and Two rows, for the selected clicks) and the whole
  * macro's coordinates and shapes. The engine refuses what it cannot convert, and says why.
  */
-function convertEntries({ steps, row, targets, cmds, convertCoordinates, tt, toast, subscribe }: StepMenuContext): MenuEntry[] {
-  const t = steps[row].actionType;
-  const form = isCoordinateClick(t) ? clickFormOf(t) : null;
+function convertEntries({ steps, row, targets, cmds, convertCoordinates, toast, subscribe }: StepMenuContext): MenuEntry[] {
+  const type = steps[row].actionType;
+  const form = isCoordinateClick(type) ? clickFormOf(type) : null;
   const clicks = targets.filter(i => isCoordinateClick(steps[i]?.actionType ?? '') && clickFormOf(steps[i].actionType) === form);
   const out: MenuEntry[] = [];
   if (form === '') {
     out.push({
-      label: 'Two rows',
+      label: t('list.menu.twoRows'),
       icon: Split,
-      tip: tt('Down and Up as separate rows — needed for a drag', 'Down e Up em linhas separadas — preciso para um arrasto'),
+      tip: t('list.menu.twoRowsTip'),
       onSelect: () => cmds.convertMode({ direction: 'toPaired', indices: clicks }),
     });
   } else if (form === 'Down' || form === 'Up') {
@@ -191,14 +191,14 @@ function convertEntries({ steps, row, targets, cmds, convertCoordinates, tt, toa
       return clickFormOf(s.actionType) === 'Up' && (s.comment ?? '') !== '' && s.comment !== (steps[i - 1]?.comment ?? '') && s.id ? [s.id] : [];
     });
     out.push({
-      label: 'One row',
+      label: t('list.menu.oneRow'),
       icon: Combine,
-      tip: tt('Press and release together', 'Aperta e solta juntos'),
+      tip: t('list.menu.oneRowTip'),
       onSelect: () => {
         if (upNotes.length > 0) {
           afterConvert(subscribe, (after) => {
             if (after && upNotes.some(id => !after.some(s => s.id === id))) {
-              toast(tt('One row keeps the Down half: the notes of the Up half are gone. Ctrl+Z brings them back.', 'Uma linha fica com a metade Down: as notas da metade Up saíram. Ctrl+Z as traz de volta.'), 'info');
+              toast(t('list.menu.oneRowNotes'), 'info');
             }
           });
         }
@@ -208,11 +208,11 @@ function convertEntries({ steps, row, targets, cmds, convertCoordinates, tt, toa
   }
   if (out.length > 0) out.push('separator');
   out.push(
-    { label: 'Coordinates to relative', onSelect: () => convertCoordinates('toRelative') },
-    { label: 'Coordinates to absolute', onSelect: () => convertCoordinates('toAbsolute') },
+    { label: t('list.menu.toRelative'), onSelect: () => convertCoordinates('toRelative') },
+    { label: t('list.menu.toAbsolute'), onSelect: () => convertCoordinates('toAbsolute') },
     'separator',
-    { label: 'All clicks and keys to one row', tip: tt('Joins every Down + Up pair in the macro', 'Junta todos os pares Down + Up do macro'), onSelect: () => cmds.convertMode({ direction: 'toCombined' }) },
-    { label: 'All clicks and keys to two rows', tip: tt('Splits every click and key of the macro into Down + Up', 'Separa todos os cliques e teclas do macro em Down + Up'), onSelect: () => cmds.convertMode({ direction: 'toPaired' }) },
+    { label: t('list.menu.allToOneRow'), tip: t('list.menu.allToOneRowTip'), onSelect: () => cmds.convertMode({ direction: 'toCombined' }) },
+    { label: t('list.menu.allToTwoRows'), tip: t('list.menu.allToTwoRowsTip'), onSelect: () => cmds.convertMode({ direction: 'toPaired' }) },
   );
   return out;
 }
@@ -238,44 +238,44 @@ function afterConvert(subscribe: StepMenuContext['subscribe'], then: (steps: Act
 
 /** More ▸: the rarer tools. */
 function moreEntries(ctx: StepMenuContext): MenuEntry[] {
-  const { steps, row, targets, cmds, tt } = ctx;
+  const { steps, row, targets, cmds } = ctx;
   const step = steps[row];
-  const t = step.actionType;
+  const type = step.actionType;
   const copy = (text: string, done: string) => {
     navigator.clipboard.writeText(text)
       .then(() => ctx.toast(done, 'success'))
-      .catch(() => ctx.toast(tt('Copy failed', 'Falha ao copiar'), 'error'));
+      .catch(() => ctx.toast(t('list.menu.copyFailed'), 'error'));
   };
   const out: MenuEntry[] = [
     // The whole list, as a table (the engine's own format).
-    { label: 'Copy as table', icon: Table2, onSelect: () => cmds.copy({}) },
+    { label: t('list.menu.copyTable'), icon: Table2, onSelect: () => cmds.copy({}) },
   ];
-  if (isCoordinateClick(t) && !step.atCursor) {
-    out.push({ label: 'Copy coordinates', icon: Crosshair, onSelect: () => copy(`${step.x}, ${step.y}`, tt(`Copied ${step.x}, ${step.y}`, `Copiado ${step.x}, ${step.y}`)) });
-  } else if (t === 'BrowserNavigate') {
-    out.push({ label: 'Copy URL', icon: Link, onSelect: () => copy(step.key ?? '', tt('URL copied', 'URL copiada')) });
-  } else if (t.startsWith('Browser')) {
-    out.push({ label: 'Copy selector', icon: Code2, onSelect: () => copy(step.key ?? '', tt('Selector copied', 'Seletor copiado')) });
-  } else if (t === 'SendText') {
-    out.push({ label: 'Copy text', icon: Code2, onSelect: () => copy(step.key ?? '', tt('Text copied', 'Texto copiado')) });
+  if (isCoordinateClick(type) && !step.atCursor) {
+    out.push({ label: t('list.menu.copyCoordinates'), icon: Crosshair, onSelect: () => copy(`${step.x}, ${step.y}`, t('list.menu.coordinatesCopied', { x: step.x, y: step.y })) });
+  } else if (type === 'BrowserNavigate') {
+    out.push({ label: t('list.menu.copyUrl'), icon: Link, onSelect: () => copy(step.key ?? '', t('list.menu.urlCopied')) });
+  } else if (type.startsWith('Browser')) {
+    out.push({ label: t('list.menu.copySelector'), icon: Code2, onSelect: () => copy(step.key ?? '', t('list.menu.selectorCopied')) });
+  } else if (type === 'SendText') {
+    out.push({ label: t('list.menu.copyText'), icon: Code2, onSelect: () => copy(step.key ?? '', t('list.menu.textCopied')) });
   }
   out.push('separator', {
-    label: 'Select similar',
+    label: t('list.menu.selectSimilar'),
     icon: CheckCheck,
     onSelect: () => {
       const key = similarKey(step);
-      const similar = steps.flatMap((s, i) => (s.actionType === t && similarKey(s) === key ? [i] : []));
+      const similar = steps.flatMap((s, i) => (s.actionType === type && similarKey(s) === key ? [i] : []));
       ctx.select(similar);
-      ctx.toast(tt(`Selected ${similar.length} similar step(s)`, `${similar.length} passo(s) semelhante(s) selecionado(s)`), 'success');
+      ctx.toast(t('list.menu.selectedSimilar', { count: similar.length, n: fmtNum(similar.length) }), 'success');
     },
   });
-  if (isFocusClickEligible(t)) {
+  if (isFocusClickEligible(type)) {
     const clicks = targets.filter(i => isFocusClickEligible(steps[i]?.actionType ?? ''));
     out.push({
-      label: `Focus click${clicks.length > 1 ? ` (${clicks.length})` : ''}`,
+      label: t('list.menu.focusClick', { count: clicks.length, n: fmtNum(clicks.length) }),
       icon: Focus,
       checked: clicks.length > 0 && clicks.every(i => steps[i].isFocusClick),
-      tip: tt('Clicks twice, a few pixels apart, so a small target takes the focus', 'Clica duas vezes, a poucos pixels, para um alvo pequeno pegar o foco'),
+      tip: t('list.menu.focusClickTip'),
       onSelect: () => cmds.toggleFocusClick({ indices: clicks }),
     });
   }
@@ -286,12 +286,10 @@ function moreEntries(ctx: StepMenuContext): MenuEntry[] {
   out.push(
     'separator',
     {
-      label: 'Collapse to × N',
+      label: t('list.menu.collapse'),
       icon: ChevronsDownUp,
       disabled: !collapse,
-      tip: collapse
-        ? tt(`Folds ${collapse.count} presses into one step`, `Junta ${collapse.count} pressões num passo`)
-        : tt('Select adjacent Key Down + Key Up pairs of the same key', 'Selecione pares Key Down + Key Up adjacentes da mesma tecla'),
+      tip: collapse ? t('list.menu.collapseTip', { count: collapse.count, n: fmtNum(collapse.count) }) : t('list.menu.collapseHint'),
       onSelect: () => {
         if (!collapse) return;
         // The new step has a new id: it is selected when it lands, not by the ids of before.
@@ -304,12 +302,10 @@ function moreEntries(ctx: StepMenuContext): MenuEntry[] {
       },
     },
     {
-      label: 'Expand × N',
+      label: t('list.menu.expand'),
       icon: ChevronsUpDown,
       disabled: !expandOk,
-      tip: expandOk
-        ? tt('Splits it back into one step per press', 'Divide de volta num passo por pressão')
-        : tt('Select one Keystroke × N step with a single key (no combo)', 'Selecione um passo Keystroke × N de tecla única (sem combo)'),
+      tip: expandOk ? t('list.menu.expandTip') : t('list.menu.expandHint'),
       onSelect: () => {
         if (!expandOk) return;
         const replacement = expandKeystroke(steps[targets[0]]);
@@ -324,11 +320,11 @@ function moreEntries(ctx: StepMenuContext): MenuEntry[] {
 /** What Delete takes, named: a lone If its block, a loop opener its loop, an Else If its arm; a lone closer what the snap gives it. */
 function deleteScope(sel: number[], steps: ActionItem[]): 'block' | 'loop' | 'arm' | 'rows' {
   if (sel.length !== 1) return 'rows';
-  const t = steps[sel[0]]?.actionType;
-  if (t === 'If') return 'block';
-  if (t === 'While' || t === 'ForEachRow') return 'loop';
-  if (t === 'ElseIf') return 'arm';
-  if (snapIndicesToBlocks(sel, steps).length > 1) return t === 'EndLoop' ? 'loop' : 'block';
+  const type = steps[sel[0]]?.actionType;
+  if (type === 'If') return 'block';
+  if (type === 'While' || type === 'ForEachRow') return 'loop';
+  if (type === 'ElseIf') return 'arm';
+  if (snapIndicesToBlocks(sel, steps).length > 1) return type === 'EndLoop' ? 'loop' : 'block';
   return 'rows';
 }
 
@@ -348,4 +344,3 @@ function similarKey(s: ActionItem): string {
   }
   return `default:${s.key}:${s.x}:${s.y}`;
 }
-

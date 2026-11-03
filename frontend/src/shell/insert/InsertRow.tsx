@@ -1,7 +1,7 @@
 import { useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { useRovingToolbar } from '../../hooks/useRovingToolbar';
+import { t } from '../../i18n';
 import { useSteps } from '../../logic/useSteps';
-import { useTt } from '../../state/LanguageContext';
 import { preload, useLoaded } from '../lazyModule';
 import { clickerOnNote } from '../library/model';
 import { anchorBelow, type MenuAnchor } from '../menuAnchor';
@@ -50,7 +50,6 @@ export function InsertRow() {
   const canUndo = useApp(a => a.buttonStates.canUndo);
   const canRedo = useApp(a => a.buttonStates.canRedo);
   const cmds = useSteps();
-  const tt = useTt();
   const toolsRef = useRef<HTMLDivElement>(null);
   const roving = useRovingToolbar(toolsRef);
   const [catalog, setCatalog] = useState<Opened | null>(null);
@@ -71,7 +70,7 @@ export function InsertRow() {
 
   const note = clicker
     ? clickerOnNote(modeKey)
-    : status === 'recording' ? 'Read-only while recording' : 'Read-only while it runs';
+    : status === 'recording' ? t('insert.readOnlyRecording') : t('insert.readOnlyRunning');
 
   // ← → Home End choose a tab, as they move to it (the panel draws at once).
   const onTabsKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -86,7 +85,7 @@ export function InsertRow() {
 
   return (
     <div className="ins">
-      <div role="tablist" aria-label="Macro views" className="ins-tabs" onKeyDown={onTabsKey}>
+      <div role="tablist" aria-label={t('insert.tabs')} className="ins-tabs" onKeyDown={onTabsKey}>
         <button
           type="button"
           role="tab"
@@ -97,7 +96,7 @@ export function InsertRow() {
           className="ins-tab"
           onClick={() => showMacroTab('steps')}
         >
-          Steps<span className="ins-count">{count}</span>
+          {t('insert.steps')}<span className="ins-count">{count}</span>
         </button>
         <button
           type="button"
@@ -111,7 +110,7 @@ export function InsertRow() {
           onFocus={warmData}
           onClick={() => { warmData(); showMacroTab('data'); }}
         >
-          Data Loop{hasTable && <span className="ins-count">{rows === 1 ? '1 row' : `${rows} rows`}</span>}
+          Data Loop{hasTable && <span className="ins-count">{t('insert.rows', { count: rows })}</span>}
         </button>
       </div>
       <span className="ins-spacer" />
@@ -123,7 +122,7 @@ export function InsertRow() {
         <div
           ref={toolsRef}
           role="toolbar"
-          aria-label="Insert steps"
+          aria-label={t('insert.tools')}
           className="ins-tools"
           onKeyDown={roving.onKeyDown}
           onFocus={roving.onFocus}
@@ -141,18 +140,18 @@ export function InsertRow() {
             onClick={openCatalog}
           >
             <span className="step-icon" data-icon="plus" />
-            Add step
+            {t('insert.addStep')}
           </button>
           <span className="ins-gap" />
           <button
             type="button"
             className="ins-quick"
             tabIndex={-1}
-            data-tip={tt('A left click at the cursor', 'Um clique esquerdo no cursor')}
+            data-tip={t('insert.clickTip')}
             onClick={() => insertHere(inserts.click, cmds)}
           >
             <span className="step-icon" data-icon="mouse" />
-            Click
+            {t('insert.click')}
           </button>
           {/* Key and Text are born in the Inspector, which captures the key and holds the text: the
               engine keeps neither step empty. */}
@@ -160,30 +159,30 @@ export function InsertRow() {
             type="button"
             className="ins-quick"
             tabIndex={-1}
-            data-tip={tt('Opens in the Inspector, listening for the key', 'Abre no Inspector, escutando a tecla')}
+            data-tip={t('insert.keyTip')}
             onClick={() => insertHere(inserts.key, cmds)}
           >
             <span className="step-icon" data-icon="keyboard" />
-            Key
+            {t('insert.key')}
           </button>
           <button
             type="button"
             className="ins-quick"
             tabIndex={-1}
-            data-tip={tt('Opens in the Inspector: the step is added with its first text', 'Abre no Inspector: o passo entra com o primeiro texto')}
+            data-tip={t('insert.textTip')}
             onClick={() => insertHere(inserts.text, cmds)}
           >
             <span className="step-icon" data-icon="type" />
-            Text
+            {t('insert.text')}
           </button>
           <span className="ins-sep" />
           <button
             type="button"
             className="ins-icon"
             tabIndex={-1}
-            aria-label="Undo"
+            aria-label={t('common.actions.undo')}
             aria-keyshortcuts="Control+Z"
-            data-tip={tt('Undo (Ctrl+Z)', 'Desfazer (Ctrl+Z)')}
+            data-tip={t('insert.undoTip')}
             disabled={!canUndo}
             onClick={() => cmds.undo({})}
           >
@@ -193,9 +192,9 @@ export function InsertRow() {
             type="button"
             className="ins-icon"
             tabIndex={-1}
-            aria-label="Redo"
+            aria-label={t('common.actions.redo')}
             aria-keyshortcuts="Control+Y"
-            data-tip={tt('Redo (Ctrl+Y)', 'Refazer (Ctrl+Y)')}
+            data-tip={t('insert.redoTip')}
             disabled={!canRedo}
             onClick={() => cmds.redo({})}
           >

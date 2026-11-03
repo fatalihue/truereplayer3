@@ -4,7 +4,7 @@ import { useBridge } from '../bridge/BridgeContext';
 import { useMacro } from '../logic/useMacro';
 import type { IncomingMessage } from '../bridge/messageTypes';
 import { UpdateOverlay } from '../components/UpdateOverlay';
-import { useTt } from '../state/LanguageContext';
+import { t } from '../i18n';
 import { useToast } from '../state/ToastContext';
 import { APP_NAME, TR2_NAME } from '../appIdentity';
 import { Tr2Knocked } from './coexist';
@@ -124,8 +124,8 @@ function hearImport(message: IncomingMessage, toast: (text: string) => void) {
     endTip('all');
     const s = message.payload.summary;
     toast(s
-      ? `Imported ${s.macros} macro${s.macros === 1 ? '' : 's'} from ${TR2_NAME}. Automations are off in ${APP_NAME} — turn them on in Automations.`
-      : `Imported from ${TR2_NAME}. Automations are off in ${APP_NAME} — turn them on in Automations.`);
+      ? t('shell.import.done', { count: s.macros, tr2: TR2_NAME, app: APP_NAME })
+      : t('shell.import.doneNoCount', { tr2: TR2_NAME, app: APP_NAME }));
   }
 }
 
@@ -159,10 +159,7 @@ export function Watch({ early }: { early: readonly IncomingMessage[] }) {
   const recordRef = useRef(record);
   useEffect(() => { recordRef.current = record; });
   const { showToast } = useToast();
-  const tt = useTt();
-  const refuse = (door: Door) => showToast(door === 'automations'
-    ? tt('Close the open dialog first, then open Automations again.', 'Feche o diálogo aberto primeiro e abra as Automações de novo.')
-    : tt('Close the open dialog first, then open Browser extension again.', 'Feche o diálogo aberto primeiro e abra Extensão do navegador de novo.'), 'info');
+  const refuse = (door: Door) => showToast(door === 'automations' ? t('shell.refuse.automations') : t('shell.refuse.browser'), 'info');
   const refuseRef = useRef(refuse);
   useEffect(() => { refuseRef.current = refuse; });
   // 15 s: the notice carries an instruction (turn the automations back on), not just news.
