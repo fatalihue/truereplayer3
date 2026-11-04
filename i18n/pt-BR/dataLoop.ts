@@ -29,8 +29,8 @@ export default {
 
   grid: {
     label: 'Tabela do Data Loop',
-    numberLabel: '# — copiar o token {row}',
-    numberTip: '{row} é o número da linha — este botão copia o token',
+    numberLabel: '# — copiar o token {datarow}',
+    numberTip: '{datarow} é o número da linha de dados — este botão copia o token',
     addColumn: 'Adicionar coluna',
     column: 'Coluna',
     addRow: 'Adicionar linha',
@@ -163,7 +163,7 @@ export default {
     scopeForEach: 'os blocos For Each Data Row',
     scopeCaller: '“{{name}}”, que roda esta macro uma vez por linha',
     scopeCallers: '{{n}} macros que rodam esta uma vez por linha',
-    columnsHint: 'Os nomes ignoram maiúsculas e minúsculas. {row} é o número da linha.',
+    columnsHint: 'Os nomes ignoram maiúsculas e minúsculas. {datarow} é o número da linha de dados.',
     emptyColumn: '(vazia, coluna {{number}})',
     notToken: 'não é nome de token',
     fix: 'Corrigir',

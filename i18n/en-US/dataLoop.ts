@@ -45,9 +45,9 @@ export default {
   // A grade (DataGrid.tsx).
   grid: {
     label: 'Data Loop table',              // a grade, para o leitor de tela
-    // O # do canto: copia o token {row} (o número da linha).
-    numberLabel: '# — copy the {row} token',                      // para o leitor de tela · verbo
-    numberTip: '{row} is the row number — click to copy the token',
+    // O # do canto: copia o token {datarow} (o número da linha de dados; o {row} é o do passo na lista).
+    numberLabel: '# — copy the {datarow} token',                  // para o leitor de tela · verbo
+    numberTip: '{datarow} is the data row number — click to copy the token',
     // A coluna do fim, no cabeçalho: + Column.
     addColumn: 'Add column',               // o cabeçalho da coluna do fim, para o leitor de tela
     column: 'Column',                      // o botão tracejado "+ Column" · nome · orçamento: 7,5 rem, com o ícone
@@ -211,7 +211,7 @@ export default {
     scopeCaller: '“{{name}}” running this macro once per data row', // name = a macro que roda esta, uma vez por linha
     scopeCallers: '{{n}} macros running this one once per data row', // n = quantas (2 ou mais)
     // As colunas como tokens: a seção.
-    columnsHint: 'Names ignore case. {row} is the row number.',
+    columnsHint: 'Names ignore case. {datarow} is the data row number.',
     emptyColumn: '(empty, column {{number}})',  // uma coluna sem nome
     notToken: 'not a token name',          // ao lado do nome que não serve de token
     fix: 'Fix',                            // botão · verbo

@@ -173,8 +173,9 @@ export function DataGrid({ locked }: { locked: boolean }) {
     if (locked || !cursorMode || r < 0 || r >= saved) return;
     ops.setCursor(r);
   };
-  const copyRowToken = () => {
-    navigator.clipboard?.writeText('{row}').then(() => {
+  // The # copies the number of the table row. {row} is the step's place in the list, not this.
+  const copyDataRowToken = () => {
+    navigator.clipboard?.writeText('{datarow}').then(() => {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1000);
     }, () => showToast(t('dataLoop.copyFailed'), 'error'));
@@ -253,7 +254,7 @@ export function DataGrid({ locked }: { locked: boolean }) {
     if (e.ctrlKey) return;
     if (e.key === 'Enter' || e.key === 'F2' || (e.key === ' ' && at.c < 0)) {
       e.preventDefault();
-      if (at.r < 0 && at.c < 0) copyRowToken();
+      if (at.r < 0 && at.c < 0) copyDataRowToken();
       else if (at.r < 0) openHeader(at.c);
       else if (at.c < 0) moveCursor(at.r);
       else openCell(at.r, at.c);
@@ -338,7 +339,7 @@ export function DataGrid({ locked }: { locked: boolean }) {
                 className="dl-num-button"
                 aria-label={t('dataLoop.grid.numberLabel')}
                 data-tip={t('dataLoop.grid.numberTip')}
-                onClick={copyRowToken}
+                onClick={copyDataRowToken}
               >
                 {copied ? <span className="step-icon" data-icon="check" /> : '#'}
               </button>
