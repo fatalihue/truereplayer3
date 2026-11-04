@@ -1446,6 +1446,8 @@ namespace TrueReplayer.Services
         public static string RunActivateNoForeground => IsPt ? "não foi possível trazer a janela para a frente" : "could not bring window to foreground";
         /// <summary>engine-run.activate.notResponding · target window not responding</summary>
         public static string RunActivateNotResponding => IsPt ? "a janela-alvo não está respondendo" : "target window not responding";
+        /// <summary>engine-run.type.focusLost · Send Text stopped typing: the window receiving the text is no longer in the foreground</summary>
+        public static string RunTypeFocusLost => IsPt ? "Send Text parou de digitar: a janela que recebia o texto não está mais em primeiro plano" : "Send Text stopped typing: the window receiving the text is no longer in the foreground";
         /// <summary>engine-run.chain.noMacro · no macro selected</summary>
         public static string RunChainNoMacro => IsPt ? "nenhuma macro escolhida" : "no macro selected";
         /// <summary>engine-run.chain.cycle · cycle blocked ({{path}})</summary>

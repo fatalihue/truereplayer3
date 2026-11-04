@@ -120,6 +120,10 @@ export default {
     notResponding: 'a janela-alvo não está respondendo',
   },
 
+  type: {
+    focusLost: 'Send Text parou de digitar: a janela que recebia o texto não está mais em primeiro plano',
+  },
+
   chain: {
     noMacro: 'nenhuma macro escolhida',
     cycle: 'ciclo bloqueado ({{path}})',

@@ -159,6 +159,13 @@ export default {
     notResponding: 'target window not responding',  // a janela não responde (travada) até o timeout
   },
 
+  // Send Text (glossário) no modo Type (Digitar): a janela que recebia o texto saiu do primeiro plano no
+  // meio dele (fechou, ou outra veio para a frente), e o motor parou de digitar para o resto não cair
+  // na outra. O aviso, o erro do passo e o motivo da linha pulada.
+  type: {
+    focusLost: 'Send Text stopped typing: the window receiving the text is no longer in the foreground',
+  },
+
   // Run Macro (glossário) que não rodou a macro chamada: o detalhe do passo, pulado, depois do nome
   // da macro e de " — ".
   chain: {

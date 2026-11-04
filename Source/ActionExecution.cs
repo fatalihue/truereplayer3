@@ -8800,7 +8800,7 @@ namespace TrueReplayer.Services
                         // and both of those arms were always keystrokes and sleeps — so they are
                         // bit-identical either way.
                         var literal = UnescapeBraceSentinels(segment.Text);
-                        if (typeMode) await TypeTextViaSendInput(literal, charDelayMs, token);
+                        if (typeMode) { if (!await TypeTextViaSendInput(literal, charDelayMs, token)) break; }
                         else await PasteTextViaClipboard(literal, resolvedHtml, token);
                     }
                 }
@@ -10325,12 +10325,29 @@ namespace TrueReplayer.Services
             NativeMethods.SendInput((uint)inputs.Length, inputs, NativeMethods.InputSize);
         }
 
-        // Events per SendInput batch on the unpaced path. SendInput's documented non-interleave
-        // guarantee ("not interspersed with other keyboard or mouse input events inserted either
-        // by the user or by other calls to SendInput") is per CALL, which matters here because the
-        // clicker runs on its own thread and shares _simInputLock. ~256 events keeps whole words
-        // atomic while still letting Stop land within a few ms on a long payload.
-        private const int TypeBatchEvents = 256;
+        // "Delay por letra" empty (the default) still spaces the letters: ONE per SendInput call,
+        // TypeGapMs before the next and TypeWordGapMs after a space. A target that cannot keep up
+        // loses keystrokes SILENTLY — SendInput reports every event accepted all the same. Measured
+        // 04-11-2026 on Windows 11 Notepad (the owner's: spell check and autocorrect on, the
+        // formatting bar, US-International), a 1,988-character macro (one 20-line Send Text and eight
+        // short ones), 2 or 3 runs each:
+        //   the old burst, 256 events per call           lost 33 to 66 % of the text (and, with the
+        //                                                 AltGr chords of the time, closed Notepad)
+        //   16 characters per call, 15 ms apart          lost 46 to 49 %, an ASCII-only text the
+        //                                                 same: the accents are not the cause
+        //   8 per call, 15 ms apart                      lost 33 %
+        //   1 per call, 5 ms apart                       lost 2 to 4, each the first letter after a
+        //                                                 space (the word that just ended is checked)
+        //   1 per call, 10 ms apart                      whole, 2 of 2
+        //   1 per call, 5 ms, and 25 ms after a space    whole, 3 of 3
+        //   1 per call, 10 ms, and 25 ms after a space   whole, 3 of 3 — this, for the margin
+        // Notepad drops a keystroke that arrives while it is still busy with the one before, from the
+        // first burst on, so no burst size is safe (Microsoft's winapp CLI cut its bursts to 16
+        // characters 15 ms apart, microsoft/winappCli#667; here that still lost half). The cost is
+        // ~12 ms a letter, a 1,000-letter message in about 12 s. Paste has no such limit and stays
+        // the fast way.
+        private const int TypeGapMs = 10;
+        private const int TypeWordGapMs = 25;
 
         /// <summary>
         /// Types <paramref name="text"/> as real keystrokes — no clipboard, no Ctrl+V. The
@@ -10342,7 +10359,8 @@ namespace TrueReplayer.Services
         /// CHARACTER in wScan, becoming text only after the target calls TranslateMessage — right
         /// for Notepad and browsers, potentially invisible to the target class this feature exists
         /// for. The packet path covers what a layout cannot produce at all (emoji, →, é on a US
-        /// layout), where it is the only option.
+        /// layout), where it is the only option, and what it produces only with AltGr (é on
+        /// US-International): typing never presses Ctrl or Alt (see TryResolveTypedKey).
         ///
         /// LAYOUT: resolved against the FOREGROUND window's layout, not ours. We emit a scancode
         /// and the target re-interprets it through ITS layout, so resolving against
@@ -10377,25 +10395,30 @@ namespace TrueReplayer.Services
         /// keystroke has the explicit {tab} chip. (The brace sentinels U+0001/U+0002 never arrive
         /// here — UnescapeBraceSentinels runs on the segment before this is called.)
         /// </summary>
-        private async Task TypeTextViaSendInput(string text, int charDelayMs, CancellationToken token)
+        private async Task<bool> TypeTextViaSendInput(string text, int charDelayMs, CancellationToken token)
         {
-            if (string.IsNullOrEmpty(text)) return;
+            if (string.IsNullOrEmpty(text)) return true;
 
             IntPtr hkl = ForegroundKeyboardLayout();
-            var batch = new List<NativeMethods.INPUT>(TypeBatchEvents + 8);
+            // The window the text is for: the one in front as typing starts. An Enter in the text may
+            // hand the foreground on (it confirms a box, closes a dialog), and the text after it follows.
+            IntPtr target = NativeMethods.GetForegroundWindow();
+            var one = new List<NativeMethods.INPUT>(4);
 
             for (int i = 0; i < text.Length; i++)
             {
-                if (token.IsCancellationRequested) { FlushTypedInputs(batch); return; }
+                if (token.IsCancellationRequested) return true;
+                // Every character after the first finds the window still in front, or typing stops.
+                if (i > 0 && !await StillInFrontAsync(target, token)) return TypedTargetLost(i, text.Length);
                 char ch = text[i];
 
                 if (ch == '\r' || ch == '\n')
                 {
-                    FlushTypedInputs(batch);                       // ordering: never reorder a run
                     SimulateKeyPress(0x0D);                        // VK_RETURN. Deliberately NOT in
                     if (ch == '\r' && i + 1 < text.Length && text[i + 1] == '\n') i++;  // Extended-
                     await Task.Delay(30, token);                   // VkCodes: the E0 twin is NUMPAD.
-                    continue;                                      // 30 ms mirrors the VkCode arm.
+                    target = NativeMethods.GetForegroundWindow();  // 30 ms mirrors the VkCode arm.
+                    continue;
                 }
 
                 // Control characters never reach the layout: see the C0 paragraph in the docblock.
@@ -10407,8 +10430,8 @@ namespace TrueReplayer.Services
                 // from a short-circuited && are only definitely assigned when the whole expression
                 // is TRUE, so the terse form does not compile.
                 ushort vk = 0;
-                bool shift = false, ctrl = false, alt = false;
-                bool resolved = ch >= 0x20 && TryResolveTypedKey(ch, hkl, out vk, out shift, out ctrl, out alt);
+                bool shift = false;
+                bool resolved = ch >= 0x20 && TryResolveTypedKey(ch, hkl, out vk, out shift);
 
                 if (charDelayMs > 0)
                 {
@@ -10416,18 +10439,13 @@ namespace TrueReplayer.Services
                     // can observe the press. The up half is in a finally — this is the only path
                     // where a cancellation can land between down and up, and a stuck modifier is
                     // the one thing a typing run must never leave behind.
-                    FlushTypedInputs(batch);
-                    var down = new List<NativeMethods.INPUT>(8);
-                    var up = new List<NativeMethods.INPUT>(8);
+                    var down = new List<NativeMethods.INPUT>(2);
+                    var up = new List<NativeMethods.INPUT>(2);
                     if (resolved)
                     {
                         if (shift) AppendScanKey(down, 0x10, false, hkl);
-                        if (ctrl)  AppendScanKey(down, 0x11, false, hkl);
-                        if (alt)   AppendScanKey(down, 0x12, false, hkl);
                         AppendScanKey(down, vk, false, hkl);
                         AppendScanKey(up, vk, true, hkl);
-                        if (alt)   AppendScanKey(up, 0x12, true, hkl);
-                        if (ctrl)  AppendScanKey(up, 0x11, true, hkl);
                         if (shift) AppendScanKey(up, 0x10, true, hkl);
                     }
                     else { AppendPacket(down, ch, false); AppendPacket(up, ch, true); }
@@ -10442,37 +10460,71 @@ namespace TrueReplayer.Services
                     continue;
                 }
 
-                // UNPACED: down+up ride the same array, so nothing can ever be left held and none
-                // of this needs _simulatedKeysDown bookkeeping — the same safety property that lets
-                // SimulateKeyPress skip the tracker.
+                // UNPACED ("Delay por letra" empty, the default): ONE character per SendInput call —
+                // its Shift and key, down and up, ride the same array, so nothing can ever be left
+                // held and none of this needs _simulatedKeysDown bookkeeping, the same safety property
+                // that lets SimulateKeyPress skip the tracker — and a gap before the next (TypeGapMs).
                 if (resolved)
                 {
-                    if (shift) AppendScanKey(batch, 0x10, false, hkl);
-                    if (ctrl)  AppendScanKey(batch, 0x11, false, hkl);
-                    if (alt)   AppendScanKey(batch, 0x12, false, hkl);
-                    AppendScanKey(batch, vk, false, hkl);
-                    AppendScanKey(batch, vk, true, hkl);
-                    if (alt)   AppendScanKey(batch, 0x12, true, hkl);
-                    if (ctrl)  AppendScanKey(batch, 0x11, true, hkl);
-                    if (shift) AppendScanKey(batch, 0x10, true, hkl);
+                    if (shift) AppendScanKey(one, 0x10, false, hkl);
+                    AppendScanKey(one, vk, false, hkl);
+                    AppendScanKey(one, vk, true, hkl);
+                    if (shift) AppendScanKey(one, 0x10, true, hkl);
                 }
                 else
                 {
                     // TWO events per UTF-16 CODE UNIT, not per rune: a non-BMP character (emoji) is
-                    // a surrogate pair and each half is its own INPUT, in order. C# strings are
-                    // already UTF-16, so the naive char loop is the CORRECT one here and a
-                    // Rune/StringInfo-aware version would be the broken one.
-                    AppendPacket(batch, ch, false);
-                    AppendPacket(batch, ch, true);
+                    // a surrogate pair and each half is its own INPUT, in order, both in the same call
+                    // so a gap never falls inside one character. C# strings are already UTF-16, so the
+                    // naive char loop is the CORRECT one here and a Rune/StringInfo-aware version would
+                    // be the broken one.
+                    AppendPacket(one, ch, false);
+                    AppendPacket(one, ch, true);
+                    if (char.IsHighSurrogate(ch) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
+                    {
+                        i++;
+                        AppendPacket(one, text[i], false);
+                        AppendPacket(one, text[i], true);
+                    }
                 }
-
-                if (batch.Count >= TypeBatchEvents)
-                {
-                    FlushTypedInputs(batch);
-                    await Task.Yield();   // let the target's message pump drain between batches
-                }
+                FlushTypedInputs(one);
+                if (i + 1 < text.Length) await Task.Delay(ch == ' ' ? TypeWordGapMs : TypeGapMs, token);
             }
-            FlushTypedInputs(batch);
+            return true;
+        }
+
+        // True while `target` still has the foreground. NULL is a hand-over in flight (activation
+        // passes through no window for a moment), so it gets ~150 ms to settle before it counts.
+        private static async Task<bool> StillInFrontAsync(IntPtr target, CancellationToken token)
+        {
+            IntPtr now = NativeMethods.GetForegroundWindow();
+            for (int t = 0; now == IntPtr.Zero && target != IntPtr.Zero && t < 10; t++)
+            {
+                await Task.Delay(15, token);
+                now = NativeMethods.GetForegroundWindow();
+            }
+            return now == target;
+        }
+
+        // The window the text was going to left the foreground mid-text: it closed, or another came in
+        // front. Typing stops there, with Activate Window's halt policy and for its reason — keyboard
+        // input follows the OS foreground, so the rest of the text, and the steps after it, would land
+        // in whatever window is in front now. Returns false: the caller stops the step.
+        private bool TypedTargetLost(int typed, int total)
+        {
+            string message = S.RunTypeFocusLost;
+            DiagnosticLog.Warn($"Typed text: the window receiving it left the foreground after {typed}/{total} characters — typing stopped");
+            if (SkipRowOnErrorActive)
+            {
+                FailCurrentStep(message);
+                FaultRow(message);
+                return false;
+            }
+            DiagnosticLog.Warn("Replay aborted: Send Text — the window receiving the typed text left the foreground");
+            OnReplayError?.Invoke(message);
+            FailCurrentStep(message);
+            try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
+            return false;
         }
 
         // The foreground window's keyboard layout, falling back to our own thread's. We emit
@@ -10525,22 +10577,31 @@ namespace TrueReplayer.Services
         // the resolved modifiers and confirm the layout hands back the character we asked for.
         // wFlags bit 2 (0x4) is "do not modify keyboard state" — without it this call would consume
         // and re-arm the layout's dead-key latch as a side effect of merely asking a question.
-        private static bool TryResolveTypedKey(char ch, IntPtr hkl, out ushort vk, out bool shift, out bool ctrl, out bool alt)
+        //
+        // ONLY SHIFT, NEVER CTRL OR ALT (04-11-2026). A character the layout makes with AltGr (é, á,
+        // í, ó, ú and ç on US-International, @ and € on de-DE) is refused here and goes out as a
+        // packet. As a chord it pressed a real Ctrl and Alt in the middle of the text, and a target
+        // that drops a keystroke of a burst keeps the lost key-up's modifier HELD for the letters
+        // after it, which then run as shortcuts. Measured on Windows 11 Notepad with US-International
+        // and the old unpaced burst: É and Á arrived as E and A, 8 as *, and in the next run Notepad
+        // closed itself a few letters in, without a crash (consistent with a held Ctrl: the capital
+        // W of the first line is then Ctrl+Shift+W, its Close window), so the rest of that text went
+        // on into whatever window came forward. A chord also fires any Ctrl+Alt hotkey registered on
+        // that key. Shift stays: a lost Shift-up only changes the case.
+        private static bool TryResolveTypedKey(char ch, IntPtr hkl, out ushort vk, out bool shift)
         {
-            vk = 0; shift = ctrl = alt = false;
+            vk = 0; shift = false;
             short r;
             try { r = NativeMethods.VkKeyScanEx(ch, hkl); } catch { return false; }
             if (r == -1) return false;
             int state = (r >> 8) & 0xFF;
-            if ((state & ~0x07) != 0) return false;
+            if ((state & ~0x01) != 0) return false;   // Ctrl, Alt (AltGr) or a layout state: a packet
             ushort candidate = (ushort)(r & 0xFF);
             if (candidate == 0) return false;
-            bool s = (state & 0x01) != 0, c = (state & 0x02) != 0, a = (state & 0x04) != 0;
+            bool s = (state & 0x01) != 0;
 
             var keyState = new byte[256];
             if (s) keyState[0x10] = 0x80;   // VK_SHIFT
-            if (c) keyState[0x11] = 0x80;   // VK_CONTROL
-            if (a) keyState[0x12] = 0x80;   // VK_MENU
             var buf = new System.Text.StringBuilder(8);
             int n;
             try
@@ -10553,7 +10614,7 @@ namespace TrueReplayer.Services
             // is no translation. Both mean "not a single key press", which is all this path can emit.
             if (n != 1 || buf.Length < 1 || buf[0] != ch) return false;
 
-            vk = candidate; shift = s; ctrl = c; alt = a;
+            vk = candidate; shift = s;
             return true;
         }
 

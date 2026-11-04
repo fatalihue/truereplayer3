@@ -50,11 +50,10 @@ static class Gen
     static TrueReplayer.Models.ActionItem Abrir(string note = "abre o Bloco de Notas, ou traz para a frente") => A("ActivateWindow", a =>
     { a.WindowProcessName = "notepad"; a.LaunchPath = "notepad.exe"; a.Timeout = 5000; a.Comment = note; });
     static TrueReplayer.Models.ActionItem Txt(string t, string note = "") => A("SendText", a => { a.Key = t; a.Comment = note; });
-    // Modo Digitar com 10 ms de Delay por letra: sem ele, o Bloco de Notas do Windows 11 (o com
-    // formatação) perde letras de um texto digitado de uma vez — acentos, o @ e linhas inteiras
-    // (medido em 03-11). O Colar não tem o problema.
-    const int DelayPorLetra = 10;
-    static TrueReplayer.Models.ActionItem Digita(string t, string note = "") => A("SendText", a => { a.Key = t; a.SendMethod = "type"; a.SendCharDelay = DelayPorLetra; a.Comment = note; });
+    // Modo Digitar com o Delay por letra do passo novo (vazio, o mais rápido): desde 04-11 o motor
+    // manda o texto em pedaços com uma pausa entre eles, e o Bloco de Notas do Windows 11 não perde
+    // mais letras (em 03-11 estes exemplos usavam 10 ms por letra para contornar isso).
+    static TrueReplayer.Models.ActionItem Digita(string t, string note = "") => A("SendText", a => { a.Key = t; a.SendMethod = "type"; a.Comment = note; });
     static TrueReplayer.Models.ActionItem Tecla(string k, string note = "", int vezes = 1) => A("Keystroke", a => { a.Key = k; a.RepeatCount = vezes; a.Comment = note; });
     static TrueReplayer.Models.ActionItem Var(string nome, string valor, string note = "", string? modo = null) =>
         A("SetVariable", a => { a.Key = nome; a.VariableValue = valor; a.VariableMode = modo; a.Comment = note; });
@@ -73,7 +72,7 @@ static class Gen
     static IEnumerable<TrueReplayer.Models.ActionItem> Copia(string amostra, int linhas, string oque)
     {
         yield return Tecla("Ctrl+End", "prepara: vai para o fim do texto");
-        yield return Digita("{enter}" + amostra, "digita " + oque + " (modo Digitar, sem clipboard, 10 ms por letra)");
+        yield return Digita("{enter}" + amostra, "digita " + oque + " (modo Digitar, sem clipboard)");
         yield return Tecla("Shift+Home", "seleciona a linha");
         if (linhas > 1) yield return Tecla("Shift+Up", "estende a seleção às linhas de cima", linhas - 1);
         yield return Tecla("Ctrl+C", "copia");
