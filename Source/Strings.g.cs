@@ -1272,6 +1272,8 @@ namespace TrueReplayer.Services
         public static string ProfilesTr2ChooseParts => IsPt ? "Escolha o que importar." : "Choose something to import.";
         /// <summary>engine-profiles.tr2.failed · The import failed and nothing was changed: {{reason}}</summary>
         public static string ProfilesTr2Failed(string reason) => IsPt ? $"Não foi possível importar, e nada foi alterado: {reason}" : $"The import failed and nothing was changed: {reason}";
+        /// <summary>engine-profiles.tr2.arrived · {{tr2}} is now {{app}}: your macros, settings, Key Remaps and theme came along.</summary>
+        public static string ProfilesTr2Arrived(string app, string tr2) => IsPt ? $"O {tr2} agora é o {app}: suas macros, configurações, Key Remaps e o tema vieram junto." : $"{tr2} is now {app}: your macros, settings, Key Remaps and theme came along.";
         /// <summary>engine-profiles.image.tooBig · That file is {{size}} MB; a reference image can be up to {{max}} MB.</summary>
         public static string ProfilesImageTooBig(string max, string size) => IsPt ? $"Esse arquivo tem {size} MB; uma imagem de referência pode ter até {max} MB." : $"That file is {size} MB; a reference image can be up to {max} MB.";
         /// <summary>engine-profiles.image.notPicture · That file isn't a picture Windows can read. Choose a PNG, JPEG, BMP or GIF.</summary>

@@ -25,7 +25,9 @@ namespace TrueReplayer.Services
     /// folder, and no hand-written LevelDB reader is needed. The page gets them before its first script
     /// runs (<see cref="WebStorageScript"/>).
     /// Automations and Run on startup arrive switched off: automations firing by themselves right after
-    /// an import would act on the screen, and two apps starting with Windows would race at login.
+    /// an import would act on the screen, and two apps starting with Windows would race at login. The
+    /// one exception is the import that follows the update from TrueReplayer 2 (ShouldImportAfterUpdate):
+    /// there TrueReplayer 2 was replaced, not joined, and both stay as they were.
     /// </summary>
     internal static class Tr2Import
     {
@@ -105,7 +107,13 @@ namespace TrueReplayer.Services
         /// Copies the chosen parts into staging folders and leaves the marker for the next start.
         /// Null on success (the caller restarts the app); otherwise what to tell the user.
         /// </summary>
-        public static async Task<string?> StageAsync(Parts parts, IntPtr parentWindow)
+        /// <param name="afterUpdate">
+        /// The import the public pack runs by itself on its first start after the update that made a
+        /// TrueReplayer 2 this app (<see cref="ShouldImportAfterUpdate"/>): Automations and Run on
+        /// startup stay as they were in TrueReplayer 2, because that app was replaced, not joined
+        /// (plan encerramento-tr2-2026-11-03.md, decision 4 there).
+        /// </param>
+        public static async Task<string?> StageAsync(Parts parts, IntPtr parentWindow, bool afterUpdate = false)
         {
             if (!CoexistenceGuard.Bypassed && CoexistenceGuard.Tr2Running())
                 return S.ProfilesTr2CloseFirst(app: AppIdentity.Tr2.DisplayName);
@@ -132,8 +140,11 @@ namespace TrueReplayer.Services
                     var settings = ReadJsonShared(Path.Combine(AppIdentity.Tr2.DocumentsRoot, SettingsFile));
                     if (settings is JsonObject o)
                     {
-                        o["RunOnStartup"] = false;
-                        o["AutomationEnabled"] = false;
+                        if (!afterUpdate)
+                        {
+                            o["RunOnStartup"] = false;
+                            o["AutomationEnabled"] = false;
+                        }
                         File.WriteAllText(Path.Combine(docsStage, SettingsFile), o.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
                     }
                 }
@@ -154,6 +165,7 @@ namespace TrueReplayer.Services
                     ["docsStage"] = docsStage,
                     ["localStage"] = localStage,
                     ["parts"] = (int)parts,
+                    ["afterUpdate"] = afterUpdate,
                     ["summary"] = JsonSerializer.SerializeToNode(summary, CamelCase),
                 };
                 File.WriteAllText(PendingFile, pending.ToJsonString());
@@ -288,6 +300,7 @@ namespace TrueReplayer.Services
                     s["backup"] = Directory.Exists(backup) ? backup : null;
                     s["summary"] = pending?["summary"]?.DeepClone();
                     s["announce"] = true;
+                    s["announceAfterUpdate"] = pending?["afterUpdate"]?.GetValue<bool>() == true;
                 });
                 DiagnosticLog.Info($"[Import] finished; what was here before is in {(Directory.Exists(backup) ? backup : "(nothing to keep)")}");
             }
@@ -316,14 +329,40 @@ namespace TrueReplayer.Services
         }
 
 
-        /// <summary>The summary of an import that finished on this start, once: for the page's notice.</summary>
-        public static JsonNode? TakeAnnouncement()
+        /// <summary>
+        /// The summary of an import that finished on this start, once: for the notice. AfterUpdate says
+        /// it was the one that followed the update from TrueReplayer 2, whose notice the engine gives.
+        /// </summary>
+        public static (JsonNode? Summary, bool AfterUpdate)? TakeAnnouncement()
         {
             var state = ReadState();
             if (state?["announce"]?.GetValue<bool>() != true) return null;
             WriteState(s => s["announce"] = false);
-            return state["summary"]?.DeepClone();
+            return (state["summary"]?.DeepClone(), state["announceAfterUpdate"]?.GetValue<bool>() == true);
         }
+
+        // ── The first start after the update from TrueReplayer 2 ─────────────────────────────────
+
+        /// <summary>
+        /// Whether this start follows the update that made a TrueReplayer 2 this app (plan
+        /// encerramento-tr2-2026-11-03.md, section 2.3, item 1): the public pack, in an install folder
+        /// that still has what TrueReplayer 2 kept in it (its Images or its WebView2 — an update leaves
+        /// them, a fresh install from the Setup does not), this app with no macros yet, and something
+        /// of TrueReplayer 2 to bring. Once: the attempt is written down before it starts.
+        /// </summary>
+        public static bool ShouldImportAfterUpdate()
+        {
+            if (!AppIdentity.IsPublicPack) return false;
+            if (ReadState()?["afterUpdate"] != null) return false;
+            bool leftByTr2 = Directory.Exists(Path.Combine(AppIdentity.InstallRoot, "Images"))
+                || Directory.Exists(Path.Combine(AppIdentity.InstallRoot, "WebView2"));
+            if (!leftByTr2 || Tr3HasData()) return false;
+            return Scan().Tr2Found;
+        }
+
+        /// <summary>Writes down that the import after the update was tried, so it never runs twice.</summary>
+        public static void MarkImportAfterUpdate() =>
+            WriteState(s => s["afterUpdate"] = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
 
         private static JsonObject? ReadState()
         {

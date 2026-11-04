@@ -734,14 +734,51 @@ namespace TrueReplayer.Services
             openTr2 ? AppIdentity.Tr2.InstalledExe : null,
             openTr2 ? $"[Coexist] switching to {AppIdentity.Tr2.DisplayName}" : $"[Coexist] closing so {AppIdentity.Tr2.DisplayName} can open");
 
-        /// <summary>The restart that finishes an import (Tr2Import): this exe again, after this process is gone.</summary>
-        public static Task RestartAsync(string reason) => ExitAndStartAsync(Environment.ProcessPath, reason);
+        /// <summary>
+        /// The restart that finishes an import (Tr2Import): this exe again, after this process is gone.
+        /// With <paramref name="keepStartup"/>, a process Windows started at login (--startup) comes
+        /// back the same way, in the tray: the import that follows the update from TrueReplayer 2 can
+        /// run at login.
+        /// </summary>
+        public static Task RestartAsync(string reason, bool keepStartup = false) => ExitAndStartAsync(
+            Environment.ProcessPath, reason, keepStartup && App.HasStartupFlag() ? " --startup" : "");
+
+        /// <summary>
+        /// The update that made a TrueReplayer 2 this app (plan encerramento-tr2-2026-11-03.md, section
+        /// 2.3, item 3). TrueReplayer 2's Run value starts the exe of this install folder, which is now
+        /// this app: when it is there, Run on startup is on here too (written under this app's own
+        /// value when the settings load), and the old value goes. Only in the public pack's install, and
+        /// only for a value that points into it: the 2.50.2's points into its own folder and stays.
+        /// Called in Main before the settings load.
+        /// </summary>
+        internal static void AdoptTr2RunValue()
+        {
+            if (!AppIdentity.IsPublicPack || !IsInstalledLocation()) return;
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(StartupRegistryKey, true);
+                if (key?.GetValue(AppIdentity.Tr2.RunValueName) is not string value) return;
+                if (!value.TrimStart('"').StartsWith(AppIdentity.InstallRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) return;
+                var settings = AppSettingsManager.Load();
+                if (!settings.RunOnStartup)
+                {
+                    settings.RunOnStartup = true;
+                    AppSettingsManager.Save(settings);
+                }
+                key.DeleteValue(AppIdentity.Tr2.RunValueName, false);
+                DiagnosticLog.Info($"[Startup] {AppIdentity.Tr2.DisplayName}'s Run value pointed here; Run on startup moved to {AppIdentity.RunValueName}");
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Warn($"[Startup] could not take over {AppIdentity.Tr2.DisplayName}'s Run value: {ex.Message}");
+            }
+        }
 
         /// <summary>
         /// The tray Exit — the close guard, then the same teardown — and, when <paramref name="exe"/>
         /// is given, that exe started with --wait-pid so it only takes over once this process is gone.
         /// </summary>
-        private static async Task ExitAndStartAsync(string? exe, string reason)
+        private static async Task ExitAndStartAsync(string? exe, string reason, string extraArgs = "")
         {
             if (OnTrayExitRequested != null && !await OnTrayExitRequested()) return;
 
@@ -755,7 +792,7 @@ namespace TrueReplayer.Services
                     Process.Start(new ProcessStartInfo
                     {
                         FileName = exe,
-                        Arguments = Program.WaitForPidArg + Environment.ProcessId,
+                        Arguments = Program.WaitForPidArg + Environment.ProcessId + extraArgs,
                         WorkingDirectory = Path.GetDirectoryName(exe)!,
                         UseShellExecute = true,
                     });

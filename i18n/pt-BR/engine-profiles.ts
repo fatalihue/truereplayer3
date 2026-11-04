@@ -88,6 +88,7 @@ export default {
     closeFirst: 'Feche o {{app}} primeiro: os arquivos dele não podem mudar enquanto são copiados.',
     chooseParts: 'Escolha o que importar.',
     failed: 'Não foi possível importar, e nada foi alterado: {{reason}}',
+    arrived: 'O {{tr2}} agora é o {{app}}: suas macros, configurações, Key Remaps e o tema vieram junto.',
   },
 
   image: {

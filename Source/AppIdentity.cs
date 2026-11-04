@@ -165,6 +165,12 @@ namespace TrueReplayer
 
             public const string InstanceMutexName = Id + "_SingleInstance_Mutex";
 
+            /// <summary>
+            /// TrueReplayer 2's value under HKCU\…\CurrentVersion\Run. The public pack takes it over
+            /// when it points into its install folder (TrayIconService.AdoptTr2RunValue).
+            /// </summary>
+            public const string RunValueName = Id;
+
             private static readonly Lazy<string> _documentsRoot = new(() => Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), Id));
             private static readonly Lazy<string> _localRoot = new(() => Path.Combine(

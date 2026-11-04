@@ -90,6 +90,10 @@ namespace TrueReplayer
             // settings, the remaps or the library are read (Tr2Import).
             Tr2Import.FinishPending();
 
+            // The public pack in TrueReplayer 2's old install: TrueReplayer 2's Run value starts this
+            // app now, and becomes this app's own before the settings load writes it.
+            TrayIconService.AdoptTr2RunValue();
+
             // The interface's own choices (InterfaceStore), read now: an import may have just put a new
             // interface.json in place, and nothing has created the Profiles folder of a new data folder yet.
             InterfaceStore.Load();
@@ -394,6 +398,16 @@ namespace TrueReplayer
                     Registry.CurrentUser.DeleteSubKeyTree(subKey, false);
                 }
                 catch { /* best effort */ }
+            }
+            // The public pack is installed in TrueReplayer 2's old folder, so Velopack's emptying of the
+            // install leaves this app's machine-local storage (WebView2, Logs, the import's state) in
+            // %LOCALAPPDATA%\TrueReplayer3: it goes too (plan encerramento-tr2-2026-11-03.md, section
+            // 2.3, item 5). For the test pack that folder is the install, which Velopack empties anyway.
+            // Documents is never touched: the macros, the images and the settings stay.
+            if (AppIdentity.IsPublicPack)
+            {
+                try { if (Directory.Exists(AppIdentity.LocalRoot)) Directory.Delete(AppIdentity.LocalRoot, recursive: true); }
+                catch { /* best effort: a file still held stays */ }
             }
         }
 

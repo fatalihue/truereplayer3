@@ -3892,8 +3892,39 @@ namespace TrueReplayer
             // start. The new shell asks its capabilities once it is up, so it hears it; the theme and
             // snippets came in interface.json, before its first script (InterfaceStore). The way in is
             // the page's: the first-run screen's card (it asks import:scan) and Settings › General.
-            var imported = Tr2Import.TakeAnnouncement();
-            if (imported != null) SendMessage("import:done", new { summary = imported });
+            // The import that followed the update from TrueReplayer 2 has no card behind it, and may
+            // have run at login with the window in the tray: its notice is held until the window is
+            // seen (ShowNoticeWhenSeen), and it says nothing about automations, which stayed on.
+            if (Tr2Import.TakeAnnouncement() is { } imported)
+            {
+                if (imported.AfterUpdate)
+                    ShowNoticeWhenSeen(S.ProfilesTr2Arrived(app: AppIdentity.DisplayName, tr2: AppIdentity.Tr2.DisplayName), "success");
+                else
+                    SendMessage("import:done", new { summary = imported.Summary });
+            }
+        }
+
+        // The first start after the update that made a TrueReplayer 2 this app: its data comes along
+        // by itself (Tr2Import.ShouldImportAfterUpdate), once the window and the page exist — the
+        // theme is read by a hidden WebView2 that needs the window. Then the app restarts to finish,
+        // in the tray again if Windows started it at login.
+        private bool _afterUpdateImportChecked;
+
+        private async Task<bool> ImportAfterUpdateIfDueAsync()
+        {
+            if (_afterUpdateImportChecked) return false;
+            _afterUpdateImportChecked = true;
+            if (!Tr2Import.ShouldImportAfterUpdate()) return false;
+            Tr2Import.MarkImportAfterUpdate();
+            DiagnosticLog.Info($"[Import] first start after the update from {AppIdentity.Tr2.DisplayName}: importing its data");
+            string? error = await Tr2Import.StageAsync(Tr2Import.Parts.All, WinRT.Interop.WindowNative.GetWindowHandle(window), afterUpdate: true);
+            if (error != null)
+            {
+                ShowNoticeWhenSeen(error, "error");
+                return false;
+            }
+            await TrayIconService.RestartAsync($"[Import] restarting to finish the import from {AppIdentity.Tr2.DisplayName}", keepStartup: true);
+            return true;
         }
 
         private async void HandleImportRun(JsonElement payload)
@@ -4525,8 +4556,16 @@ namespace TrueReplayer
             _uiInitialized = true;
             FlushPendingNotices();
 
+            // The first start after the update from TrueReplayer 2 imports its data and restarts; the
+            // update check waits for the start after that.
+            _ = ImportOrCheckForUpdateAsync();
+        }
+
+        private async Task ImportOrCheckForUpdateAsync()
+        {
+            if (await ImportAfterUpdateIfDueAsync()) return;
             // Check for updates in the background after UI is ready
-            _ = CheckForUpdateAsync();
+            await CheckForUpdateAsync();
         }
 
         // Notices that must reach a PERSON, not just the log: a profile that would not load, a

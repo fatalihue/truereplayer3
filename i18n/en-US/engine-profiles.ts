@@ -141,6 +141,9 @@ export default {
     closeFirst: 'Close {{app}} first: its files must not change while they are copied.',
     chooseParts: 'Choose something to import.',   // nenhuma parte marcada
     failed: 'The import failed and nothing was changed: {{reason}}',
+    // O primeiro começo depois da atualização que fez do 2 o 3: os dados vieram sozinhos, com as
+    // automações e o Abrir com o Windows como estavam.
+    arrived: '{{tr2}} is now {{app}}: your macros, settings, Key Remaps and theme came along.',
   },
 
   // Uma imagem de referência escolhida num arquivo (Choose file…): por que não serve.
