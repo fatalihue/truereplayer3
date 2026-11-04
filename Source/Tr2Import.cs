@@ -44,8 +44,18 @@ namespace TrueReplayer.Services
         private static readonly string[] MacroSidecars = { "run-cursors.json", "automation-stats.json" };
 
         private static string Tr2Profiles => AppIdentity.Tr2.ProfilesDir;
-        private static string Tr2Images => Path.Combine(AppIdentity.Tr2.LocalRoot, "Images");
-        private static string Tr2LocalStorage => Path.Combine(AppIdentity.Tr2.LocalRoot, "WebView2", "EBWebView", "Default", "Local Storage");
+        // TrueReplayer 2.50.2, the final build, keeps its images in Documents\TrueReplayer\Images and its
+        // WebView2 in %LOCALAPPDATA%\TrueReplayer2; up to 2.50.1 both were in %LOCALAPPDATA%\TrueReplayer
+        // (plan encerramento-tr2-2026-11-03.md, section 1.3). The 2.50.2's are read first: they are the
+        // newer ones once it has run, and the old folder becomes this app's install from 3.0.0 on.
+        private static string Tr2Images => FirstExisting(
+            AppIdentity.Tr2.FinalImagesDir, Path.Combine(AppIdentity.Tr2.LocalRoot, "Images"));
+        private static string Tr2LocalStorage => FirstExisting(
+            Path.Combine(AppIdentity.Tr2.FinalLocalRoot, "WebView2", "EBWebView", "Default", "Local Storage"),
+            Path.Combine(AppIdentity.Tr2.LocalRoot, "WebView2", "EBWebView", "Default", "Local Storage"));
+
+        private static string FirstExisting(string preferred, string fallback) =>
+            Directory.Exists(preferred) ? preferred : fallback;
 
         // The page reads camelCase, and the summary goes to it from the state file as it was written.
         private static readonly JsonSerializerOptions CamelCase = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };

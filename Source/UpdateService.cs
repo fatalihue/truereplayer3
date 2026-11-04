@@ -11,17 +11,21 @@ namespace TrueReplayer.Services
     public static class UpdateService
     {
         /// <summary>
-        /// The release feed: a folder on this machine that the previews are packed into
-        /// (<see cref="AppIdentity.UpdateFeedDir"/>; plan truereplayer3-paralelo-2026-10-30.md,
-        /// decision 2). TrueReplayer 3 has no public release while it runs beside TrueReplayer 2, and
-        /// it must never read TrueReplayer 2's feed: every installed TrueReplayer 2 reads the newest
-        /// release of TrueReplayer-releases, so that repository can only ever carry TrueReplayer 2.
-        /// A missing folder is an ordinary "no update": SimpleFileSource reads it as an empty feed and
-        /// says so only to Velopack's own logger, so <see cref="CheckForUpdateAsync"/> logs which
-        /// folder it reads.
+        /// The release feed, chosen by the pack this copy was installed as (AppIdentity.PackId; plan
+        /// encerramento-tr2-2026-11-03.md, section 2.3):
+        ///  - the owner's test install (pack TrueReplayer3): a folder on this machine that the previews
+        ///    are packed into (<see cref="AppIdentity.UpdateFeedDir"/>; plan truereplayer3-paralelo-2026-10-30.md,
+        ///    decision 2). A missing folder is an ordinary "no update": SimpleFileSource reads it as an
+        ///    empty feed and says so only to Velopack's own logger, so <see cref="CheckForUpdateAsync"/>
+        ///    logs which feed it reads;
+        ///  - the public install (pack TrueReplayer, from 3.0.0): the newest release of
+        ///    TrueReplayer-releases, the feed every TrueReplayer 2 read (AppIdentity.PublicFeedUrl).
         /// </summary>
-        private static readonly UpdateManager _manager = new(
-            new SimpleFileSource(new DirectoryInfo(AppIdentity.UpdateFeedDir)));
+        private static readonly string FeedName = AppIdentity.IsPublicPack ? AppIdentity.PublicFeedUrl : AppIdentity.UpdateFeedDir;
+
+        private static readonly UpdateManager _manager = new(AppIdentity.IsPublicPack
+            ? new SimpleWebSource(AppIdentity.PublicFeedUrl)
+            : new SimpleFileSource(new DirectoryInfo(AppIdentity.UpdateFeedDir)));
 
         private static UpdateInfo? _pendingUpdate;
 
@@ -56,7 +60,7 @@ namespace TrueReplayer.Services
         {
             // The feed, whether it is there, and whether this copy is the installed one: a preview
             // packed where this copy cannot see it is otherwise a silent "up to date".
-            DiagnosticLog.Info($"[UpdateService] Feed {AppIdentity.UpdateFeedDir} ({(Directory.Exists(AppIdentity.UpdateFeedDir) ? "present" : "missing")}); Velopack install: {_manager.IsInstalled}; install location: {TrayIconService.IsInstalledLocation()}");
+            DiagnosticLog.Info($"[UpdateService] Feed {FeedName}{(AppIdentity.IsPublicPack ? "" : Directory.Exists(AppIdentity.UpdateFeedDir) ? " (present)" : " (missing)")}; Velopack install: {_manager.IsInstalled}; install location: {TrayIconService.IsInstalledLocation()}; pack {AppIdentity.PackId}");
             if (!_manager.IsInstalled)
                 return null;
 

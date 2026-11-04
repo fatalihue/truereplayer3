@@ -56,8 +56,12 @@ namespace TrueReplayer.Services
         public static bool Bypassed =>
             Environment.GetEnvironmentVariable(TestBypassVariable) == "1" && !TrayIconService.IsInstalledLocation();
 
-        /// <summary>Whether Velopack's TrueReplayer 2 is installed, so a switch can open it.</summary>
-        public static bool Tr2Installed => File.Exists(AppIdentity.Tr2.InstalledExe);
+        /// <summary>
+        /// Whether TrueReplayer 2.50.2 is installed, so a switch can open it — and it is not this exe,
+        /// which a switch would only restart.
+        /// </summary>
+        public static bool Tr2Installed => File.Exists(AppIdentity.Tr2.InstalledExe)
+            && !string.Equals(Path.GetFullPath(AppIdentity.Tr2.InstalledExe), Environment.ProcessPath, StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
         /// Takes TrueReplayer 2's mutex name for the life of this process. When TrueReplayer 2 is open,

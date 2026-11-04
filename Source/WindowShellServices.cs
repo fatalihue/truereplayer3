@@ -578,14 +578,15 @@ namespace TrueReplayer.Services
                 key.DeleteValue(StartupValueName, false);
         }
 
-        // True only when running from the Velopack install location
-        // (%LocalAppData%\TrueReplayer3\...). Dev (bin\) and portable copies return false.
+        // True only when running from the Velopack install location (AppIdentity.InstallRoot:
+        // %LocalAppData%\TrueReplayer3\... for the test pack, %LocalAppData%\TrueReplayer\... for the
+        // public one). Dev (bin\) and portable copies return false.
         // Also read by Program.RegisterNativeMessagingHost, the other HKCU writer with this hazard.
         internal static bool IsInstalledLocation()
         {
             var p = Environment.ProcessPath;
             if (string.IsNullOrEmpty(p)) return false;
-            return p.StartsWith(AppIdentity.LocalRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+            return p.StartsWith(AppIdentity.InstallRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
         }
 
         /// Callback invoked after tray menu toggles a setting, so bridge can push updated state to UI.

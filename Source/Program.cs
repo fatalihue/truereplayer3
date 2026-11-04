@@ -372,10 +372,15 @@ namespace TrueReplayer
                 WindowsNotices.UnregisterAll();
             }
             catch { /* best effort: an uninstall must not fail on this */ }
+            // The Run value only when it starts this install: the owner's test install and the public one
+            // share the value's name, and uninstalling the test one must not take the public one's along.
+            string installPrefix = AppIdentity.InstallRoot + Path.DirectorySeparatorChar;
             try
             {
                 using var run = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);
-                run?.DeleteValue(AppIdentity.RunValueName, false);
+                if (run?.GetValue(AppIdentity.RunValueName) is string value
+                    && value.TrimStart('"').StartsWith(installPrefix, StringComparison.OrdinalIgnoreCase))
+                    run.DeleteValue(AppIdentity.RunValueName, false);
             }
             catch { /* best effort: an uninstall must not fail on this */ }
             foreach (var subKey in NativeHostKeys)
@@ -384,7 +389,7 @@ namespace TrueReplayer
                 {
                     using var key = Registry.CurrentUser.OpenSubKey(subKey);
                     if (key?.GetValue("") is not string manifest) continue;
-                    if (!manifest.StartsWith(AppIdentity.LocalRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (!manifest.StartsWith(installPrefix, StringComparison.OrdinalIgnoreCase)) continue;
                     key.Dispose();
                     Registry.CurrentUser.DeleteSubKeyTree(subKey, false);
                 }
