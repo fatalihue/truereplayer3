@@ -10325,12 +10325,13 @@ namespace TrueReplayer.Services
             NativeMethods.SendInput((uint)inputs.Length, inputs, NativeMethods.InputSize);
         }
 
-        // "Delay por letra" empty (the default) still spaces the letters: ONE per SendInput call,
-        // TypeGapMs before the next and TypeWordGapMs after a space. A target that cannot keep up
-        // loses keystrokes SILENTLY — SendInput reports every event accepted all the same. Measured
+        // "Delay por letra" empty (the default) still spaces the letters: ONE per SendInput call and
+        // TypeGapMs after each, the last one included (what follows it, an {enter} or the next
+        // step's text, must not land back to back with it). A target that cannot keep up loses
+        // keystrokes SILENTLY: SendInput reports every event accepted all the same. Measured
         // 04-11-2026 on Windows 11 Notepad (the owner's: spell check and autocorrect on, the
-        // formatting bar, US-International), a 1,988-character macro (one 20-line Send Text and eight
-        // short ones), 2 or 3 runs each:
+        // formatting bar, US-International), first with a 1,988-character macro of made-up words
+        // (each with a digit, which the spell check skips), 2 or 3 runs each:
         //   the old burst, 256 events per call           lost 33 to 66 % of the text (and, with the
         //                                                 AltGr chords of the time, closed Notepad)
         //   16 characters per call, 15 ms apart          lost 46 to 49 %, an ASCII-only text the
@@ -10338,16 +10339,16 @@ namespace TrueReplayer.Services
         //   8 per call, 15 ms apart                      lost 33 %
         //   1 per call, 5 ms apart                       lost 2 to 4, each the first letter after a
         //                                                 space (the word that just ended is checked)
-        //   1 per call, 10 ms apart                      whole, 2 of 2
-        //   1 per call, 5 ms, and 25 ms after a space    whole, 3 of 3
-        //   1 per call, 10 ms, and 25 ms after a space   whole, 3 of 3 — this, for the margin
-        // Notepad drops a keystroke that arrives while it is still busy with the one before, from the
-        // first burst on, so no burst size is safe (Microsoft's winapp CLI cut its bursts to 16
-        // characters 15 ms apart, microsoft/winappCli#667; here that still lost half). The cost is
-        // ~12 ms a letter, a 1,000-letter message in about 12 s. Paste has no such limit and stays
-        // the fast way.
-        private const int TypeGapMs = 10;
-        private const int TypeWordGapMs = 25;
+        //   1 per call, 10 ms apart                      whole
+        // Real words cost Notepad more. At 10 ms, 25 after a space and no gap after the last letter,
+        // the examples' "maria@email.com{enter}Vendedor" arrived as "maria@email.⏎comendedor": the
+        // Enter overtook the last three letters and the V was lost. 20 ms is the spacing all 32
+        // examples passed with on 03-11 ("Delay por letra" 10: 10 ms held, 10 released). Notepad
+        // drops a keystroke that arrives while it is still busy with the one before, from the first
+        // burst on, so no burst size is safe (Microsoft's winapp CLI cut its bursts to 16 characters
+        // 15 ms apart, microsoft/winappCli#667; here that still lost half). The cost: a 1,000-letter
+        // message types in about 20 s. Paste has no such limit and stays the fast way.
+        private const int TypeGapMs = 20;
 
         /// <summary>
         /// Types <paramref name="text"/> as real keystrokes — no clipboard, no Ctrl+V. The
@@ -10463,7 +10464,7 @@ namespace TrueReplayer.Services
                 // UNPACED ("Delay por letra" empty, the default): ONE character per SendInput call —
                 // its Shift and key, down and up, ride the same array, so nothing can ever be left
                 // held and none of this needs _simulatedKeysDown bookkeeping, the same safety property
-                // that lets SimulateKeyPress skip the tracker — and a gap before the next (TypeGapMs).
+                // that lets SimulateKeyPress skip the tracker — and a gap after it (TypeGapMs).
                 if (resolved)
                 {
                     if (shift) AppendScanKey(one, 0x10, false, hkl);
@@ -10488,7 +10489,7 @@ namespace TrueReplayer.Services
                     }
                 }
                 FlushTypedInputs(one);
-                if (i + 1 < text.Length) await Task.Delay(ch == ' ' ? TypeWordGapMs : TypeGapMs, token);
+                await Task.Delay(TypeGapMs, token);   // after the last character too: see TypeGapMs
             }
             return true;
         }
