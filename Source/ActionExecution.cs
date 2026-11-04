@@ -7691,7 +7691,7 @@ namespace TrueReplayer.Services
         /// round-trip. The HTML string is the raw CF_HTML format payload (header included),
         /// so restoring it via SetHtmlFormat is byte-symmetric. Either flavor is null when
         /// absent or unreadable; both null = clipboard held something else entirely (image,
-        /// files) — restore then clears, same as the old text-only behavior.
+        /// files), which the paste carries in a ClipboardNonText of its own.
         /// </summary>
         // The read runs on the UI thread and waits on the clipboard's OWNER, which renders a
         // delayed format on request (Excel does) — a busy or hung owner holds it. The caller's
@@ -7755,6 +7755,73 @@ namespace TrueReplayer.Services
             }
             using (token.Register(() => tcsClip.TrySetCanceled(token)))
                 return await tcsClip.Task;
+        }
+
+        // What a paste puts back besides text: an image, or files (Explorer's copy and cut). The text
+        // snapshot cannot carry either, and the restore after the Ctrl+V used to CLEAR such a
+        // clipboard: the screenshot the user had just taken was gone after any macro that pasted
+        // (found 03-11-2026 by the examples run). Read only when the clipboard holds NO text: a
+        // text-bearing one (Excel's cells carry a picture too, drawn only on request) keeps the
+        // text-only snapshot, which never asks the owner to render a bitmap, and so still loses a
+        // picture that rides along with text. An app's own format with nothing standard beside it
+        // is not carried either: that clipboard is still cleared.
+        internal sealed class ClipboardNonText
+        {
+            public byte[]? Bitmap { get; init; }
+            public IReadOnlyList<Windows.Storage.IStorageItem>? Files { get; init; }
+            public Windows.ApplicationModel.DataTransfer.DataPackageOperation FilesOperation { get; init; }
+        }
+
+        // The read for ClipboardNonText: the same UI-thread marshal, token and no-timeout rule as
+        // ReadClipboardSnapshotAsync. Null = the clipboard has text, or neither an image nor files.
+        internal static async Task<ClipboardNonText?> ReadClipboardNonTextAsync(DispatcherQueue dispatcherQueue, CancellationToken token = default)
+        {
+            var tcs = new TaskCompletionSource<ClipboardNonText?>();
+            if (!dispatcherQueue.TryEnqueue(async () =>
+            {
+                try
+                {
+                    var content = Windows.ApplicationModel.DataTransfer.Clipboard.GetContent();
+                    if (content.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.Text))
+                    {
+                        tcs.TrySetResult(null);
+                        return;
+                    }
+                    byte[]? bitmap = null;
+                    IReadOnlyList<Windows.Storage.IStorageItem>? files = null;
+                    if (content.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems))
+                    {
+                        try { files = await content.GetStorageItemsAsync(); } catch { }
+                    }
+                    if (content.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.Bitmap))
+                    {
+                        try
+                        {
+                            var reference = await content.GetBitmapAsync();
+                            using var stream = await reference.OpenReadAsync();
+                            uint size = (uint)stream.Size;
+                            if (size > 0)
+                            {
+                                var reader = new Windows.Storage.Streams.DataReader(stream);
+                                await reader.LoadAsync(size);
+                                bitmap = new byte[size];
+                                reader.ReadBytes(bitmap);
+                                reader.DetachStream();
+                                reader.Dispose();
+                            }
+                        }
+                        catch { bitmap = null; }
+                    }
+                    tcs.TrySetResult(bitmap == null && (files == null || files.Count == 0) ? null
+                        : new ClipboardNonText { Bitmap = bitmap, Files = files, FilesOperation = content.RequestedOperation });
+                }
+                catch { tcs.TrySetResult(null); }
+            }))
+            {
+                tcs.TrySetResult(null);   // queue shut down (app closing)
+            }
+            using (token.Register(() => tcs.TrySetCanceled(token)))
+                return await tcs.Task;
         }
 
         // Reads the Windows clipboard HISTORY (Win+V) as a recency-ordered list of text values —
@@ -8724,6 +8791,11 @@ namespace TrueReplayer.Services
             // {clipboard[:mods]} resolves identically. It just never WRITES and never restores —
             // includeHtml is already false there, because ResolveSendTextDelivery nulled html.
             var originalClipboard = await ReadClipboardSnapshotAsync(dispatcherQueue, includeHtml: !string.IsNullOrEmpty(html), token);
+            // An image or files (a screenshot, Explorer's copy or cut): what the text snapshot cannot
+            // carry. Read for a paste only (typing never writes the clipboard), and only when there is
+            // no text: see ClipboardNonText.
+            var originalNonText = !typeMode && originalClipboard.Text == null
+                ? await ReadClipboardNonTextAsync(dispatcherQueue, token) : null;
 
             // Resolve {clipboard[:mods]} + {datetime}/{date}/{time} in one pass via the unified
             // resolver, using the saved clipboard content so subsequent clipboard writes (for
@@ -8734,11 +8806,11 @@ namespace TrueReplayer.Services
             var flavorSync = new TokenFlavorSync { RandomRecord = new List<string>(), WinClipRecord = new List<string>(), RowNextRecord = new List<string>(), ClipNextRecord = new List<string>(), PickRecord = new List<string>(), UuidRecord = new List<string>() };
             text = await ResolveTokens(text, originalClipboard.Text ?? string.Empty, escapeBracesInSubstitution: true, flavorSync);
 
+            // Nothing written yet, so nothing to put back: the clipboard is still the user's. (A
+            // "restore" here used to CLEAR an image or a file list the user had copied, for a step
+            // that ended up pasting nothing — a {clipboard} with an image on it resolves empty.)
             if (string.IsNullOrEmpty(text) || token.IsCancellationRequested)
-            {
-                if (!typeMode) RestoreOriginalClipboard(originalClipboard);
                 return;
-            }
 
             // Parse text into segments: plain text + special key placeholders
             var segments = ParseSendTextSegments(text);
@@ -8809,33 +8881,58 @@ namespace TrueReplayer.Services
             {
                 // Always restore the user's original clipboard, even if cancelled mid-paste — but
                 // ONLY when we wrote it. Typing never does, and RestoreOriginalClipboard's else
-                // branch is a Clipboard.Clear() when the snapshot held neither flavor (an image, a
-                // file list). "Restoring" here would let the one mode that promises never to touch
-                // your clipboard WIPE what you copied while the macro ran.
+                // branch is a Clipboard.Clear() when the snapshot held nothing it can carry (no text,
+                // image or files: an app's own format only). "Restoring" here would let the one mode
+                // that promises never to touch your clipboard WIPE what you copied while the macro ran.
                 // The settle is not cut short by a Stop: a Ctrl+V already injected still reads the
                 // clipboard whenever the target gets to it, and what it must find there is ours.
                 if (!typeMode)
                 {
                     await WaitPasteSettleAsync(CancellationToken.None);
-                    RestoreOriginalClipboard(originalClipboard);
+                    RestoreOriginalClipboard(originalClipboard, originalNonText);
                 }
             }
         }
 
-        private void RestoreOriginalClipboard((string? Text, string? Html) originalClipboard)
+        private void RestoreOriginalClipboard((string? Text, string? Html) originalClipboard, ClipboardNonText? nonText = null)
         {
-            bool queued = dispatcherQueue.TryEnqueue(() =>
+            bool queued = dispatcherQueue.TryEnqueue(async () =>
             {
                 try
                 {
-                    if (originalClipboard.Text != null || originalClipboard.Html != null)
+                    if (originalClipboard.Text != null || originalClipboard.Html != null || nonText != null)
                     {
                         var dataPackage = new Windows.ApplicationModel.DataTransfer.DataPackage();
                         if (originalClipboard.Text != null) dataPackage.SetText(originalClipboard.Text);
                         // The snapshot holds the raw CF_HTML payload (header included) exactly as
                         // GetHtmlFormatAsync returned it — restore it verbatim, no re-wrapping.
                         if (originalClipboard.Html != null) dataPackage.SetHtmlFormat(originalClipboard.Html);
+                        if (nonText?.Bitmap != null)
+                        {
+                            // Our own copy of the bytes: the source's stream died with its package.
+                            var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+                            using (var writer = new Windows.Storage.Streams.DataWriter(stream))
+                            {
+                                writer.WriteBytes(nonText.Bitmap);
+                                await writer.StoreAsync();
+                                writer.DetachStream();
+                            }
+                            stream.Seek(0);
+                            dataPackage.SetBitmap(Windows.Storage.Streams.RandomAccessStreamReference.CreateFromStream(stream));
+                        }
+                        if (nonText?.Files != null && nonText.Files.Count > 0)
+                        {
+                            // readOnly false and the operation as it was: a CUT in Explorer pastes as a
+                            // move after the restore too, the same as before the macro ran.
+                            dataPackage.SetStorageItems(nonText.Files, false);
+                            dataPackage.RequestedOperation = nonText.FilesOperation;
+                        }
                         Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
+                        // Rendered now, into the clipboard itself: a package left to this app's delayed
+                        // rendering empties when the app closes, and what the user had copied is the
+                        // kind of thing they paste long after the macro (and the app) are gone.
+                        try { Windows.ApplicationModel.DataTransfer.Clipboard.Flush(); }
+                        catch (Exception ex) { DiagnosticLog.Warn($"Restored clipboard not flushed: {ex.Message}"); }
                     }
                     else
                     {
