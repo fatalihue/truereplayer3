@@ -1263,14 +1263,12 @@ namespace TrueReplayer
                     // ── Sharing metadata (Info tab + Import Preview) ──
                     case "profile:getMetadata": HandleProfileGetMetadata(payload); break;
                     case "profile:setMetadata": HandleProfileSetMetadata(payload); break;
-                    case "profile:bumpVersion": HandleProfileBumpVersion(payload); break;
                     case "profile:listTags": HandleProfileListTags(); break;
                     case "profile:confirmImport": HandleProfileConfirmImport(payload); break;
                     case "profile:cancelImport": HandleProfileCancelImport(); break;
                     case "file:revealExport": HandleFileRevealExport(payload); break;
                     case "settings:acknowledgeImportWarning": HandleAcknowledgeImportWarning(); break;
                     case "profile:save": HandleProfileSave(); break;
-                    case "profile:load": HandleProfileLoad(); break;
                     case "profile:convertCoordinates": HandleConvertCoordinates(payload); break;
                     case "profile:updateWindowSize": HandleUpdateWindowSize(payload); break;
                     case "profile:reset": HandleProfileReset(); break;
@@ -1279,7 +1277,6 @@ namespace TrueReplayer
                     case "examples:use": HandleExamplesUse(payload); break;
                     case "selection:changed": HandleSelectionChanged(payload); break;
                     case "settings:change": HandleSettingsChange(payload); break;
-                    case "window:alwaysOnTop": HandleAlwaysOnTop(payload); break;
                     case "window:snapWidths": HandleSnapWidths(payload); break;
                     case "window:minimizeToTray": HandleMinimizeToTray(payload); break;
                     // The compact view (rule 10 of the plan): the title bar's Compact view and Ctrl+K go
@@ -4099,7 +4096,7 @@ namespace TrueReplayer
                     // Every other successful-save path in this file clears the dirty flags right
                     // where the write lands. This call site used to skip that and lean on the
                     // caller loading a different profile afterward to reset state as a side
-                    // effect — true for HandleProfileClick/HandleProfileLoad, but
+                    // effect — true for HandleProfileClick, but
                     // HandleProfileExport just continues on to export after Save, so
                     // HasUnsavedChanges stayed true forever. A profile stuck "dirty" parks its
                     // automation trigger in SkippedDirty, which is terminal (never retried) —
@@ -4232,9 +4229,9 @@ namespace TrueReplayer
                 // so adding one action silently dropped the description, the tags, the emoji shown
                 // in the sidebar, and reset an author's manual version bump to 1.
                 //
-                // Reading them from Current is only sound because the two handlers that own them
-                // now mirror their writes back into it (HandleProfileSetMetadata,
-                // HandleProfileBumpVersion). They edit the on-disk copy through
+                // Reading them from Current is only sound because the handler that owns them
+                // mirrors its writes back into it (HandleProfileSetMetadata; the version has had no
+                // editor since the old shell left). It edits the on-disk copy through
                 // LoadProfileByNameAsync, which is a different object; without that mirror this
                 // carry would be strictly WORSE than the loss it fixes, because a stale Current
                 // would actively restore the pre-edit values on the next grid save instead of
@@ -14030,26 +14027,6 @@ namespace TrueReplayer
             PushProfilesUpdate();
         }
 
-        private async void HandleProfileBumpVersion(JsonElement payload)
-        {
-            string name = payload.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
-            if (string.IsNullOrEmpty(name)) return;
-            var profile = await profileController.LoadProfileByNameAsync(name);
-            if (profile == null) return;
-            var before = InfoPart.Of(profile);
-            // Defensively guard against overflow on absurd values. Wraps at int.MaxValue,
-            // which no human will ever reach but better than crashing.
-            profile.ProfileVersion = profile.ProfileVersion < int.MaxValue ? profile.ProfileVersion + 1 : 1;
-            if (!await profileController.SaveProfileByNameAsync(name, profile)) return;
-            // Same mirror as HandleProfileSetMetadata, for the same reason: without it the next
-            // grid Save carries the stale number from Current and un-bumps the version.
-            if (name == CurrentProfileName) UserProfile.Current.ProfileVersion = profile.ProfileVersion;
-            RecordPartEdit(name, before, InfoPart.Of(profile));
-            await profileController.RefreshProfileListAsync(true);
-            PushProfilesUpdate();
-            SendMessage("profile:versionBumped", new { name, newVersion = profile.ProfileVersion });
-        }
-
         private void HandleProfileListTags()
         {
             // Aggregate from the in-memory ProfileEntries — already populated by LoadProfileListAsync.
@@ -14104,7 +14081,7 @@ namespace TrueReplayer
             {
                 if (SavesAsYouGo)
                 {
-                    // Save as you go: Ctrl+S writes now, pending or not, with no Overwrite question
+                    // Save as you go: Ctrl+S writes now, pending or not, with no question
                     // (the open macro has one file), and answers profile:saved like the countdown.
                     // The write pushes the loop chip and the list itself. During a hold the file is
                     // about to be put back, and there is nothing to write.
@@ -14114,56 +14091,15 @@ namespace TrueReplayer
                 }
                 if (CurrentProfilePath != null)
                 {
-                    var choice = await profileController.ShowSaveOverwriteDialogAsync(CurrentProfileName);
-                    if (choice == SaveDialogResult.Overwrite && CurrentProfilePath is string savingPath)
-                    {
-                        // Who is being saved, and the edit count, frozen before the writes. Both
-                        // awaits below yield the dispatcher — the second re-reads every profile — and
-                        // an automation fire or a sidebar click can load ANOTHER profile meanwhile.
-                        // Writing back afterwards unconditionally put this profile's object under the
-                        // other one's grid, and that profile's next Save carried this one's hotkey,
-                        // target and data table into its file.
-                        string savingName = CurrentProfileName;
-                        long generation = _dirtyGeneration;
-                        var profile = CreateProfileForSave();
-                        await SettingsManager.SaveProfileAsync(savingPath, profile);
-                        // Re-read the list so the in-memory ProfileEntries mirror (and the caches
-                        // LoadProfileListAsync rebuilds from it — window targets, referenced images)
-                        // reflect what we just wrote. PushProfilesUpdate at the end of this handler only
-                        // PROJECTS that mirror, so without this an overwrite-save pushes stale metadata
-                        // (e.g. Profile Info's "Updated" keeps the previous timestamp). Every other save
-                        // path already does this — ProfileController.SaveProfileAsync refreshes right
-                        // after its write, as do the hotkey/hotstring handlers.
-                        await profileController.RefreshProfileListAsync(true);
-                        if (CurrentProfileName == savingName && CurrentProfilePath == savingPath)
-                        {
-                            // The dates the file now carries, stamped onto the LIVE object. Swapping
-                            // the snapshot in instead would roll back anything edited during the
-                            // writes (a loop count, a data-table cell), which lives on this object.
-                            UserProfile.Current.UpdatedAt = profile.UpdatedAt;
-                            UserProfile.Current.CreatedAt = profile.CreatedAt;
-                            // An edit that landed during the writes is not in the file: keep the
-                            // flags for it.
-                            if (_dirtyGeneration == generation)
-                            {
-                                HasUnsavedChanges = false;
-                                // The pending loop edit is now on disk — the chip drops its dashed outline.
-                                ClearLoopEdit();
-                            }
-                        }
-                    }
-                    else if (choice == SaveDialogResult.SaveAsNew)
-                    {
-                        bool saved = await profileController.SaveProfileAsync();
-                        if (saved) { HasUnsavedChanges = false; ClearLoopEdit(); }
-                    }
-                    // Cancel = do nothing
+                    // A macro open while save as you go is off: only before the page declares it
+                    // (ui:capabilities), when nothing sends a save. The old shell's Overwrite / Save
+                    // as New question left with that shell (closing plan of TrueReplayer 2, T4).
+                    Services.DiagnosticLog.Warn($"[Save] profile:save for '{CurrentProfileName}' before save as you go was on; nothing written");
+                    return;
                 }
-                else
-                {
-                    bool saved = await profileController.SaveProfileAsync();
-                    if (saved) { HasUnsavedChanges = false; ClearLoopEdit(); }
-                }
+                // No macro open: Save As.
+                bool saved = await profileController.SaveProfileAsync();
+                if (saved) { HasUnsavedChanges = false; ClearLoopEdit(); }
             }
             catch (Exception ex)
             {
@@ -14172,26 +14108,6 @@ namespace TrueReplayer
             }
             PushProfileLoop();
             PushProfilesUpdate();
-        }
-
-        private async void HandleProfileLoad()
-        {
-            // Guard: check for unsaved changes before loading
-            if (!await CheckUnsavedChangesAsync(S.ProfilesUnsavedBeforeLoading)) return;
-
-            string? loadedPath = await profileController.LoadProfileAsync();
-            if (loadedPath == null) return;
-
-            string name = Path.GetFileNameWithoutExtension(loadedPath);
-            CurrentProfileName = name;
-            CurrentProfilePath = loadedPath;
-            HasUnsavedChanges = false;
-            ApplyProfile(UserProfile.Current);
-            profileController.UpdateProfileColors(name);
-            ClearLoopEdit();
-            PushProfileLoop();
-            PushProfilesUpdate();
-            TrayIconService.UpdateTrayIcon();
         }
 
         private async void HandleProfileReset()
@@ -15226,15 +15142,6 @@ namespace TrueReplayer
                 PushButtonStates();
                 TrayIconService.UpdateTrayIcon();
             }
-        }
-
-        private void HandleAlwaysOnTop(JsonElement payload)
-        {
-            bool enabled = payload.GetProperty("enabled").GetBoolean();
-            UserProfile.Current.AlwaysOnTop = enabled;
-            window.UpdateAlwaysOnTop(enabled);
-            SaveGlobalSettings();
-            PushSettingsLoaded();
         }
 
         // The new interface's layout band edges, in DIP, said by the page because they follow its

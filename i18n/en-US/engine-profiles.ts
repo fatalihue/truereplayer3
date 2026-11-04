@@ -67,14 +67,6 @@ export default {
   // O Cancel dos três diálogos nativos abaixo (ContentDialog: o texto do botão é do app).
   cancel: 'Cancel',
 
-  // O diálogo do Salvar sobre uma macro aberta: substituir o arquivo ou salvar como outra.
-  saveDialog: {
-    title: 'Save Macro',
-    loaded: 'Macro "{{name}}" is already loaded.',   // a macro aberta, com esse nome
-    overwrite: 'Overwrite',                          // botão principal · verbo
-    saveAsNew: 'Save as New',                        // botão · a macro (feminino em pt-BR)
-  },
-
   // O diálogo de antes de trocar de macro, fechar o app… com alterações que ainda não foram salvas.
   unsaved: {
     title: 'Unsaved Changes',
@@ -91,7 +83,6 @@ export default {
       switching: 'switching macros',              // abrir outra macro pela biblioteca
       creating: 'creating a new macro',
       exporting: 'exporting',
-      loading: 'loading another macro',           // abrir outra macro por um arquivo
     },
   },
 

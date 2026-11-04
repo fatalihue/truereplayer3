@@ -18,7 +18,6 @@ using WinForms = System.Windows.Forms;
 
 namespace TrueReplayer.Controllers
 {
-    public enum SaveDialogResult { Overwrite, SaveAsNew, Cancel }
     // Conflict resolution decided up-front in the React Import Preview dialog. The legacy
     // "OverwriteAll" / "SkipAll" values were removed when the per-profile inline picker
     // replaced the old C# bulk dialog — bulk behaviour is now a frontend convenience that
@@ -593,43 +592,6 @@ namespace TrueReplayer.Controllers
             // half-written profile.
             DiagnosticLog.Error($"[Save] Copy of reference image '{imagePath}' from '{foundIn}' to '{dstKey}' failed; save aborted.");
             return false;
-        }
-
-        public async Task<string?> LoadProfileAsync()
-        {
-            string profileDir = AppIdentity.ProfilesDir;
-
-            var path = await ShowFileDialogAsync(new WinForms.OpenFileDialog
-            {
-                Filter = $"{S.ProfilesFilterJson} (*.json)|*.json",
-                InitialDirectory = profileDir
-            }, "load macro");
-
-            if (path != null)
-            {
-                var profile = await SettingsManager.LoadProfileAsync(path);
-
-                if (profile != null)
-                {
-                    // Repair any unbalanced IF/ELSE/ENDIF blocks before handing the profile
-                    // to the rest of the app — the replay engine assumes the validator has
-                    // already run and won't second-guess hand-edited JSON. Idempotent + a
-                    // no-op for profiles without any conditionals.
-                    var blockFix = ConditionalBlockValidator.ValidateAndRepairBlocks(profile.Actions);
-                    if (blockFix.HadFixups)
-                    {
-                        var name = Path.GetFileNameWithoutExtension(path);
-                        DiagnosticLog.Info($"[ConditionalBlocks] Auto-repaired '{name}': removed {blockFix.OrphansRemoved} orphan(s), appended {blockFix.EndIfsAppended} synthetic ENDIF(s)");
-                        OnAlert?.Invoke(FormatBlockFixupToast(name, blockFix), "info");
-                    }
-
-                    AppSettingsManager.ActivateProfile(profile);
-                    UserProfile.Current.LastProfileDirectory = Path.GetDirectoryName(path)!;
-                    return path;
-                }
-            }
-
-            return null;
         }
 
         public async Task<UserProfile?> LoadProfileByNameAsync(string profileName)
@@ -1426,45 +1388,6 @@ namespace TrueReplayer.Controllers
         #endregion // Profile List Management
 
         #region Profile UI Interactions
-
-        public async Task<SaveDialogResult> ShowSaveOverwriteDialogAsync(string profileName)
-        {
-            var messageBlock = new TextBlock
-            {
-                Text = S.ProfilesSaveDialogLoaded(name: profileName),
-                TextWrapping = TextWrapping.Wrap
-            };
-
-            var dialog = new ContentDialog
-            {
-                Title = S.ProfilesSaveDialogTitle,
-                XamlRoot = window.Content.XamlRoot,
-                RequestedTheme = ElementTheme.Dark,
-                PrimaryButtonText = S.ProfilesSaveDialogOverwrite,
-                SecondaryButtonText = S.ProfilesSaveDialogSaveAsNew,
-                CloseButtonText = S.ProfilesCancel,
-                DefaultButton = ContentDialogButton.Primary,
-                CornerRadius = new CornerRadius(8),
-                Content = messageBlock
-            };
-            ApplyDialogTheme(dialog, messageBlock);
-
-            // A second ContentDialog while one is open is a process-killing stowed exception —
-            // see ModalGate. Refusing reads as Cancel, which is what a save prompt raised behind
-            // an already-open prompt should do anyway.
-            // The gate now carries the hotkey suppression (it opens an InteractionScope), so the
-            // manual true/finally-false pair that used to wrap this is gone from all four dialogs.
-            using var gate = Services.ModalGate.TryEnter("save macro");
-            if (gate == null) return SaveDialogResult.Cancel;
-
-            var result = await dialog.ShowAsync();
-            return result switch
-            {
-                ContentDialogResult.Primary => SaveDialogResult.Overwrite,
-                ContentDialogResult.Secondary => SaveDialogResult.SaveAsNew,
-                _ => SaveDialogResult.Cancel
-            };
-        }
 
         /// <param name="loopOnly">
         /// True when the ONLY pending change is a run-settings edit — Loops, Interval, Game Mode or

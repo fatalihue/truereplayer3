@@ -1200,14 +1200,6 @@ namespace TrueReplayer.Services
         public static string ProfilesCollisionHotstringNoTarget(string hotstring, string n, string names) => IsPt ? $"A hotstring '{hotstring}' está atribuída a {n} macros sem janela-alvo: {names} — só uma vai disparar" : $"Hotstring '{hotstring}' is bound to {n} macros with the same no target window: {names} — only one will fire";
         /// <summary>engine-profiles.cancel · Cancel</summary>
         public static string ProfilesCancel => IsPt ? "Cancelar" : "Cancel";
-        /// <summary>engine-profiles.saveDialog.title · Save Macro</summary>
-        public static string ProfilesSaveDialogTitle => IsPt ? "Salvar macro" : "Save Macro";
-        /// <summary>engine-profiles.saveDialog.loaded · Macro "{{name}}" is already loaded.</summary>
-        public static string ProfilesSaveDialogLoaded(string name) => IsPt ? $"A macro \"{name}\" já está aberta." : $"Macro \"{name}\" is already loaded.";
-        /// <summary>engine-profiles.saveDialog.overwrite · Overwrite</summary>
-        public static string ProfilesSaveDialogOverwrite => IsPt ? "Substituir" : "Overwrite";
-        /// <summary>engine-profiles.saveDialog.saveAsNew · Save as New</summary>
-        public static string ProfilesSaveDialogSaveAsNew => IsPt ? "Salvar como nova" : "Save as New";
         /// <summary>engine-profiles.unsaved.title · Unsaved Changes</summary>
         public static string ProfilesUnsavedTitle => IsPt ? "Mudanças não salvas" : "Unsaved Changes";
         /// <summary>engine-profiles.unsaved.actions · You have unsaved actions. Save before {{beforeWhat}}?</summary>
@@ -1230,8 +1222,6 @@ namespace TrueReplayer.Services
         public static string ProfilesUnsavedBeforeCreating => IsPt ? "criar uma nova macro" : "creating a new macro";
         /// <summary>engine-profiles.unsaved.before.exporting · exporting</summary>
         public static string ProfilesUnsavedBeforeExporting => IsPt ? "exportar" : "exporting";
-        /// <summary>engine-profiles.unsaved.before.loading · loading another macro</summary>
-        public static string ProfilesUnsavedBeforeLoading => IsPt ? "abrir outra macro" : "loading another macro";
         /// <summary>engine-profiles.unapplied.title · Unapplied Changes</summary>
         public static string ProfilesUnappliedTitle => IsPt ? "Mudanças não aplicadas" : "Unapplied Changes";
         /// <summary>engine-profiles.unapplied.body · {{sentence}} Closing now discards them.</summary>

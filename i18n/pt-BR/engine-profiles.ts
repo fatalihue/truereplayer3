@@ -31,13 +31,6 @@ export default {
 
   cancel: 'Cancelar',
 
-  saveDialog: {
-    title: 'Salvar macro',
-    loaded: 'A macro "{{name}}" já está aberta.',
-    overwrite: 'Substituir',
-    saveAsNew: 'Salvar como nova',
-  },
-
   unsaved: {
     title: 'Mudanças não salvas',
     actions: 'Os passos desta macro têm mudanças não salvas. Salvar antes de {{beforeWhat}}?',
@@ -51,7 +44,6 @@ export default {
       switching: 'trocar de macro',
       creating: 'criar uma nova macro',
       exporting: 'exportar',
-      loading: 'abrir outra macro',
     },
   },
 

@@ -1,7 +1,0 @@
-# TrueReplayer 2 commits deliberately not taken into TrueReplayer 3, one per line:
-# <hash> <reason>
-# (tools/pendentes-do-2.ps1 reads this file; lines starting with # are ignored.)
-6ccbb10 already in 3: the orphan-image sweep guard was born here (a67d410, slice D0) and went to 2 as a copy of it (owner, 31-10)
-7286c9f version bump of TrueReplayer 2 to 2.50.1 (the release of 6ccbb10, 02-11): 3 keeps its own preview versions
-5af2d80 the freeze of TrueReplayer 2 (2.50.2, its final build, closing plan slice T1): its own install folder, no updates; TrueReplayer 3 learns about it in T2
-c96fb77 version bump of TrueReplayer 2 to 2.50.2 (its final build, never public): 3 keeps its own preview versions

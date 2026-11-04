@@ -1127,9 +1127,6 @@ export type IncomingMessage =
   | { type: 'profile:metadata'; payload: ProfileMetadataPayload }
   // Pushed in response to profile:listTags for the tag autocomplete.
   | { type: 'profile:tagList'; payload: { tags: TagListEntry[] } }
-  // Confirmation after profile:bumpVersion succeeds — frontend can refresh its local
-  // version display without waiting for the next profiles:updated push.
-  | { type: 'profile:versionBumped'; payload: { name: string; newVersion: number } }
   // Backend confirms a window-target removal completed (vs being blocked by a hotkey/hotstring
   // collision, in which case the alert path fires and this event does NOT). Frontend uses this
   // to show the success-with-Undo toast — without it, an optimistic toast would appear even
@@ -1280,7 +1277,6 @@ export type OutgoingMessage =
   | { type: 'profile:moveToFolder'; payload: { profileName: string; folderName: string | null } }
   | { type: 'profile:reorder'; payload: { pinned?: string[]; folders?: ProfileFolder[]; ungroupedOrder?: string[] } }
   | { type: 'profile:save'; payload: Record<string, never> }
-  | { type: 'profile:load'; payload: Record<string, never> }
   | { type: 'profile:reset'; payload: Record<string, never> }
   // Every app setting back to its default, without touching the open macro or the Automations
   // master switch (D23). The page confirms; there is no native dialog.
@@ -1461,7 +1457,6 @@ export type OutgoingMessage =
   | { type: 'pixel:pickColor'; payload: { requestId: string; absolute?: boolean; colorOnly?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string }; captureFor?: string } }
   | { type: 'pixel:testMatch'; payload: { requestId: string; x: number; y: number; hex: string; tolerance: number; absolute?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string } } }
   | { type: 'selection:changed'; payload: { indices: number[] } }
-  | { type: 'window:alwaysOnTop'; payload: { enabled: boolean } }
   // The new interface's layout band edges, in DIP: the engine reads the page's rem off the first
   // (80 rem) to size the compact view. A dragged window edge stuck to them too (D27); since D29 it
   // sticks only to the size the window opens at, as in TrueReplayer 2.
@@ -1551,7 +1546,6 @@ export type OutgoingMessage =
   // ── Sharing-metadata outgoing ──
   | { type: 'profile:getMetadata'; payload: { name: string } }
   | { type: 'profile:setMetadata'; payload: { name: string; description?: string | null; tags?: string[] | null; iconEmoji?: string | null } }
-  | { type: 'profile:bumpVersion'; payload: { name: string } }
   | { type: 'profile:listTags'; payload: Record<string, never> }
   // Phase 2 of import: tell the bridge which profiles (by name) from the previously
   // previewed envelope to actually import. conflictResolutions specifies what to do

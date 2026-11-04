@@ -33,7 +33,6 @@ export function useMacro() {
      * open it is Save As, either way.
      */
     save: () => send({ type: 'profile:save', payload: {} }),
-    load: () => send({ type: 'profile:load', payload: {} }),
     /** Resets the app's settings to the defaults, after a native confirmation — and clears the steps. useSettings().resetAll is the reset that keeps them (D23). */
     reset: () => send({ type: 'profile:reset', payload: {} }),
 
