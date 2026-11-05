@@ -2812,7 +2812,6 @@ export type Chaves = {
   'settings.hotkeys.shortcuts.words': never;
   'settings.hotkeys.front.label': { app: string | number };
   'settings.hotkeys.front.words': never;
-  'settings.hotkeys.front.noKeyWhy': never;
   'settings.hotkeys.clicker.label': never;
   'settings.hotkeys.clicker.hint': never;
   'settings.hotkeys.clicker.words': never;
@@ -2843,9 +2842,10 @@ export type Chaves = {
   'settings.conflict.scrollLock': never;
   'settings.conflict.minimize': never;
   'settings.conflict.maximize': never;
+  'settings.conflict.copy': never;
+  'settings.conflict.home': never;
   'settings.conflict.suggested': { key: string | number };
   'settings.conflict.suggestedNone': never;
-  'settings.conflict.suggestedNoneWhy': { why: string | number };
   'settings.conflict.withSuggestion': { note: string | number; suggestion: string | number };
   'settings.region.label': never;
   'settings.region.fixed': { h: string | number; w: string | number; x: string | number; y: string | number };

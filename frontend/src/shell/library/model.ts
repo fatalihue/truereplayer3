@@ -129,7 +129,7 @@ export const keycaps = (combo: string) => splitCombo(combo).map(compactKey).join
 
 /**
  * What the zones waiting for the macros say while the Clicker is on: the way back is its hotkey,
- * or Macros in the rail when it has none (the default of a new install; casca-101).
+ * or Macros in the rail when it has none (cleared in Settings › Hotkeys; casca-101).
  */
 export const clickerOnNote = (modeKey: string) => (modeKey
   ? t('library.clickerOn.key', { keys: keycaps(modeKey) })

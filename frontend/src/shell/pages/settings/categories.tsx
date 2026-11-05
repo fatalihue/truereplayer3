@@ -419,7 +419,7 @@ function AppearanceIntro() {
 }
 
 /** A hotkey's row (hotkeys.tsx): its key with Change and ✕, and under the description its conflict. */
-function hotkeyRow(id: string, settingKey: HotkeySettingKey, label: string, more: { hint?: string; words: string; noKeyWhy?: string }): Row {
+function hotkeyRow(id: string, settingKey: HotkeySettingKey, label: string, more: { hint?: string; words: string }): Row {
   return {
     id,
     label,
@@ -429,7 +429,7 @@ function hotkeyRow(id: string, settingKey: HotkeySettingKey, label: string, more
     Control: function Hotkey() { return <HotkeyField settingKey={settingKey} label={label} />; },
     Note: settingKey === 'copyScreenTextHotkey'
       ? ScreenTextNote
-      : function Conflict() { return <ConflictNote settingKey={settingKey} noKeyWhy={more.noKeyWhy} />; },
+      : function Conflict() { return <ConflictNote settingKey={settingKey} />; },
   };
 }
 
@@ -520,7 +520,7 @@ export const CATEGORIES: Category[] = [
       {
         title: t('settings.groups.window'),
         rows: [
-          hotkeyRow('front', 'foregroundHotkey', t('settings.hotkeys.front.label', { app: APP_NAME }), { words: t('settings.hotkeys.front.words'), noKeyWhy: t('settings.hotkeys.front.noKeyWhy') }),
+          hotkeyRow('front', 'foregroundHotkey', t('settings.hotkeys.front.label', { app: APP_NAME }), { words: t('settings.hotkeys.front.words') }),
           hotkeyRow('clicker', 'modeToggleHotkey', t('settings.hotkeys.clicker.label'), { hint: t('settings.hotkeys.clicker.hint'), words: t('settings.hotkeys.clicker.words') }),
         ],
       },

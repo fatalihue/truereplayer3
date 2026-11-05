@@ -312,7 +312,6 @@ export default {
     front: {
       label: 'Bring {{app}} to the front',        // o mais longo: 234 px em 760
       words: 'foreground focus show window',
-      noKeyWhy: 'the tray icon does it',          // depois de "suggested: no key, " (conflict.suggestedNoneWhy)
     },
     clicker: {
       label: 'Open the Clicker',
@@ -364,10 +363,11 @@ export default {
     scrollLock: 'Excel uses ScrLk',
     minimize: 'Excel also minimizes a workbook with it',            // Ctrl+F9 · it = a tecla
     maximize: 'Excel also maximizes or restores a workbook with it',  // Ctrl+F10
+    copy: 'Also copies the selection in many apps',                  // Ctrl+Insert, o padrão de Trazer para a frente
+    home: 'Also jumps to the start of the text or page in many apps', // Ctrl+Home, o padrão de Abrir o Clicker
     // A sugestão, depois da nota. key = a tecla sugerida, como o keycap a escreve ("Ctrl+F9").
     suggested: 'suggested {{key}}',
     suggestedNone: 'suggested: no key',
-    suggestedNoneWhy: 'suggested: no key, {{why}}',  // why = hotkeys.front.noKeyWhy
     withSuggestion: '{{note}} · {{suggestion}}',     // a nota e a sugestão na mesma linha
   },
 

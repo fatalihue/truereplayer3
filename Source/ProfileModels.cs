@@ -38,17 +38,20 @@ namespace TrueReplayer.Models
     /// kept "". The frontend's pre-load placeholders (appStateReducers.ts) are a second copy by
     /// necessity (TS×C#), overwritten as soon as settings:loaded arrives.
     /// The suggested keys of the new interface (phase 3): Record and Replay off the tab keys of
-    /// Chrome, Edge and VS Code, and no key for Foreground (the tray icon does it) or the Clicker
-    /// (Insert is overwrite, Excel uses ScrollLock). A default reaches new installs and Reset only:
-    /// appsettings.json stores every hotkey, so whoever updates keeps theirs.
+    /// Chrome, Edge and VS Code, and Foreground and the Clicker off the bare Insert (overwrite) and
+    /// ScrollLock (Excel) they had in TrueReplayer 2. Since 3.0.2 those two are Ctrl+Insert and
+    /// Ctrl+Home, the owner's choice (2026-11-05). Like every app hotkey they are swallowed system-wide
+    /// while the app runs — other apps lose Ctrl+Insert (copy) and Ctrl+Home (start of the text) — and
+    /// Settings › Hotkeys says so under each. A default reaches new installs, Reset and "Use the
+    /// suggested keys" only: appsettings.json stores every hotkey, so whoever updates keeps theirs.
     /// </summary>
     public static class HotkeyDefaults
     {
         public const string Recording = "Ctrl+F9";
         public const string Replay = "Ctrl+F10";
         public const string ProfileKeyToggle = "Pause";
-        public const string Foreground = "";
-        public const string ModeToggle = "";
+        public const string Foreground = "Ctrl+Insert";
+        public const string ModeToggle = "Ctrl+Home";
         public const string CaptureSlot = "Win+Ctrl+C";
         // Copy screen text (OCR → clipboard). A Win combo for the same reason as Capture Slot: the
         // shell binds nothing to Win+F12 out of the box (PowerToys Text Extractor sits on
@@ -77,8 +80,8 @@ namespace TrueReplayer.Models
         [JsonIgnore]
         public string ForegroundHotkey { get; set; } = HotkeyDefaults.Foreground;
 
-        // Flips UseCursorClick (Macro ↔ Clicker). No key by default (Excel uses ScrollLock, the
-        // key it had until phase 3); empty never matches a keypress.
+        // Flips UseCursorClick (Macro ↔ Clicker). Ctrl+Home by default since 3.0.2 (HotkeyDefaults);
+        // empty never matches a keypress.
         [JsonIgnore]
         public string ModeToggleHotkey { get; set; } = HotkeyDefaults.ModeToggle;
 

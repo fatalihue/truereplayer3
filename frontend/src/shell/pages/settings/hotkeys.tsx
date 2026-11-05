@@ -18,7 +18,8 @@ import { useApp } from '../../store';
  */
 
 // What other apps do with a key, by the key ('major': a key people use every day, that a suggestion
-// takes the hotkey off). No key is free of them: Ctrl+F9 and Ctrl+F10, the suggestions, are minor.
+// takes the hotkey off). No key is free of them: the suggestions Ctrl+F9, Ctrl+F10, Ctrl+Insert and
+// Ctrl+Home are minor.
 const KNOWN: Record<string, { note: string; major?: true }> = {
   'ctrl+pageup': { note: t('settings.conflict.tabs'), major: true },
   'ctrl+pagedown': { note: t('settings.conflict.tabs'), major: true },
@@ -26,6 +27,8 @@ const KNOWN: Record<string, { note: string; major?: true }> = {
   scrolllock: { note: t('settings.conflict.scrollLock'), major: true },
   'ctrl+f9': { note: t('settings.conflict.minimize') },
   'ctrl+f10': { note: t('settings.conflict.maximize') },
+  'ctrl+insert': { note: t('settings.conflict.copy') },
+  'ctrl+home': { note: t('settings.conflict.home') },
 };
 const known = (combo: string) => (combo ? KNOWN[combo.toLowerCase()] : undefined);
 
@@ -212,16 +215,13 @@ export function HotkeyField({ settingKey, label }: { settingKey: HotkeySettingKe
 }
 
 /** Under a hotkey's description: what another app does with its key, and the suggested one. */
-export function ConflictNote({ settingKey, noKeyWhy }: { settingKey: HotkeySettingKey; noKeyWhy?: string }) {
+export function ConflictNote({ settingKey }: { settingKey: HotkeySettingKey }) {
   const value = useApp(a => a.settings[settingKey]) ?? '';
   const suggested = useApp(a => a.settings.hotkeyDefaults?.[settingKey]);
   const conflict = known(value);
   if (!conflict) return null;
-  // noKeyWhy is a clause of its own, from the catalog (settings.hotkeys.front.noKeyWhy).
   const suggest = conflict.major && suggested !== undefined && suggested.toLowerCase() !== value.toLowerCase()
-    ? (suggested ? t('settings.conflict.suggested', { key: keycaps(suggested) })
-      : noKeyWhy ? t('settings.conflict.suggestedNoneWhy', { why: noKeyWhy })
-      : t('settings.conflict.suggestedNone'))
+    ? (suggested ? t('settings.conflict.suggested', { key: keycaps(suggested) }) : t('settings.conflict.suggestedNone'))
     : null;
   return (
     <span className="set-row-hint" data-tone={conflict.major ? 'warn' : undefined}>

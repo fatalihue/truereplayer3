@@ -271,7 +271,6 @@ export default {
     front: {
       label: 'Trazer o {{app}} para a frente',
       words: 'frente primeiro plano foco mostrar janela',
-      noKeyWhy: 'o ícone da bandeja faz isso',
     },
     clicker: {
       label: 'Abrir o Clicker',
@@ -319,9 +318,10 @@ export default {
     scrollLock: 'O Excel usa o ScrLk',
     minimize: 'O Excel também minimiza uma pasta de trabalho com ela',
     maximize: 'O Excel também maximiza ou restaura uma pasta de trabalho com ela',
+    copy: 'Também copia a seleção em muitos apps',
+    home: 'Também leva ao início do texto ou da página em muitos apps',
     suggested: 'sugestão: {{key}}',
     suggestedNone: 'sugestão: sem tecla',
-    suggestedNoneWhy: 'sugestão: sem tecla, {{why}}',
     withSuggestion: '{{note}} · {{suggestion}}',
   },
 
