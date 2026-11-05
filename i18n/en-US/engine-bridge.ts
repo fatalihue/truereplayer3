@@ -226,7 +226,7 @@ export default {
       // Clicker. name = a macro; app = TrueReplayer 3.
       by: {
         macro: 'the macro "{{name}}"',
-        record: '“Record”',
+        record: '“{{>settings.hotkeys.record.label}}”',
         replay: '“Replay or stop”',
         shortcuts: '“Shortcuts on or off”',
         front: '“Bring {{app}} to the front”',
@@ -245,10 +245,11 @@ export default {
       regexInvalidCheck: 'Invalid regex pattern. Please check the syntax.',
       folderGone: 'The folder "{{name}}" no longer exists — it was renamed or deleted. Nothing was changed.',
       detectFailed: 'Could not start window detection — Windows refused the mouse hook. Type the process name or window title instead.',
-      // O alvo e a conversão de uma vez (o "Apply target & convert" da janela-alvo de antes).
+      // O alvo e a conversão de uma vez (profile:setWindowTarget com convertDirection, o "Apply target &
+      // convert" do diálogo de antes). Nenhuma tela do 3 manda isso hoje; o texto não cita o botão.
       convertNeedsTarget: 'Set a process name or window title before converting.',
-      applyNotFound: 'Target window not found. Open it first, then try Apply target & convert again.',
-      applyMinimised: 'Target window is minimised. Restore it, then try Apply target & convert again.',
+      applyNotFound: 'Target window not found. Open it first, then convert again.',
+      applyMinimised: 'Target window is minimised. Restore it, then convert again.',
       applyNoPosition: 'Could not read the target window\'s position. Try again.',
     },
 
@@ -262,8 +263,9 @@ export default {
       minimised: 'Target window is minimised. Restore it and convert again.',
       noPosition: 'Could not get window position.',
       noActions: 'No actions to convert.',
-      // name = a macro; folder = a pasta de quem ela herda a janela-alvo.
-      inherited: '"{{name}}" inherits its window target from the folder "{{folder}}", so it inherits the coordinate space too — this conversion would be discarded at the next replay and leave the coordinates in the wrong space. Give this macro its own target first: edit the process name or window title in its Window Target dialog, then use "Apply target & convert".',
+      // name = a macro; folder = a pasta de quem ela herda a janela-alvo. Sai da paleta e do menu da lista;
+      // o caminho cita os rótulos de Macro settings › Window target.
+      inherited: '"{{name}}" inherits its window target from the folder "{{folder}}", so it inherits the coordinate space too — this conversion would be discarded at the next replay and leave the coordinates in the wrong space. Give this macro its own window target first: in {{>inspector.frame.macroSettings}} › {{>macroSettings.target.title}}, click {{>common.actions.edit}} and type a process or a title. Then convert again.',
       convertedRelative: { one: 'Converted {{n}} action(s) to relative coordinates.', other: 'Converted {{n}} action(s) to relative coordinates.' },
       convertedAbsolute: { one: 'Converted {{n}} action(s) to absolute coordinates.', other: 'Converted {{n}} action(s) to absolute coordinates.' },
     },
@@ -438,12 +440,13 @@ export default {
   // Os diálogos nativos (ContentDialog do WinUI) que a ponte abre.
   dialog: {
     cancel: 'Cancel',                        // botão · verbo
-    // Excluir uma pasta com macros dentro. name = a pasta; n = as macros dela.
+    // Excluir uma pasta com macros dentro. name = a pasta; n = as macros dela. Delete All apaga os
+    // arquivos (File.Delete, sem Lixeira) e as imagens, como o Delete de uma macro.
     deleteFolder: {
       title: 'Delete Folder',
       body: {
-        one: 'Folder "{{name}}" contains {{n}} macro(s).\nDelete only the folder or everything inside?',
-        other: 'Folder "{{name}}" contains {{n}} macro(s).\nDelete only the folder or everything inside?',
+        one: 'Folder "{{name}}" contains {{n}} macro.\nDelete only the folder or everything inside?\nWith “{{>engine-bridge.dialog.deleteFolder.deleteAll}}”, the macro\'s file and images are deleted. This can\'t be undone.',
+        other: 'Folder "{{name}}" contains {{n}} macros.\nDelete only the folder or everything inside?\nWith “{{>engine-bridge.dialog.deleteFolder.deleteAll}}”, the macros\' files and images are deleted. This can\'t be undone.',
       },
       folderOnly: 'Folder Only',             // botão: só a pasta sai, as macros ficam
       deleteAll: 'Delete All',               // botão: a pasta e as macros dela

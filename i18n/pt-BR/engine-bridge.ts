@@ -203,7 +203,7 @@ export default {
       hotstringRemoveFailed: 'Não foi possível remover a hotstring de "{{name}}": {{reason}}',
       by: {
         macro: 'macro "{{name}}"',
-        record: 'hotkey “Gravar”',
+        record: 'hotkey “{{>settings.hotkeys.record.label}}”',
         replay: 'hotkey “Reproduzir ou parar”',
         shortcuts: 'hotkey “Atalhos ativados ou desativados”',
         front: 'hotkey “Trazer o {{app}} para a frente”',
@@ -222,8 +222,8 @@ export default {
       folderGone: 'A pasta "{{name}}" não existe mais — foi renomeada ou excluída. Nada foi alterado.',
       detectFailed: 'Não foi possível iniciar a detecção da janela — o Windows recusou o acesso ao mouse. Digite o nome do processo ou o título da janela.',
       convertNeedsTarget: 'Defina o nome de um processo ou o título de uma janela antes de converter.',
-      applyNotFound: 'Janela-alvo não encontrada. Abra-a antes e tente Aplicar alvo e converter de novo.',
-      applyMinimised: 'A janela-alvo está minimizada. Restaure-a e tente Aplicar alvo e converter de novo.',
+      applyNotFound: 'Janela-alvo não encontrada. Abra-a e converta de novo.',
+      applyMinimised: 'A janela-alvo está minimizada. Restaure-a e converta de novo.',
       applyNoPosition: 'Não foi possível ler a posição da janela-alvo. Tente de novo.',
     },
 
@@ -236,7 +236,7 @@ export default {
       minimised: 'A janela-alvo está minimizada. Restaure-a e converta de novo.',
       noPosition: 'Não foi possível ler a posição da janela.',
       noActions: 'Nenhum passo para converter.',
-      inherited: '"{{name}}" herda a janela-alvo da pasta "{{folder}}", e com ela o espaço das coordenadas — esta conversão seria descartada na próxima reprodução e deixaria as coordenadas no espaço errado. Dê antes a esta macro um alvo próprio: edite o nome do processo ou o título da janela na janela-alvo dela e use "Aplicar alvo e converter".',
+      inherited: '"{{name}}" herda a janela-alvo da pasta "{{folder}}", e com ela o espaço das coordenadas — esta conversão seria descartada na próxima reprodução e deixaria as coordenadas no espaço errado. Dê antes a esta macro uma janela-alvo própria: em {{>inspector.frame.macroSettings}} › {{>macroSettings.target.title}}, clique em {{>common.actions.edit}} e digite um processo ou um título. Depois converta de novo.',
       convertedRelative: {
         zero: 'Nenhum passo convertido para coordenadas relativas.',
         one: '{{n}} passo convertido para coordenadas relativas.',
@@ -407,10 +407,12 @@ export default {
     cancel: 'Cancelar',
     deleteFolder: {
       title: 'Excluir pasta',
+      // O diálogo só abre com uma macro ou mais (a pasta vazia é excluída sem pergunta); o zero existe
+      // pela regra do plural.
       body: {
         zero: 'A pasta "{{name}}" está vazia.\nExcluir só a pasta ou tudo o que tem dentro?',
-        one: 'A pasta "{{name}}" tem {{n}} macro.\nExcluir só a pasta ou tudo o que tem dentro?',
-        other: 'A pasta "{{name}}" tem {{n}} macros.\nExcluir só a pasta ou tudo o que tem dentro?',
+        one: 'A pasta "{{name}}" tem {{n}} macro.\nExcluir só a pasta ou tudo o que tem dentro?\nCom “{{>engine-bridge.dialog.deleteFolder.deleteAll}}”, o arquivo e as imagens dela são excluídos. Isso não pode ser desfeito.',
+        other: 'A pasta "{{name}}" tem {{n}} macros.\nExcluir só a pasta ou tudo o que tem dentro?\nCom “{{>engine-bridge.dialog.deleteFolder.deleteAll}}”, os arquivos e as imagens delas são excluídos. Isso não pode ser desfeito.',
       },
       folderOnly: 'Só a pasta',
       deleteAll: 'Excluir tudo',

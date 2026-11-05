@@ -176,7 +176,7 @@ export default function FirstRun() {
         <section className="fr-how" aria-label={t('firstrun.how.label')}>
           <How n={1} label={t('common.actions.record')} keys={recordKey} text={t('firstrun.how.record')} />
           <How n={2} label={t('common.actions.replay')} keys={replayKey} text={t('firstrun.how.replay')} />
-          <How n={3} label={t('firstrun.how.shortcut')} text={t('firstrun.how.shortcutText')} />
+          <How n={3} label={t('firstrun.how.shortcut')} text={t('firstrun.how.shortcutText', { app: APP_NAME })} />
         </section>
       </div>
     </main>

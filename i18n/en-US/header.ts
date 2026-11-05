@@ -133,7 +133,7 @@ export default {
     intoEmpty: 'Records into the empty macro',
     atInsert: 'Records at the insert point, after step {{step}}',
     atEnd: 'Records at the end, after step {{step}}',
-    hotkey: 'Start or stop',                              // rótulo da hotkey de gravar, ao lado da tecla
+    hotkey: 'Record or stop',                             // rótulo da hotkey de gravar, ao lado da tecla; o mesmo nome em Settings › Hotkeys
   },
 
   // Replay ▾: como a macro aberta roda, salvo com ela. O painel tem 20 rem. Loops e Game Mode ficam

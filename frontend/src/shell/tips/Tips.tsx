@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Circle, Play, X } from 'lucide-react';
+import { APP_NAME } from '../../appIdentity';
 import { t } from '../../i18n';
 import { useReplay } from '../../logic/useReplay';
 import { keycaps } from '../library/model';
@@ -24,8 +25,8 @@ interface After {
  * they wait (tipsState), and kept for the recordings after it until each has had its turn:
  *   - while recording: "Do the task now, in any app", with the key that stops it;
  *   - when a recording that made steps ends: "Your first macro is saved", with what to do next —
- *     try it (Replay) and run it from any app (a shortcut, in the macro's settings) — each checked
- *     off once done, and the name ready to type.
+ *     try it (Replay) and run it without coming back to the app (a shortcut, in the macro's
+ *     settings) — each checked off once done, and the name ready to type.
  * The card stays with its macro (a rename follows it) until it is hidden or another macro opens.
  */
 export default function Tips() {
@@ -127,7 +128,7 @@ export default function Tips() {
         </li>
         <li data-done={shortcut || undefined}>
           {shortcut ? <Check aria-hidden="true" /> : <Circle aria-hidden="true" />}
-          <span className="tip-item">{t('tips.card.runAnywhere')}</span>
+          <span className="tip-item">{t('tips.card.runWithShortcut', { app: APP_NAME })}</span>
           <button type="button" className="tip-action" onClick={() => openMacroSettings(after.macro, 'hotkey')}>
             {shortcut ? t('tips.card.changeShortcut') : t('tips.card.addShortcut')}
           </button>

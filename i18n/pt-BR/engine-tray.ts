@@ -62,7 +62,7 @@ export default {
     clear: 'Limpar',
     noMacro: 'Nenhuma macro aberta',
     macros: 'Macros',
-    noHotkeys: 'Nenhuma macro tem hotkey ainda.',
+    macrosEmpty: 'As macros fixadas e as que têm hotkey aparecem aqui, menos as desativadas.',
     running: 'Rodando',
     allMacros: 'Todas as macros…',
     shortcuts: 'Atalhos',

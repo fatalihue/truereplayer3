@@ -15,7 +15,9 @@ export default {
     hide: 'Hide these tips',              // o × do canto · verbo
     recorded: { one: 'Recorded {{count}} step', other: 'Recorded {{count}} steps' },  // já feito · count = os passos gravados
     tryIt: 'Try it',                      // o botão ao lado é Replay (common.actions.replay)
-    runAnywhere: 'Run it from any app',   // o botão ao lado dá uma hotkey à macro
+    // O botão ao lado dá uma hotkey à macro. Não "from any app": com uma janela-alvo e sem Bring to
+    // focus, a hotkey só dispara com ela na frente. app = TrueReplayer 3.
+    runWithShortcut: 'Run it without coming back to {{app}}',
     changeShortcut: 'Change the shortcut',
     addShortcut: 'Add a shortcut',
   },

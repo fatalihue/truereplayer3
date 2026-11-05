@@ -293,7 +293,7 @@ export default {
     words: 'hotkey shortcut key',                 // as palavras que acham toda linha desta categoria
     // As linhas: o rótulo é também o nome da hotkey nos nomes do campo (field.changeLabel…).
     record: {
-      label: 'Record',                            // verbo
+      label: '{{>header.record.hotkey}}',         // a mesma hotkey do Record ▾
       hint: 'Starts and stops recording into the open macro, or into a new one when none is open',
       words: 'recording',
     },
@@ -304,7 +304,7 @@ export default {
     },
     shortcuts: {
       label: 'Shortcuts on or off',               // a chave geral dos atalhos (barra de status)
-      hint: 'Silences macro hotkeys, hotstrings and Key Remaps at once',
+      hint: 'Silences macro hotkeys, hotstrings, Key Remaps and the record, replay and copy hotkeys at once',
       words: 'profile keys toggle silence pause',
     },
     front: {

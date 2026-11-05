@@ -46,6 +46,7 @@ export default {
     record: 'Starts and stops recording, from any app.',
     replay: 'Plays the macro. Press it again to stop.',
     shortcut: 'Shortcut',           // rótulo · nome
-    shortcutText: 'Give the macro its own key to run it from any app.',
+    // Não "from any app": com uma janela-alvo e sem Bring to focus, a tecla só dispara com ela na frente.
+    shortcutText: 'Give the macro its own key to run it without coming back to {{app}}.',
   },
 } as const;

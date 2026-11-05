@@ -1480,7 +1480,7 @@ export type Chaves = {
   'firstrun.how.record': never;
   'firstrun.how.replay': never;
   'firstrun.how.shortcut': never;
-  'firstrun.how.shortcutText': never;
+  'firstrun.how.shortcutText': { app: string | number };
   'header.region': never;
   'header.name.label': never;
   'header.name.taken': never;
@@ -2929,7 +2929,7 @@ export type Chaves = {
   'tips.card.hide': never;
   'tips.card.recorded': { count: number };
   'tips.card.tryIt': never;
-  'tips.card.runAnywhere': never;
+  'tips.card.runWithShortcut': { app: string | number };
   'tips.card.changeShortcut': never;
   'tips.card.addShortcut': never;
   'titlebar.search': never;
@@ -3268,7 +3268,6 @@ export type Tabelas = {
   'firstrun.record': 'title' | 'text';
   'firstrun.build': 'title' | 'text' | 'button';
   'firstrun.example': 'title' | 'text' | 'button';
-  'firstrun.how': 'label' | 'record' | 'replay' | 'shortcut' | 'shortcutText';
   'header.name': 'label' | 'taken' | 'untitled';
   'insert.groups': 'input' | 'wait' | 'flow' | 'checks' | 'variables' | 'windows' | 'browser';
   'insert.desc': 'click' | 'key' | 'text' | 'scroll' | 'pause' | 'waitImage' | 'waitPixel' | 'waitText' | 'waitUntil' | 'if' | 'while' | 'forEachRow' | 'break' | 'next' | 'assert' | 'stop' | 'return' | 'setVariable' | 'copyToSlot' | 'activateWindow' | 'runMacro' | 'openUrl' | 'clickElement' | 'rightClickElement' | 'typeText' | 'selectOption' | 'waitElement' | 'assertElement';

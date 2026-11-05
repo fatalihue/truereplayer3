@@ -62,7 +62,8 @@ export default {
     clear: 'Clear',                   // link: tira os avisos guardados · verbo
     noMacro: 'No macro open',         // no lugar do nome da macro
     macros: 'Macros',                 // título da lista (glossário)
-    noHotkeys: 'No macro has a hotkey yet.',   // a lista vazia
+    // A lista vazia. Ela mostra as fixadas e as que têm hotkey, até cinco, e esconde as desativadas.
+    macrosEmpty: 'Pinned macros and macros with a hotkey show up here, unless disabled.',
     running: 'Running',               // ao lado da macro da lista que está rodando
     allMacros: 'All macros…',         // link: mostra a página Macros
     // As chaves gerais, com o detalhe ao lado do nome.

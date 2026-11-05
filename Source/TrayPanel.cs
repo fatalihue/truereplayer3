@@ -20,7 +20,7 @@ namespace TrueReplayer.Services
 {
     /// <summary>
     /// The tray panel (Tray board, "A bandeja — um clique abre o painel"): one click on the tray icon
-    /// opens it above the taskbar, with the open macro and its Stop, the macros that have a hotkey, the
+    /// opens it above the taskbar, with the open macro and its Stop, the pinned macros and those with a hotkey, the
     /// three master switches, the Clicker, Settings and Quit, and the notices the window could not show
     /// while it was hidden ("No painel, o que o Windows silenciou"). Native XAML in this process (rule 11
     /// of the plan): it opens with the window hidden and starts no WebView2 process. Made on the first
@@ -435,7 +435,7 @@ namespace TrueReplayer.Services
                     _macrosKey = macrosKey;
                     _macroList.Children.Clear();
                     if (s.Macros.Count == 0)
-                        _macroList.Children.Add(new TextBlock { Text = S.TrayPanelNoHotkeys, FontSize = 12, Opacity = 0.7, Margin = new Thickness(8, 4, 0, 4) });
+                        _macroList.Children.Add(new TextBlock { Text = S.TrayPanelMacrosEmpty, FontSize = 12, Opacity = 0.7, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(8, 4, 0, 4) });
                     foreach (var m in s.Macros)
                     {
                         var grid = new Grid();

@@ -37,6 +37,6 @@ export default {
     record: 'Inicia e para a gravação, de qualquer app.',
     replay: 'Reproduz a macro. Aperte de novo para parar.',
     shortcut: 'Atalho',
-    shortcutText: 'Dê à macro uma tecla própria para rodá-la de qualquer app.',
+    shortcutText: 'Dê à macro uma tecla própria para rodá-la sem voltar ao {{app}}.',
   },
 } satisfies Catalogo<typeof en>;

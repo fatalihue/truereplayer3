@@ -404,8 +404,8 @@ namespace TrueReplayer.Services
         public static string BridgeAlertHotkeyHotstringRemoveFailed(string name, string reason) => IsPt ? $"Não foi possível remover a hotstring de \"{name}\": {reason}" : $"Could not remove the hotstring of \"{name}\": {reason}";
         /// <summary>engine-bridge.alert.hotkey.by.macro · the macro "{{name}}"</summary>
         public static string BridgeAlertHotkeyByMacro(string name) => IsPt ? $"macro \"{name}\"" : $"the macro \"{name}\"";
-        /// <summary>engine-bridge.alert.hotkey.by.record · “Record”</summary>
-        public static string BridgeAlertHotkeyByRecord => IsPt ? "hotkey “Gravar”" : "“Record”";
+        /// <summary>engine-bridge.alert.hotkey.by.record · “Record or stop”</summary>
+        public static string BridgeAlertHotkeyByRecord => IsPt ? "hotkey “Gravar ou parar”" : "“Record or stop”";
         /// <summary>engine-bridge.alert.hotkey.by.replay · “Replay or stop”</summary>
         public static string BridgeAlertHotkeyByReplay => IsPt ? "hotkey “Reproduzir ou parar”" : "“Replay or stop”";
         /// <summary>engine-bridge.alert.hotkey.by.shortcuts · “Shortcuts on or off”</summary>
@@ -434,10 +434,10 @@ namespace TrueReplayer.Services
         public static string BridgeAlertWindowDetectFailed => IsPt ? "Não foi possível iniciar a detecção da janela — o Windows recusou o acesso ao mouse. Digite o nome do processo ou o título da janela." : "Could not start window detection — Windows refused the mouse hook. Type the process name or window title instead.";
         /// <summary>engine-bridge.alert.window.convertNeedsTarget · Set a process name or window title before converting.</summary>
         public static string BridgeAlertWindowConvertNeedsTarget => IsPt ? "Defina o nome de um processo ou o título de uma janela antes de converter." : "Set a process name or window title before converting.";
-        /// <summary>engine-bridge.alert.window.applyNotFound · Target window not found. Open it first, then try Apply target   convert again.</summary>
-        public static string BridgeAlertWindowApplyNotFound => IsPt ? "Janela-alvo não encontrada. Abra-a antes e tente Aplicar alvo e converter de novo." : "Target window not found. Open it first, then try Apply target & convert again.";
-        /// <summary>engine-bridge.alert.window.applyMinimised · Target window is minimised. Restore it, then try Apply target   convert again.</summary>
-        public static string BridgeAlertWindowApplyMinimised => IsPt ? "A janela-alvo está minimizada. Restaure-a e tente Aplicar alvo e converter de novo." : "Target window is minimised. Restore it, then try Apply target & convert again.";
+        /// <summary>engine-bridge.alert.window.applyNotFound · Target window not found. Open it first, then convert again.</summary>
+        public static string BridgeAlertWindowApplyNotFound => IsPt ? "Janela-alvo não encontrada. Abra-a e converta de novo." : "Target window not found. Open it first, then convert again.";
+        /// <summary>engine-bridge.alert.window.applyMinimised · Target window is minimised. Restore it, then convert again.</summary>
+        public static string BridgeAlertWindowApplyMinimised => IsPt ? "A janela-alvo está minimizada. Restaure-a e converta de novo." : "Target window is minimised. Restore it, then convert again.";
         /// <summary>engine-bridge.alert.window.applyNoPosition · Could not read the target window's position. Try again.</summary>
         public static string BridgeAlertWindowApplyNoPosition => IsPt ? "Não foi possível ler a posição da janela-alvo. Tente de novo." : "Could not read the target window's position. Try again.";
         /// <summary>engine-bridge.alert.coords.openFirst · Open "{{name}}" first — converting coordinates rewrites the actions of the macro that is currently loaded.</summary>
@@ -456,8 +456,8 @@ namespace TrueReplayer.Services
         public static string BridgeAlertCoordsNoPosition => IsPt ? "Não foi possível ler a posição da janela." : "Could not get window position.";
         /// <summary>engine-bridge.alert.coords.noActions · No actions to convert.</summary>
         public static string BridgeAlertCoordsNoActions => IsPt ? "Nenhum passo para converter." : "No actions to convert.";
-        /// <summary>engine-bridge.alert.coords.inherited · "{{name}}" inherits its window target from the folder "{{folder}}", so it inherits the coordinate space too — this conversion would be discarded at the next replay and leave the coordinates in the wrong space. Give this macro its own target first: edit the process name or window title in its Window Target dialog, then use "Apply target   convert".</summary>
-        public static string BridgeAlertCoordsInherited(string folder, string name) => IsPt ? $"\"{name}\" herda a janela-alvo da pasta \"{folder}\", e com ela o espaço das coordenadas — esta conversão seria descartada na próxima reprodução e deixaria as coordenadas no espaço errado. Dê antes a esta macro um alvo próprio: edite o nome do processo ou o título da janela na janela-alvo dela e use \"Aplicar alvo e converter\"." : $"\"{name}\" inherits its window target from the folder \"{folder}\", so it inherits the coordinate space too — this conversion would be discarded at the next replay and leave the coordinates in the wrong space. Give this macro its own target first: edit the process name or window title in its Window Target dialog, then use \"Apply target & convert\".";
+        /// <summary>engine-bridge.alert.coords.inherited · "{{name}}" inherits its window target from the folder "{{folder}}", so it inherits the coordinate space too — this conversion would be discarded at the next replay and leave the coordinates in the wrong space. Give this macro its own window target first: in Macro settings › Window target, click Edit and type a process or a title. Then convert again.</summary>
+        public static string BridgeAlertCoordsInherited(string folder, string name) => IsPt ? $"\"{name}\" herda a janela-alvo da pasta \"{folder}\", e com ela o espaço das coordenadas — esta conversão seria descartada na próxima reprodução e deixaria as coordenadas no espaço errado. Dê antes a esta macro uma janela-alvo própria: em Configurações da macro › Janela-alvo, clique em Editar e digite um processo ou um título. Depois converta de novo." : $"\"{name}\" inherits its window target from the folder \"{folder}\", so it inherits the coordinate space too — this conversion would be discarded at the next replay and leave the coordinates in the wrong space. Give this macro its own window target first: in Macro settings › Window target, click Edit and type a process or a title. Then convert again.";
         /// <summary>engine-bridge.alert.coords.convertedRelative · Converted {{n}} action(s) to relative coordinates.</summary>
         public static string BridgeAlertCoordsConvertedRelative(string n, int count) => IsPt ? (count == 0 ? "Nenhum passo convertido para coordenadas relativas." : (count < 2 ? $"{n} passo convertido para coordenadas relativas." : $"{n} passos convertidos para coordenadas relativas.")) : $"Converted {n} action(s) to relative coordinates.";
         /// <summary>engine-bridge.alert.coords.convertedAbsolute · Converted {{n}} action(s) to absolute coordinates.</summary>
@@ -652,8 +652,8 @@ namespace TrueReplayer.Services
         public static string BridgeDialogCancel => IsPt ? "Cancelar" : "Cancel";
         /// <summary>engine-bridge.dialog.deleteFolder.title · Delete Folder</summary>
         public static string BridgeDialogDeleteFolderTitle => IsPt ? "Excluir pasta" : "Delete Folder";
-        /// <summary>engine-bridge.dialog.deleteFolder.body · Folder "{{name}}" contains {{n}} macro(s). Delete only the folder or everything inside?</summary>
-        public static string BridgeDialogDeleteFolderBody(string n, string name, int count) => IsPt ? (count == 0 ? $"A pasta \"{name}\" está vazia.\nExcluir só a pasta ou tudo o que tem dentro?" : (count < 2 ? $"A pasta \"{name}\" tem {n} macro.\nExcluir só a pasta ou tudo o que tem dentro?" : $"A pasta \"{name}\" tem {n} macros.\nExcluir só a pasta ou tudo o que tem dentro?")) : $"Folder \"{name}\" contains {n} macro(s).\nDelete only the folder or everything inside?";
+        /// <summary>engine-bridge.dialog.deleteFolder.body · Folder "{{name}}" contains {{n}} macro. Delete only the folder or everything inside? With “Delete All”, the macro's file and images are deleted. This can't be undone.</summary>
+        public static string BridgeDialogDeleteFolderBody(string n, string name, int count) => IsPt ? (count == 0 ? $"A pasta \"{name}\" está vazia.\nExcluir só a pasta ou tudo o que tem dentro?" : (count < 2 ? $"A pasta \"{name}\" tem {n} macro.\nExcluir só a pasta ou tudo o que tem dentro?\nCom “Excluir tudo”, o arquivo e as imagens dela são excluídos. Isso não pode ser desfeito." : $"A pasta \"{name}\" tem {n} macros.\nExcluir só a pasta ou tudo o que tem dentro?\nCom “Excluir tudo”, os arquivos e as imagens delas são excluídos. Isso não pode ser desfeito.")) : (count == 1 ? $"Folder \"{name}\" contains {n} macro.\nDelete only the folder or everything inside?\nWith “Delete All”, the macro's file and images are deleted. This can't be undone." : $"Folder \"{name}\" contains {n} macros.\nDelete only the folder or everything inside?\nWith “Delete All”, the macros' files and images are deleted. This can't be undone.");
         /// <summary>engine-bridge.dialog.deleteFolder.folderOnly · Folder Only</summary>
         public static string BridgeDialogDeleteFolderFolderOnly => IsPt ? "Só a pasta" : "Folder Only";
         /// <summary>engine-bridge.dialog.deleteFolder.deleteAll · Delete All</summary>
@@ -1546,8 +1546,8 @@ namespace TrueReplayer.Services
         public static string TrayPanelNoMacro => IsPt ? "Nenhuma macro aberta" : "No macro open";
         /// <summary>engine-tray.panel.macros · Macros</summary>
         public static string TrayPanelMacros => IsPt ? "Macros" : "Macros";
-        /// <summary>engine-tray.panel.noHotkeys · No macro has a hotkey yet.</summary>
-        public static string TrayPanelNoHotkeys => IsPt ? "Nenhuma macro tem hotkey ainda." : "No macro has a hotkey yet.";
+        /// <summary>engine-tray.panel.macrosEmpty · Pinned macros and macros with a hotkey show up here, unless disabled.</summary>
+        public static string TrayPanelMacrosEmpty => IsPt ? "As macros fixadas e as que têm hotkey aparecem aqui, menos as desativadas." : "Pinned macros and macros with a hotkey show up here, unless disabled.";
         /// <summary>engine-tray.panel.running · Running</summary>
         public static string TrayPanelRunning => IsPt ? "Rodando" : "Running";
         /// <summary>engine-tray.panel.allMacros · All macros…</summary>

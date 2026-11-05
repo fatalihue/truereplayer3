@@ -7,8 +7,8 @@ export default {
   shortcutsOn: 'Atalhos ativados',
   shortcutsOff: 'Atalhos desativados',
   shortcutsPaused: 'Atalhos pausados pelo Clicker',
-  shortcutsOnTip: 'As hotkeys e as hotstrings das macros disparam. Desativar pausa todas elas, e os Key Remaps também.',
-  shortcutsOffTip: 'Desativados: as hotkeys e as hotstrings das macros não disparam, e os Key Remaps ficam pausados.',
+  shortcutsOnTip: 'As hotkeys e as hotstrings das macros disparam. Desativar pausa todas elas, os Key Remaps e as hotkeys de gravar, reproduzir e copiar.',
+  shortcutsOffTip: 'Desativados: as hotkeys e as hotstrings das macros, os Key Remaps e as hotkeys de gravar, reproduzir e copiar ficam pausados — as de gravar e reproduzir só param o que já está rodando.',
   shortcutsPausedTip: 'Pausados enquanto a página do Clicker está aberta: as hotkeys e as hotstrings das macros esperam ela fechar.',
 
   automationsOn: {

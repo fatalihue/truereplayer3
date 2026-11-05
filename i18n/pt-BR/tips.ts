@@ -14,7 +14,7 @@ export default {
     hide: 'Ocultar estas dicas',
     recorded: { zero: 'Nenhum passo gravado', one: '{{count}} passo gravado', other: '{{count}} passos gravados' },
     tryIt: 'Experimente',
-    runAnywhere: 'Rode de qualquer app',
+    runWithShortcut: 'Rode sem voltar ao {{app}}',
     changeShortcut: 'Alterar o atalho',
     addShortcut: 'Adicionar um atalho',
   },

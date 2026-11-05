@@ -7,8 +7,10 @@ export default {
   shortcutsOn: 'Shortcuts On',
   shortcutsOff: 'Shortcuts Off',
   shortcutsPaused: 'Shortcuts Paused by Clicker',  // com a página do Clicker aberta
-  shortcutsOnTip: "The macros' hotkeys and hotstrings fire. Off pauses them, and the Key Remaps too.",
-  shortcutsOffTip: "Off: the macros' hotkeys and hotstrings won't fire, and the Key Remaps are paused.",
+  // Desativados, o motor também deixa passar as hotkeys gerais que agem fora do app (Settings › Hotkeys:
+  // a de gravar, a de reproduzir e as duas de copiar); as de gravar e reproduzir ainda param o que roda.
+  shortcutsOnTip: "The macros' hotkeys and hotstrings fire. Off pauses them, the Key Remaps, and the record, replay and copy hotkeys.",
+  shortcutsOffTip: "Off: the macros' hotkeys and hotstrings, the Key Remaps, and the record, replay and copy hotkeys are paused — record and replay only stop what is already running.",
   shortcutsPausedTip: "Paused while the Clicker page is open: the macros' hotkeys and hotstrings wait for it to close.",
 
   // count = as automações armadas.

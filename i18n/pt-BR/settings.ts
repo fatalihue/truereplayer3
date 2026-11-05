@@ -254,7 +254,7 @@ export default {
     keptMine: 'Suas teclas ficam. Este aviso só volta se outra hotkey ocupar uma tecla que outros apps usam.',
     words: 'hotkey atalho tecla',
     record: {
-      label: 'Gravar',
+      label: '{{>header.record.hotkey}}',
       hint: 'Inicia e para a gravação na macro aberta, ou em uma nova quando nenhuma está aberta',
       words: 'gravação',
     },
@@ -265,7 +265,7 @@ export default {
     },
     shortcuts: {
       label: 'Atalhos ativados ou desativados',
-      hint: 'Silencia as hotkeys e as hotstrings das macros e os Key Remaps de uma vez',
+      hint: 'Silencia de uma vez as hotkeys e as hotstrings das macros, os Key Remaps e as hotkeys de gravar, reproduzir e copiar',
       words: 'macro teclas alternar silenciar pausar',
     },
     front: {

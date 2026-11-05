@@ -117,7 +117,7 @@ export default {
     // Como o rodapé do Add step (insert.after): "no ponto de inserção" ganhava uma linha (228 de 212 px).
     atInsert: 'Grava depois do passo {{step}}',
     atEnd: 'Grava no fim, depois do passo {{step}}',
-    hotkey: 'Iniciar ou parar',
+    hotkey: 'Gravar ou parar',
   },
 
   replay: {
