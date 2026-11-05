@@ -19,8 +19,9 @@ namespace TrueReplayer
     {
         /// <summary>
         /// The name of every folder and system name of this app: Documents, the machine-local data,
-        /// the mutex, the Run value. Also the Velopack pack of the owner's test install
-        /// (<see cref="PackId"/>), which the previews update.
+        /// the mutex, the Run value. Also the Velopack pack of the old test install
+        /// (<see cref="PackId"/>), which the previews updated until the local feed ended (plan
+        /// encerramento-tr2-2026-11-03.md, T8).
         /// </summary>
         public const string Id = "TrueReplayer3";
 
@@ -142,16 +143,6 @@ namespace TrueReplayer
         /// installed elsewhere (<see cref="InstallRoot"/>).
         /// </summary>
         public static string LocalRoot => _localRoot.Value;
-
-        /// <summary>
-        /// Documents\TrueReplayer3-feed: the local Velopack feed the previews are packed into
-        /// (decision 2). Outside AppData on purpose. The sessions that build the previews run inside
-        /// the Claude app's MSIX container, which keeps every file they create under AppData in a
-        /// private copy only they can see: a feed packed into %LOCALAPPDATA% never reached the copy
-        /// the owner opens from the Start menu. Documents is the same folder for both. Not inside
-        /// <see cref="LocalRoot"/> either, which an uninstall deletes whole.
-        /// </summary>
-        public static string UpdateFeedDir => DocumentsRoot + "-feed";
 
         /// <summary>
         /// TrueReplayer 2. Only the coexistence guard (its mutex and its exe) and the import (its
