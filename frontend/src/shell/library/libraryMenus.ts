@@ -33,7 +33,7 @@ export function libraryMenus({ profiles, macro, startImport }: {
   return {
     newEntries: [
       { label: t('library.newMacro'), icon: FilePlus, onSelect: () => newMacro(macro, profiles, null) },
-      // The 19 examples inside the app (decision 4), copied into the Examples folder when used.
+      // The examples inside the app (decision 4), copied into the Examples folder when used.
       { label: t('library.menu.fromExample'), icon: BookOpen, onSelect: () => openExamples() },
       { label: t('library.newFolder'), icon: FolderPlus, onSelect: () => openDialog({ kind: 'newFolder' }) },
     ],

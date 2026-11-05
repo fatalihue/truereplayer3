@@ -1,4 +1,4 @@
-// A galeria dos exemplos (shell/examples/Examples.tsx): os 19 exemplos dentro do app. O conteúdo deles
+// A galeria dos exemplos (shell/examples/Examples.tsx): os exemplos dentro do app. O conteúdo deles
 // (os nomes e as descrições, que vêm do motor) fica em pt-BR nos dois idiomas, por decisão do dono; só a
 // galeria se traduz. O motor cria a pasta dos exemplos com o nome "Examples" (até a fatia do motor):
 // o pt-BR diz "a pasta dos exemplos", sem citar o nome.

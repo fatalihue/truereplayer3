@@ -18,7 +18,8 @@ export default {
   },
   example: {
     title: 'Start from an example',
-    text: '19 short macros that show text tokens, variables, conditions and tables. Each one types into Notepad, so you can watch it work.',
+    // Sem número: quantos são, a galeria diz no rodapé (examples.count), com a conta do pacote.
+    text: 'Short macros that show text tokens, variables, conditions and tables. Each one types into Notepad, so you can watch it work.',
     button: 'Browse examples',
   },
 

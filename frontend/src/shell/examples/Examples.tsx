@@ -25,7 +25,7 @@ const GROUPS: { tag: string; title: string }[] = [
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 /**
- * The 19 examples inside the app (decision 4), from the first use, New ▾ › From an example…, Ctrl+K
+ * The examples inside the app (decision 4), from the first use, New ▾ › From an example…, Ctrl+K
  * and a search that found nothing. Read-only: "Use this example" copies one — with the examples it
  * runs, as 18 runs 18b — into the library's Examples folder and opens it; nothing comes in on its
  * own. One the library already has opens instead. Each one types into Notepad, so a run can be

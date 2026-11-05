@@ -36,7 +36,7 @@ function tr2Parts(s: Tr2ImportSummary): string {
 /**
  * The first use (phase 5; biblioteca-011, FirstRun board): with no macro yet, this takes the place of
  * the macro's zones. Three ways to start — record the task, build it from the catalog, or start from
- * one of the 19 examples inside the app (decision 4). With TrueReplayer 2's data on this computer, the
+ * one of the examples inside the app (decision 4). With TrueReplayer 2's data on this computer, the
  * first way is to bring it (plan truereplayer3-paralelo, phase C: it replaces the A4 offer), and the
  * catalog is still a press away in the macro the others make. A macro file dropped here, or Import…,
  * comes in as any import does. Under them, how a macro runs: the two global keys and its own shortcut.

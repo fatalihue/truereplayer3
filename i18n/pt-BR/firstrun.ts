@@ -16,7 +16,7 @@ export default {
   },
   example: {
     title: 'Começar de um exemplo',
-    text: '19 macros curtas que mostram tokens de texto, variáveis, condições e tabelas. Cada uma digita no Bloco de Notas, para você ver funcionando.',
+    text: 'Macros curtas que mostram tokens de texto, variáveis, condições e tabelas. Cada uma digita no Bloco de Notas, para você ver funcionando.',
     button: 'Ver exemplos',
   },
 
