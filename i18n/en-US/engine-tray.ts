@@ -75,7 +75,10 @@ export default {
     clicker: 'Clicker',               // botão: abre a página do Clicker
     clickerOpen: 'Clicker · open',    // o mesmo, com a página do Clicker aberta
     settings: 'Settings',             // botão do rodapé
-    quit: 'Quit {{app}}',             // botão do rodapé · verbo
+    // O botão do rodapé diz só o verbo, como o menu do clique direito: com o nome do app ao lado, o
+    // "Configurações" do pt-BR não cabia nos 320 px do painel. O nome para o leitor de tela leva o app.
+    quit: 'Quit',                     // botão do rodapé · verbo
+    quitName: 'Quit {{app}}',         // o nome do mesmo botão para o leitor de tela
   },
 
   // O cartão da macro aberta, no painel: a linha sob o nome e o botão dela.

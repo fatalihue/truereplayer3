@@ -1568,8 +1568,10 @@ namespace TrueReplayer.Services
         public static string TrayPanelClickerOpen => IsPt ? "Clicker · aberto" : "Clicker · open";
         /// <summary>engine-tray.panel.settings · Settings</summary>
         public static string TrayPanelSettings => IsPt ? "Configurações" : "Settings";
-        /// <summary>engine-tray.panel.quit · Quit {{app}}</summary>
-        public static string TrayPanelQuit(string app) => IsPt ? $"Sair do {app}" : $"Quit {app}";
+        /// <summary>engine-tray.panel.quit · Quit</summary>
+        public static string TrayPanelQuit => IsPt ? "Sair" : "Quit";
+        /// <summary>engine-tray.panel.quitName · Quit {{app}}</summary>
+        public static string TrayPanelQuitName(string app) => IsPt ? $"Sair do {app}" : $"Quit {app}";
         /// <summary>engine-tray.card.recording · Recording · {{n}} step · {{clock}}</summary>
         public static string TrayCardRecording(string clock, string n, int count) => IsPt ? (count == 0 ? $"Gravando · {n} passos · {clock}" : (count < 2 ? $"Gravando · {n} passo · {clock}" : $"Gravando · {n} passos · {clock}")) : (count == 1 ? $"Recording · {n} step · {clock}" : $"Recording · {n} steps · {clock}");
         /// <summary>engine-tray.card.clicking · Clicking · {{clicks}} · {{clock}}</summary>

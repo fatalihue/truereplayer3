@@ -73,7 +73,8 @@ export default {
     clicker: 'Clicker',
     clickerOpen: 'Clicker · aberto',
     settings: 'Configurações',
-    quit: 'Sair do {{app}}',
+    quit: 'Sair',
+    quitName: 'Sair do {{app}}',
   },
 
   card: {

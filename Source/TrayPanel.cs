@@ -324,7 +324,11 @@ namespace TrueReplayer.Services
             SetLabel(_remaps, _remapsLabel, S.TrayPanelRemaps);
             AutomationProperties.SetName(_clicker, S.TrayPanelClicker);
             SetLabel(_settings, _settingsLabel, S.TrayPanelSettings);
-            SetLabel(_quit, _quitLabel, S.TrayPanelQuit(app: AppIdentity.DisplayName));
+            // Only the verb on the button, as in the right-click menu: "Sair do TrueReplayer 3" beside it
+            // left "Configurações" too little of the 320 px, and cut it. The name a screen reader says
+            // keeps the app's, and still starts with the visible label.
+            _quitLabel.Text = S.TrayPanelQuit;
+            AutomationProperties.SetName(_quit, S.TrayPanelQuitName(app: AppIdentity.DisplayName));
         }
 
         private static void SetLabel(Control control, TextBlock label, string text)
