@@ -275,11 +275,13 @@ export default {
     words: 'theme themes color colour accent dark light follow windows vivid pastel monochrome random my own save custom density compact normal spacious motion animations text size font corner roundness radius zoom scale data monospace',
   },
 
-  // Settings › Hotkeys: as teclas que funcionam em qualquer lugar do Windows. hotkey é coringa (a hotkey,
-  // no feminino). Os rótulos das linhas têm 234 px em 760 px de largura: "Bring TrueReplayer 3 to the
-  // front" é o mais longo, e o pt-BR fica do tamanho dele.
+  // Settings › Hotkeys: as teclas do app, que funcionam mesmo com ele em segundo plano. hotkey é coringa
+  // (a hotkey, no feminino). Os rótulos das linhas têm 234 px em 760 px de largura: "Bring TrueReplayer 3
+  // to the front" é o mais longo, e o pt-BR fica do tamanho dele.
   hotkeys: {
-    intro: 'Keys that work anywhere in Windows, even with {{app}} in the background. Each macro’s own hotkey lives on the macro.',
+    // Sem "anywhere in Windows": com os atalhos desativados, as de gravar, reproduzir e copiar passam para
+    // o app da frente (a linha shortcuts, abaixo, diz isso).
+    intro: 'Keys that work even with {{app}} in the background. Each macro’s own hotkey lives on the macro.',
     // O aviso das hotkeys em teclas que outros apps usam (quando uma instalação nova ganha outras).
     noticeLabel: 'Hotkeys on keys other apps use',  // nome da área do aviso, para o leitor de tela
     notice: {

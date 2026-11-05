@@ -114,7 +114,7 @@ export default {
     relative: 'Coordenadas relativas',
     relativeTip: 'Os pontos dos passos das macros acompanham a janela quando ela se move',
     focus: 'Trazer para a frente',
-    focusTip: 'Traz a janela para a frente antes de rodar. Ativado, as hotkeys funcionam de qualquer janela.',
+    focusTip: 'Traz a janela para a frente antes de rodar. Ativado, as hotkeys e as hotstrings funcionam de qualquer janela.',
     restorePosition: 'Restaurar posição',
     restorePositionTip: 'Devolve a janela à posição capturada, antes de rodar',
     restoreSize: 'Restaurar tamanho',

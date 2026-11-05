@@ -43,8 +43,9 @@ export default {
 
     hotstring: 'Hotstring',               // rótulo do campo e nome dele (leitor de tela) · coringa
     hotstringPlaceholder: 'e.g. /id',     // o texto do campo vazio
-    // A linha sob o campo: a regra (sem hotstring), o erro com um caractere só, ou quando roda.
-    hotstringHelp: 'Type it anywhere to run the macro: letters, digits and - . / , ; =',
+    // A linha sob o campo: a regra (sem hotstring), o erro com um caractere só, ou quando roda. Sem
+    // "anywhere": com uma janela-alvo e sem Bring to focus, ela só dispara com a janela na frente.
+    hotstringHelp: 'Type it to run the macro: letters, digits and - . / , ; =',
     minLength: 'Min 2 characters.',
     runsInstant: 'Runs as soon as it is typed.',     // com o Instant trigger ativado
     runsOnEnd: 'Runs after Enter, Space or Tab.',    // com ele desativado · as teclas são do glossário
@@ -80,7 +81,7 @@ export default {
     needsTargetOwn: 'A window target needs a process or a title. To have none, remove it.',  // a da própria macro
     // As chaves: os mesmos nomes do diálogo da janela-alvo da pasta. As dicas falam de uma macro.
     focus: '{{>library.folderTarget.focus}}',
-    focusTip: 'Brings the window to the front before the run. With it on, the hotkey works from any window.',
+    focusTip: 'Brings the window to the front before the run. With it on, the hotkey and the hotstring work from any window.',
     relative: '{{>library.folderTarget.relative}}',
     relativeTip: 'The points of the steps follow the window when it moves',
     restorePosition: '{{>library.folderTarget.restorePosition}}',

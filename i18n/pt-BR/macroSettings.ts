@@ -32,7 +32,7 @@ export default {
 
     hotstring: 'Hotstring',
     hotstringPlaceholder: 'ex.: /id',
-    hotstringHelp: 'Digite em qualquer lugar para rodar a macro: letras, dígitos e - . / , ; =',
+    hotstringHelp: 'Digite-a para rodar a macro: letras, dígitos e - . / , ; =',
     minLength: 'Mínimo de 2 caracteres.',
     runsInstant: 'Roda assim que é digitada.',
     runsOnEnd: 'Roda depois de Enter, Space ou Tab.',
@@ -60,7 +60,7 @@ export default {
     needsTarget: 'Uma janela-alvo precisa de um processo ou de um título.',
     needsTargetOwn: 'Uma janela-alvo precisa de um processo ou de um título. Para não ter nenhuma, remova-a.',
     focus: '{{>library.folderTarget.focus}}',
-    focusTip: 'Traz a janela para a frente antes de rodar. Ativado, a hotkey funciona de qualquer janela.',
+    focusTip: 'Traz a janela para a frente antes de rodar. Ativado, a hotkey e a hotstring funcionam de qualquer janela.',
     relative: '{{>library.folderTarget.relative}}',
     relativeTip: 'Os pontos dos passos acompanham a janela quando ela se move',
     restorePosition: '{{>library.folderTarget.restorePosition}}',

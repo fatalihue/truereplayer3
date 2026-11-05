@@ -34,7 +34,7 @@ export default {
 
   how: {
     label: 'Como uma macro roda',
-    record: 'Inicia e para a gravação, de qualquer app.',
+    record: 'Inicia a gravação. Aperte de novo para parar.',
     replay: 'Reproduz a macro. Aperte de novo para parar.',
     shortcut: 'Atalho',
     shortcutText: 'Dê à macro uma tecla própria para rodá-la sem voltar ao {{app}}.',

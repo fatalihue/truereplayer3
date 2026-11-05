@@ -129,7 +129,7 @@ export default {
     relative: 'Relative coordinates',
     relativeTip: "The points of its macros' steps follow the window when it moves",
     focus: 'Bring to focus',
-    focusTip: 'Brings the window to the front before a run. With it on, the hotkeys work from any window.',
+    focusTip: 'Brings the window to the front before a run. With it on, the hotkeys and hotstrings work from any window.',
     restorePosition: 'Restore position',
     restorePositionTip: 'Puts the window back where it was captured, before a run',
     restoreSize: 'Restore size',

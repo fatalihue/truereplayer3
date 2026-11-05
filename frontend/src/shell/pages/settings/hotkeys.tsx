@@ -11,10 +11,10 @@ import { keycaps } from '../../library/model';
 import { useApp } from '../../store';
 
 /**
- * Settings › Hotkeys (the concept's SettingsHotkeys board): the keys that work anywhere in Windows,
- * each with what it does and, when another app uses its key, which one. Hotkeys that take such a
- * key while a new install gets another are counted in a notice that offers the suggested keys
- * (hotkeys:useSuggested, the engine's HotkeyDefaults) or keeping them ("Keep mine", remembered).
+ * Settings › Hotkeys (the concept's SettingsHotkeys board): the keys that work even with the app in
+ * the background, each with what it does and, when another app uses its key, which one. Hotkeys that
+ * take such a key while a new install gets another are counted in a notice that offers the suggested
+ * keys (hotkeys:useSuggested, the engine's HotkeyDefaults) or keeping them ("Keep mine", remembered).
  */
 
 // What other apps do with a key, by the key ('major': a key people use every day, that a suggestion

@@ -43,7 +43,8 @@ export default {
   // (common.actions) e shortcut, com a tecla; o texto vai embaixo.
   how: {
     label: 'How a macro runs',      // nome da seção para o leitor de tela
-    record: 'Starts and stops recording, from any app.',
+    // Não "from any app": com os atalhos desativados, a tecla só para uma gravação que já começou.
+    record: 'Starts recording. Press it again to stop.',   // a mesma forma do replay
     replay: 'Plays the macro. Press it again to stop.',
     shortcut: 'Shortcut',           // rótulo · nome
     // Não "from any app": com uma janela-alvo e sem Bring to focus, a tecla só dispara com ela na frente.

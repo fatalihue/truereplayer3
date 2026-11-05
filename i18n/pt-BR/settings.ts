@@ -240,7 +240,7 @@ export default {
   },
 
   hotkeys: {
-    intro: 'Teclas que funcionam em qualquer lugar do Windows, mesmo com o {{app}} em segundo plano. A hotkey de cada macro fica na própria macro.',
+    intro: 'Teclas que funcionam mesmo com o {{app}} em segundo plano. A hotkey de cada macro fica na própria macro.',
     noticeLabel: 'Hotkeys em teclas que outros apps usam',
     // O aviso só aparece com uma hotkey ou mais; o zero existe pela regra do plural.
     notice: {
