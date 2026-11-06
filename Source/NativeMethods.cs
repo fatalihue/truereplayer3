@@ -347,6 +347,15 @@ namespace TrueReplayer.Interop
 
         public const uint GA_ROOT = 2;
 
+        // GetWindowLongPtrW, not GetWindowLongW: the app is x64 only, and this entry point is the
+        // one that exists there.
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+        public static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
+
+        public const int GWL_EXSTYLE = -20;
+        public const long WS_EX_TOOLWINDOW = 0x00000080;
+        public const long WS_EX_NOACTIVATE = 0x08000000;
+
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         public static extern int MessageBoxW(IntPtr hWnd, string text, string caption, uint type);
 

@@ -548,6 +548,10 @@ namespace TrueReplayer.Services
         // our own click moved it. Our emitted position round-trips through the lossy 0-65535
         // normalisation, so the physical pixel can land ~1 px off what we asked for.
         private const int AnchorTolerancePx = 2;
+        // What a window just brought to the front gets before the click lands: the same 300 ms a
+        // macro run settles after its own activation (ApplyWindowContextAsync). Spent only when
+        // something was activated, so a run that starts with its target in front pays nothing.
+        private const int ClickerActivationSettleMs = 300;
 
         public void ToggleCursorClickReplay(ClickerRunConfig config)
         {
@@ -699,7 +703,7 @@ namespace TrueReplayer.Services
                     // click it and end the run after a single click (200 ms is not enough to
                     // move away). Whole seconds go to the dashboard; ClickerWaitAsync keeps Stop
                     // and Pause responsive throughout, and the hotkey paths (StartDelayMs = 0)
-                    // keep the plain grace.
+                    // keep the grace below.
                     if (startDelayMs > 200)
                     {
                         long remaining = startDelayMs;
@@ -716,6 +720,17 @@ namespace TrueReplayer.Services
                     else
                     {
                         await Task.Delay(200, token);
+                        // The grace alone was a guess at how long a press lasts, and a hotkey with
+                        // a modifier often outlasts it: with Ctrl+F10 let go slowly, Ctrl was still
+                        // down when the first click went out, so it landed as a Ctrl+click. The
+                        // macro run has always waited for the real release; this is the same wait,
+                        // capped at the same 2 s, and it costs nothing once the keys are up. Not
+                        // pressed at all on the button path, so it returns at once there.
+                        long keyWaitBegan = sw.ElapsedMilliseconds;
+                        await ActionReplayer.WaitForComboReleaseAsync(InputHookManager.CursorClickStartHotkey, token);
+                        long keyWaitMs = sw.ElapsedMilliseconds - keyWaitBegan;
+                        if (keyWaitMs > 20)
+                            DiagnosticLog.Info($"Clicker: the first click waited {keyWaitMs} ms for the hotkey to be let go.");
                     }
                     sw.Restart();  // reset after the grace/countdown so CPS isn't skewed
 
@@ -779,6 +794,13 @@ namespace TrueReplayer.Services
                     bool probedOnce = false;
                     long lastProbeMs = 0;
 
+                    // Whether the window under the next click still has to be checked against the
+                    // one in front: on the first tick, and again on the first tick after a pause,
+                    // the two moments the user may have been in another window. Not on every tick:
+                    // a run that holds one target pays for this once, and a user who switches away
+                    // mid-run keeps the behaviour of a click that takes the focus back.
+                    bool checkFront = true;
+
                     while (!token.IsCancellationRequested && (isInfinite || iteration < loopCount))
                     {
                         // Duration cap, checked before committing to another click. The elapsed
@@ -800,6 +822,7 @@ namespace TrueReplayer.Services
                             long pausedFor = sw.ElapsedMilliseconds - pauseBegan;
                             pausedAccumMs += pausedFor;
                             nextTickMs += pausedFor;
+                            checkFront = true;
                         }
                         iteration++;
 
@@ -878,6 +901,29 @@ namespace TrueReplayer.Services
                         targetY = Math.Clamp(targetY, vy, vy + Math.Max(1, vh) - 1);
                         int absX = (int)(((double)(targetX - vx) * 65535) / Math.Max(1, vw - 1));
                         int absY = (int)(((double)(targetY - vy) * 65535) / Math.Max(1, vh - 1));
+
+                        // ── The window in front, BEFORE the move and the button. ────────────
+                        // Windows only activates a window once it gets the click, and hands Raw
+                        // Input only to the window in front, so a game behind another window saw the
+                        // release of the first click and not the press: 50 clicks sent, 49 counted
+                        // (measured 06-11-2026 with the app in front, every run; 50 of 50 with the
+                        // target in front). The time spent here is not clicking, so it stays off
+                        // the schedule and the reported rate, and the gap to the second click stays
+                        // a full period, which is what a game with a cooldown needs.
+                        if (checkFront)
+                        {
+                            checkFront = false;
+                            long frontBegan = sw.ElapsedMilliseconds;
+                            if (await BringClickTargetToFrontAsync(targetX, targetY, token))
+                            {
+                                // Behind, it missed the cursor's whole trip here, so the position
+                                // goes out as an event of its own even when the cursor has not moved.
+                                if (!replayer.ClickerMoveTo(targetX, targetY, gameMove, token))
+                                    replayer.ClickerJumpTo(targetX, targetY);
+                                await ClickerWaitAsync(ClickerActivationSettleMs, sw, token);
+                            }
+                            pausedAccumMs += sw.ElapsedMilliseconds - frontBegan;
+                        }
 
                         // ── The move, as its own event, BEFORE the button. ──────────────────
                         // The loop used to fold position into the click INPUT and send nothing
@@ -1009,6 +1055,7 @@ namespace TrueReplayer.Services
                         {
                             long pausedDuringWait = await ClickerWaitAsync(wait, sw, token);
                             pausedAccumMs += pausedDuringWait;
+                            if (pausedDuringWait > 0) checkFront = true;
                         }
                         else
                         {
@@ -1087,6 +1134,47 @@ namespace TrueReplayer.Services
                 CancellationToken.None,
                 TaskContinuationOptions.OnlyOnFaulted,
                 TaskScheduler.Default);
+        }
+
+        // Brings the window under the next click to the front when that click would otherwise be
+        // what activates it. True only when something was actually activated: the caller then owes
+        // that window the cursor's position and the settle.
+        //
+        // Compared by THREAD, not by handle: a menu, a combo's list or a dialog of the app in front
+        // is another window of the same thread, and activating it would close the very thing about
+        // to be clicked. Raw Input follows the thread in front as well, so those clicks lose nothing.
+        // A tool window or a no-activate window is left alone, whatever its thread: the taskbar, an
+        // overlay, a palette. The game is neither, and for those a click keeps doing what it does
+        // today. So does a window Windows refuses to bring forward (a fullscreen app holding the
+        // focus, say): ActivateAsync gives up after 300 ms and the click goes out as always.
+        //
+        // The line it logs is what makes "the game counted one less" answerable from the log.
+        private static async Task<bool> BringClickTargetToFrontAsync(int x, int y, CancellationToken token)
+        {
+            IntPtr target = ProcessIntegrity.RootWindowAt(x, y);
+            IntPtr front = NativeMethods.GetForegroundWindow();
+            // Read before anything moves: after the switch, "front" is the target.
+            string who = $"under the click {InputHookManager.DescribeWindowProcess(target)}, in front {InputHookManager.DescribeWindowProcess(front)}";
+            if (target == IntPtr.Zero)
+            {
+                DiagnosticLog.Info($"Clicker target: {who}: nothing to bring forward");
+                return false;
+            }
+            uint targetThread = NativeMethods.GetWindowThreadProcessId(target, out _);
+            if (front != IntPtr.Zero && NativeMethods.GetWindowThreadProcessId(front, out _) == targetThread)
+            {
+                DiagnosticLog.Info($"Clicker target: {who}: already in front");
+                return false;
+            }
+            long exStyle = (long)NativeMethods.GetWindowLongPtr(target, NativeMethods.GWL_EXSTYLE);
+            if ((exStyle & (NativeMethods.WS_EX_NOACTIVATE | NativeMethods.WS_EX_TOOLWINDOW)) != 0)
+            {
+                DiagnosticLog.Info($"Clicker target: {who}: left alone (a tool or no-activate window)");
+                return false;
+            }
+            bool activated = await TrueReplayer.Helpers.WindowActivation.ActivateAsync(target, token: token);
+            DiagnosticLog.Info($"Clicker target: {who}: {(activated ? "brought to the front" : "Windows refused the switch")}");
+            return activated;
         }
 
         // Waits `ms`, staying responsive to BOTH cancellation and pause.
@@ -6135,27 +6223,36 @@ namespace TrueReplayer.Services
             }
             else
             {
-                var (vx, vy, vw, vh) = NativeMethods.VirtualScreen.Bounds;
-                int nx = (int)(((double)(x - vx) * 65535) / Math.Max(1, vw - 1));
-                int ny = (int)(((double)(y - vy) * 65535) / Math.Max(1, vh - 1));
-                NativeMethods.SetCursorPos(x, y);
-                var mv = new NativeMethods.INPUT
-                {
-                    type = NativeMethods.INPUT_MOUSE,
-                    U = new NativeMethods.InputUnion
-                    {
-                        mi = new NativeMethods.MOUSEINPUT
-                        {
-                            dx = nx, dy = ny,
-                            dwFlags = NativeMethods.MOUSEEVENTF_MOVE
-                                | NativeMethods.MOUSEEVENTF_ABSOLUTE
-                                | NativeMethods.MOUSEEVENTF_VIRTUALDESK,
-                        }
-                    }
-                };
-                NativeMethods.SendInput(1, ref mv, NativeMethods.InputSize);
+                ClickerJumpTo(x, y);
             }
             return true;
+        }
+
+        // The plain dual write: SetCursorPos for GetCursorPos readers, one move INPUT for Raw Input
+        // readers. Unlike ClickerMoveTo it goes out even when the cursor is already there, which is
+        // how a window that has just come to the front learns where the cursor is: while it was
+        // behind, the Raw Input of the cursor's trip went to the window in front.
+        public void ClickerJumpTo(int x, int y)
+        {
+            var (vx, vy, vw, vh) = NativeMethods.VirtualScreen.Bounds;
+            int nx = (int)(((double)(x - vx) * 65535) / Math.Max(1, vw - 1));
+            int ny = (int)(((double)(y - vy) * 65535) / Math.Max(1, vh - 1));
+            NativeMethods.SetCursorPos(x, y);
+            var mv = new NativeMethods.INPUT
+            {
+                type = NativeMethods.INPUT_MOUSE,
+                U = new NativeMethods.InputUnion
+                {
+                    mi = new NativeMethods.MOUSEINPUT
+                    {
+                        dx = nx, dy = ny,
+                        dwFlags = NativeMethods.MOUSEEVENTF_MOVE
+                            | NativeMethods.MOUSEEVENTF_ABSOLUTE
+                            | NativeMethods.MOUSEEVENTF_VIRTUALDESK,
+                    }
+                }
+            };
+            NativeMethods.SendInput(1, ref mv, NativeMethods.InputSize);
         }
 
         // Updates the "currently pressed" flags from a mouse event's button bits.

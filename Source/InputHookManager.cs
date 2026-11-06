@@ -1913,6 +1913,19 @@ namespace TrueReplayer
                 var title = new StringBuilder(256);
                 // Never GetWindowText from the hook thread — see NativeMethods.InternalGetWindowText.
                 NativeMethods.InternalGetWindowText(hwnd, title, title.Capacity);
+                return $"{DescribeWindowProcess(hwnd)} \"{title}\"";
+            }
+            catch { return "unknown window"; }
+        }
+
+        // The process half alone, for the Clicker's check of the window in front: that line goes out
+        // once a run, whatever the user has open, and a title can hold what a log should not carry
+        // (an account name, the subject of an e-mail). The process answers the question on its own.
+        internal static string DescribeWindowProcess(IntPtr hwnd)
+        {
+            if (hwnd == IntPtr.Zero) return "no window";
+            try
+            {
                 NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
                 string proc = "?";
                 IntPtr h = NativeMethods.OpenProcess(NativeMethods.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
@@ -1944,7 +1957,7 @@ namespace TrueReplayer
                     // which is what RunAsAdmin is for. Same correction in WindowMatcher.
                     proc = $"?(open-failed err {Marshal.GetLastWin32Error()}, pid {pid})";
                 }
-                return $"{proc} \"{title}\"";
+                return proc;
             }
             catch { return "unknown window"; }
         }

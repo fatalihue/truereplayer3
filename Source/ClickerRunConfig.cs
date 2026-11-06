@@ -27,7 +27,7 @@ namespace TrueReplayer.Models
         // Opt-in: it costs real time inside the tick, so it must never be inherited silently
         // from the macro Game Mode toggle.
         bool GameMove,
-        // Countdown before the first click, in ms; 0 = only the 200 ms hotkey-release grace.
+        // Countdown before the first click, in ms; 0 = the 200 ms grace, then until the hotkey is let go.
         // The bridge sets it for the BUTTON path in the cursor-relative modes (cursor, Position,
         // Fixed with no point picked): started from the button, the first tick would otherwise
         // land on the very button that has just turned into "Stop" and end the run after one
