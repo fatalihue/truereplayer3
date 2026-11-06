@@ -24,10 +24,13 @@ App WinUI 3 em **.NET 8** com a interface em **React + TypeScript** dentro de um
 **Requisitos:** Windows 10 (build 19041) ou 11, [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) e [Node.js](https://nodejs.org).
 
 ```
+cd frontend
+npm ci
+cd ..
 dotnet publish TrueReplayer.csproj -c Release -p:PublishProfile=Properties/PublishProfiles/win-x64.pubxml
 ```
 
-Um comando resolve tudo: compila o front-end quando algo em `frontend/` mudou, copia o resultado para `wwwroot/` e leva junto a extensão do Chrome e o host de mensagens nativas. A saída fica em `bin/Release/net8.0-windows10.0.19041.0/win-x64/publish/`.
+O `npm ci` só é preciso num clone novo. Depois, o publish resolve tudo: compila o front-end quando algo em `frontend/` mudou, copia o resultado para `wwwroot/` e leva junto a extensão do Chrome e o host de mensagens nativas. A saída fica em `bin/Release/net8.0-windows10.0.19041.0/win-x64/publish/`.
 
 > **`dotnet build` sozinho não funciona** — falha com *"WindowsAppSDKSelfContained requires a supported Windows architecture"*, porque o RID `win-x64` vem do publish profile. E se o app estiver aberto, o publish não consegue substituir os DLLs (`MSB3021`): feche antes.
 
