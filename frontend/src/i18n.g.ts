@@ -3037,6 +3037,7 @@ export type Chaves = {
   'teclado.notes.openRemaps': never;
   'teclado.notes.beside': never;
   'teclado.panel.title': { key: string | number };
+  'teclado.panel.titleMouse': { key: string | number };
   'teclado.panel.whereBase': { game: string | number };
   'teclado.panel.whereLayer': { game: string | number; key: string | number };
   'teclado.panel.close': never;
@@ -3054,6 +3055,7 @@ export type Chaves = {
   'teclado.panel.defaultFromGlobal': { key: string | number; rule: string | number; source: string | number };
   'teclado.panel.defaultTypes': { key: string | number; typed: string | number };
   'teclado.panel.defaultNormal': { key: string | number };
+  'teclado.panel.defaultButton': { key: string | number };
   'teclado.panel.keyOut': never;
   'teclado.panel.keyHint': never;
   'teclado.panel.capturePress': never;

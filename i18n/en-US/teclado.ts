@@ -52,7 +52,7 @@ export default {
       one: '{{game}} exported to {{file}}, with {{n}} macro.',
       other: '{{game}} exported to {{file}}, with {{n}} macros.',
     },
-    summary: '· and the Keyboard game {{game}}',
+    summary: 'and the Keyboard game {{game}}',
     badge: 'Keyboard',
     cardLabel: 'Import the game {{game}} into the Keyboard',
     keys: { one: '{{count}} key with a function', other: '{{count}} keys with a function' },
@@ -143,6 +143,8 @@ export default {
   // O painel da tecla, nas classes de "Remap settings".
   panel: {
     title: 'Key {{key}}',
+    // O painel de um botão do mouse (o meio, um lateral, a roda).
+    titleMouse: 'Mouse · {{key}}',
     whereBase: '{{game}} · Base',
     whereLayer: '{{game}} · Layer (hold {{key}})',
     close: 'Close the key',
@@ -160,6 +162,7 @@ export default {
     defaultFromGlobal: 'With no function here, {{key}} follows {{source}}: {{rule}}.',
     defaultTypes: 'The key stays normal: {{key}} types {{typed}}.',
     defaultNormal: 'The key stays normal: {{key}} does what it always does.',
+    defaultButton: 'The button stays normal: {{key}} does what it always does.',
     keyOut: 'Key that goes out',
     keyHint: 'Ctrl, Shift, Alt and Win join the combo. Press, repeat and release follow the real key.',
     capturePress: 'Click and press the key',

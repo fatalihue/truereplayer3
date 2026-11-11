@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { ArrowRightLeft, Download, Ellipsis, Gamepad2, Keyboard, ListChecks, Lock, LockOpen, Plus, X } from 'lucide-react';
+import { ArrowRightLeft, Download, Ellipsis, Gamepad2, Keyboard, ListChecks, Lock, LockOpen, Mouse, Plus, X } from 'lucide-react';
 import { APP_NAME } from '../../../appIdentity';
 import { useBridge } from '../../../bridge/BridgeContext';
 import type { RemapEntryDto, TecladoMacroReport } from '../../../bridge/messageTypes';
@@ -100,6 +100,9 @@ function globalsOf(remaps: { enabled: boolean; entries: RemapEntryDto[] }, exes:
 }
 
 const SHORT = tn('teclado.short');
+
+/** One of the mouse's buttons that take a function (the middle, the side ones, the wheel), not a key. */
+const isMouseCode = (code: string) => (MOUSE_CODES as readonly string[]).includes(code);
 
 /** The Key Remaps under the open game's keys. */
 function useGlobals(): Record<string, KeyFn> {
@@ -652,11 +655,13 @@ function KeyPanel({ code }: { code: string }) {
     return null;
   };
   const global = globals[code];
-  const title = t('teclado.panel.title', { key: legend });
+  // A mouse button (phase 7) is no key: its own title and icon.
+  const mouse = isMouseCode(code);
+  const title = mouse ? t('teclado.panel.titleMouse', { key: legend }) : t('teclado.panel.title', { key: legend });
   return (
     <aside className="tk-panel" aria-label={title}>
       <div className="rm-panel-head">
-        <span className="rm-panel-icon" aria-hidden="true">{legend.length <= 3 ? legend : <Keyboard />}</span>
+        <span className="rm-panel-icon" aria-hidden="true">{mouse ? <Mouse /> : legend.length <= 3 ? legend : <Keyboard />}</span>
         <div className="rm-panel-titles">
           <span className="rm-panel-title">{title}</span>
           <span className="rm-panel-sub">{where}</span>
@@ -712,6 +717,7 @@ function Options({ code, legend, fn, kind, source, patch }: {
           {source === 'base' ? t('teclado.panel.defaultFromBase', { key: legend, rule })
             : source === 'global' ? t('teclado.panel.defaultFromGlobal', { key: legend, source: globalName(), rule })
             : /^Key[A-Z]$/.test(code) ? t('teclado.panel.defaultTypes', { key: legend, typed: legend.toLowerCase() })
+            : isMouseCode(code) ? t('teclado.panel.defaultButton', { key: legend })
             : t('teclado.panel.defaultNormal', { key: legend })}
         </p>
       );

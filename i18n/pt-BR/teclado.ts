@@ -49,7 +49,7 @@ export default {
       one: '{{game}} exportado para {{file}}, com {{n}} macro.',
       other: '{{game}} exportado para {{file}}, com {{n}} macros.',
     },
-    summary: '· e o jogo {{game}} do Teclado',
+    summary: 'e o jogo {{game}} do Teclado',
     badge: 'Teclado',
     cardLabel: 'Importar o jogo {{game}} no Teclado',
     keys: { zero: 'Nenhuma tecla com função', one: '{{count}} tecla com função', other: '{{count}} teclas com função' },
@@ -134,6 +134,8 @@ export default {
   },
   panel: {
     title: 'Tecla {{key}}',
+    // O painel de um botão do mouse (o meio, um lateral, a roda).
+    titleMouse: 'Mouse · {{key}}',
     whereBase: '{{game}} · Base',
     whereLayer: '{{game}} · Camada (segure {{key}})',
     close: 'Fechar a tecla',
@@ -151,6 +153,7 @@ export default {
     defaultFromGlobal: 'Sem função aqui, {{key}} segue {{source}}: {{rule}}.',
     defaultTypes: 'A tecla segue normal: {{key}} digita {{typed}}.',
     defaultNormal: 'A tecla segue normal: {{key}} faz o de sempre.',
+    defaultButton: 'O botão segue normal: {{key}} faz o de sempre.',
     keyOut: 'Tecla que sai',
     keyHint: 'Ctrl, Shift, Alt e Win entram na combinação. Apertar, repetir e soltar seguem a tecla de verdade.',
     capturePress: 'Clique e aperte a tecla',
@@ -186,12 +189,13 @@ export default {
     interval: 'Intervalo entre repetições',
     once: 'Roda uma vez. Apertar de novo enquanto roda não reinicia.',
     timesHint: { zero: 'Não roda.', one: 'Roda {{count}} vez.', other: 'Roda {{count}} vezes seguidas.' },
-    hold: 'Repete enquanto {{key}} está apertada e para ao soltar.',
+    hold: 'Repete enquanto você segura {{key}} e para ao soltar.',
     toggle: 'O primeiro toque liga, o segundo para.',
     onPress: 'Começa no apertar, sem esperar soltar.',
     keepOriginal: 'Manter a tecla original',
-    keepOn: 'O jogo recebe o {{key}} também.',
-    keepOff: 'O jogo não recebe o {{key}}: só a macro roda.',
+    // Sem artigo: {{key}} é uma tecla ou um botão do mouse ("Roda ↑").
+    keepOn: 'O jogo recebe {{key}} também.',
+    keepOff: 'O jogo não recebe {{key}}: só a macro roda.',
     outside: 'Fora dos jogos, {{macro}} continua disparando pela hotkey dela, {{hotkey}}.',
   },
   status: {
