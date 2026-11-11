@@ -14,12 +14,20 @@ namespace TrueReplayer.Services
     /// events: the game the key hook reads (phase 3) never changes in the middle of a key's callback.
     /// The process name is cached by pid, and a Store app's frame (ApplicationFrameHost) is looked
     /// through to the app inside it. A game is matched by its .exe name, the way RemapService compares
-    /// an app; a game that is off is still reported, so the status bar can say it is off.
+    /// an app; a game that is off is still reported, so the status bar can say it is off. With two games
+    /// on the same .exe, the one turned on wins (two setups of one game, switched by "Use").
+    ///
+    /// Phase 7, "Lock to this game": a locked game counts as in front whatever window is, except the
+    /// app's own (where its keys are edited). The lock lasts until it is lifted or the app closes: never
+    /// saved, since a lock forgotten across a restart would leave keys changed in every program.
     /// </summary>
     public static class TecladoFront
     {
-        /// <summary>The process in front, the game it is (null when it is none), and the layer key held (phase 3).</summary>
-        public sealed record State(string? Process, string? GameId, string? GameName, bool GameOn, bool Layer);
+        /// <summary>
+        /// The process in front, the game it is (null when it is none), the layer key held (phase 3), and
+        /// the game locked (phase 7; it is the game in front unless the app's own window is).
+        /// </summary>
+        public sealed record State(string? Process, string? GameId, string? GameName, bool GameOn, bool Layer, string? LockedId = null);
 
         private static volatile State _state = new(null, null, null, false, false);
 
@@ -51,6 +59,10 @@ namespace TrueReplayer.Services
         private static IntPtr _hook;
         private static string? _process;
         private static bool _layer;
+        // The game locked by the user, and whether one of the app's own windows is in front.
+        private static string? _locked;
+        private static bool _selfInFront;
+        private static readonly uint _selfPid = (uint)Environment.ProcessId;
         private static uint _cachedPid;
         private static string? _cachedName;
         private static readonly StringBuilder _path = new(1024);
@@ -76,6 +88,23 @@ namespace TrueReplayer.Services
         /// <summary>The Teclado's config changed (a game added, an .exe, a game turned off): match again.</summary>
         public static void ConfigChanged() => InputHookManager.QueueOnHookThread(Match);
 
+        /// <summary>Locks a game (its keys with any window in front but the app's), or lifts the lock with null.</summary>
+        public static void Lock(string? gameId) => InputHookManager.QueueOnHookThread(() =>
+        {
+            _locked = string.IsNullOrEmpty(gameId) ? null : gameId;
+            Match();
+        });
+
+        /// <summary>The locked game's name, or null (the tray panel shows it, with the way to lift it).</summary>
+        public static string? LockedName
+        {
+            get
+            {
+                var id = _state.LockedId;
+                return id == null ? null : TecladoService.Current.Games.FirstOrDefault(g => g.Id == id)?.Name;
+            }
+        }
+
         /// <summary>The layer key went down or up (the hook, on this thread).</summary>
         internal static void SetLayer(bool held)
         {
@@ -93,24 +122,40 @@ namespace TrueReplayer.Services
 
         private static void Read(IntPtr hwnd)
         {
+            uint pid = 0;
+            if (hwnd != IntPtr.Zero) NativeMethods.GetWindowThreadProcessId(hwnd, out pid);
+            _selfInFront = pid != 0 && pid == _selfPid;
             _process = hwnd == IntPtr.Zero ? null : ProcessOf(hwnd);
             Match();
         }
 
         private static void Match()
         {
-            var key = RemapService.NormalizeProcess(_process);
+            var games = TecladoService.Current.Games;
             TecladoService.Game? game = null;
-            if (key != null)
+            if (_locked != null)
             {
-                foreach (var g in TecladoService.Current.Games)
+                game = games.FirstOrDefault(g => g.Id == _locked);
+                // A game removed takes its lock with it; the app's own windows keep their keys.
+                if (game == null) _locked = null;
+                else if (_selfInFront) game = null;
+            }
+            if (_locked == null)
+            {
+                var key = RemapService.NormalizeProcess(_process);
+                if (key != null)
                 {
-                    if (g.Exes.Any(e => RemapService.NormalizeProcess(e) == key)) { game = g; break; }
+                    foreach (var g in games)
+                    {
+                        if (!g.Exes.Any(e => RemapService.NormalizeProcess(e) == key)) continue;
+                        game ??= g;
+                        if (g.On) { game = g; break; }
+                    }
                 }
             }
             // The hook first: another game (or none) lets go of what the old one held, its layer too.
             InputHookManager.SetTecladoFront(game?.Id);
-            Publish(new State(_process, game?.Id, game?.Name, game?.On ?? false, _layer));
+            Publish(new State(_process, game?.Id, game?.Name, game?.On ?? false, _layer, _locked));
         }
 
         private static void Publish(State next)

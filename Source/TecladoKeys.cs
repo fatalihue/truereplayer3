@@ -13,7 +13,7 @@ namespace TrueReplayer.Services
     /// </summary>
     public static class TecladoKeys
     {
-        /// <summary>A key's index in the hook's tables: the scan code, plus 0x100 with the extended bit.</summary>
+        /// <summary>A key's index in the hook's tables: the scan code, plus 0x100 with the extended bit (always below <see cref="MouseBase"/>).</summary>
         public static int IndexOf(ushort scan, bool extended) => (scan & 0xFF) | (extended ? 0x100 : 0);
 
         /// <summary>
@@ -27,11 +27,31 @@ namespace TrueReplayer.Services
             return index >= 0;
         }
 
-        /// <summary>The size of the tables indexed by <see cref="IndexOf"/>.</summary>
-        public const int TableSize = 0x200;
+        /// <summary>
+        /// The size of the tables: the keys indexed by <see cref="IndexOf"/> (below 0x200), then the mouse
+        /// buttons from <see cref="MouseBase"/>, in the order of <see cref="MouseCodes"/>.
+        /// </summary>
+        public const int TableSize = 0x208;
 
         /// <summary>The mouse buttons that take a function: middle, the side ones and the wheel (left and right stay out).</summary>
         public static readonly IReadOnlyList<string> MouseCodes = new[] { "MouseMiddle", "MouseX1", "MouseX2", "WheelUp", "WheelDown" };
+
+        /// <summary>The mouse buttons' indexes in the tables, after every key's.</summary>
+        public const int MouseBase = 0x200;
+        public const int MouseMiddle = MouseBase, MouseX1 = MouseBase + 1, MouseX2 = MouseBase + 2, WheelUp = MouseBase + 3, WheelDown = MouseBase + 4;
+
+        /// <summary>A mouse button's index in the tables, or false for a name that is not one.</summary>
+        public static bool TryMouseIndex(string code, out int index)
+        {
+            for (int i = 0; i < MouseCodes.Count; i++)
+            {
+                if (!string.Equals(MouseCodes[i], code, StringComparison.Ordinal)) continue;
+                index = MouseBase + i;
+                return true;
+            }
+            index = -1;
+            return false;
+        }
 
         private static readonly (string Code, ushort Scan, bool Ext)[] Table =
         {

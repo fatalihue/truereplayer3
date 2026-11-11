@@ -2145,6 +2145,10 @@ namespace TrueReplayer
                 }
             }
 
+            // Teclado (branch teclado, phase 7): a middle or side button the game's keyboard took at its
+            // press is let go by it, before every gate — the keyboard's release, and for the same reason.
+            if (_tecladoHeld > 0 && TecladoMouseUp((int)wParam, hookStruct0)) return (IntPtr)1;
+
             // X-button remap pairing release runs BEFORE the capture/suppress gates — same
             // stuck-injected-key hazard as the keyboard hoist above it. Physical ups only.
             if ((int)wParam == NativeMethods.WM_XBUTTONUP && _activeRemapDowns.Count > 0)
@@ -2222,6 +2226,13 @@ namespace TrueReplayer
                     return (IntPtr)1;
                 }
             }
+
+            // Teclado (phase 7): with a game in front, its middle and side buttons and its wheel go first,
+            // after the capture and ahead of the Key Remaps and the hotkeys (the game's function wins), with
+            // the keyboard's verdicts for a new press. Nothing is read with no game in front.
+            if (_tecladoActive != null
+                && TecladoMouseDown((int)wParam, hookStruct0, SuppressAllHotkeys || IgnoreProfileHotkeys, UserProfile.Current.ProfileKeyEnabled))
+                return (IntPtr)1;
 
             if (!SuppressAllHotkeys)
             {

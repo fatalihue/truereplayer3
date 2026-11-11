@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { ArrowRightLeft, Download, Ellipsis, Gamepad2, Keyboard, ListChecks, Lock, Plus, X } from 'lucide-react';
+import { ArrowRightLeft, Download, Ellipsis, Gamepad2, Keyboard, ListChecks, Lock, LockOpen, Plus, X } from 'lucide-react';
+import { APP_NAME } from '../../../appIdentity';
 import { useBridge } from '../../../bridge/BridgeContext';
 import type { RemapEntryDto, TecladoMacroReport } from '../../../bridge/messageTypes';
 import { LANG, t, tn } from '../../../i18n';
@@ -15,13 +16,13 @@ import {
   codeOfTr, currentKeys, FAMILIES, FNS, fnInfo, legendOf, MODES, MOUSE_CODES, trKeyName, type FnKind, type Game, type KeyCap, type KeyFn,
 } from '../../mk/mkModel';
 import {
-  addExe, addGame, fnAt, gameOf, layerKeyOf, openGame, overwriteUnreadable, pickKey, removeExe,
+  addExe, addGame, exportGame, fnAt, gameOf, layerKeyOf, lockGame, openGame, overwriteUnreadable, pickKey, removeExe,
   familyOf, removeGame, renameGame, setGameFn, setGameOn, setLayoutPref, useMk, type Source,
 } from '../../mk/mkStore';
 import { Popover } from '../../Popover';
 import { whenOpen } from '../../recordNew';
 import { useApp, useShell } from '../../store';
-import { openPage } from '../../ui';
+import { openPage, useUi } from '../../ui';
 import { MOUSE_TARGETS, mouseTarget } from '../remaps/remapModel';
 import '../../inspector/editors.css';
 import '../../inspector/windowEditors.css';
@@ -146,6 +147,7 @@ function Games() {
   const games = useMk(s => s.games);
   const open = useMk(s => s.open);
   const front = useMk(s => s.front);
+  const locked = useMk(s => s.locked);
   const [adding, setAdding] = useState<{ anchor: MenuAnchor; button: HTMLButtonElement } | null>(null);
   const title = t('teclado.games.title');
   const row = (g: Game) => (
@@ -156,7 +158,10 @@ function Games() {
         <span className="tk-game-name">{g.name}</span>
         <span className="tk-game-exe">{g.exes.join(' · ')}</span>
       </span>
-      {front === g.id && <span className="tk-front-dot" role="img" aria-label={t('teclado.games.inFront')} data-tip={t('teclado.games.inFront')} data-tip-pos="end" />}
+      {/* The locked game is in front with any window: its padlock says so, in the dot's place. */}
+      {locked === g.id
+        ? <Lock className="tk-game-lock" role="img" aria-label={t('teclado.games.locked')} data-tip={t('teclado.games.locked')} data-tip-pos="end" />
+        : front === g.id && <span className="tk-front-dot" role="img" aria-label={t('teclado.games.inFront')} data-tip={t('teclado.games.inFront')} data-tip-pos="end" />}
     </button>
   );
   return (
@@ -237,13 +242,20 @@ function Head() {
   const game = useMk(gameOf);
   const front = useMk(s => s.front);
   const holding = useMk(s => s.holding);
+  const locked = useMk(s => s.locked);
+  const startImport = useUi(s => s.startImport);
   const { showToast } = useToast();
   const [menu, setMenu] = useState<{ anchor: MenuAnchor; button: HTMLButtonElement } | null>(null);
   const [adding, setAdding] = useState<{ anchor: MenuAnchor; button: HTMLButtonElement } | null>(null);
   const [renaming, setRenaming] = useState(false);
   if (!game) return <header className="tk-head" />;
-  const isFront = front === game.id;
-  const soon = () => showToast(t('teclado.head.soon'), { type: 'info' });
+  const isLocked = locked === game.id;
+  const isFront = front === game.id && !isLocked;
+  // Locked: its keys work with any window in front but the app's, until unlocked or the app closes.
+  const lock = () => {
+    lockGame(game.id);
+    showToast(t('teclado.head.lockedToast', { game: game.name, app: APP_NAME }), { type: 'info', duration: 8000 });
+  };
   const remove = () => {
     const undo = removeGame(game.id);
     showToast(t('teclado.head.deleted', { game: game.name }), {
@@ -260,6 +272,12 @@ function Head() {
             ? <RenameField name={game.name} onDone={(name) => { if (name !== null) renameGame(game.id, name); setRenaming(false); }} />
             : game.name}
           {isFront && game.on && <span className="tk-pill" data-tone={holding ? 'layer' : undefined}>{holding ? t('teclado.head.inFrontLayer') : t('teclado.head.inFront')}</span>}
+          {isLocked && (
+            <span className="tk-pill" data-tone="locked" data-tip={t('teclado.head.lockedTip', { game: game.name, app: APP_NAME })}>
+              <Lock aria-hidden="true" />
+              {t('teclado.head.locked')}
+            </span>
+          )}
         </h1>
         <p className="tk-sub">
           {game.exes.map(exe => (
@@ -279,7 +297,7 @@ function Head() {
       <div className="tk-head-end">
         <span className="tk-use">{t('teclado.head.use')}<Switch label={t('teclado.head.useIn', { game: game.name })} checked={game.on} onChange={(on) => setGameOn(game.id, on)} /></span>
         <span className="rm-sep" aria-hidden="true" />
-        <button type="button" className="insp-button tk-file" data-tip={t('teclado.head.exportTip')} onClick={soon}>
+        <button type="button" className="insp-button tk-file" data-tip={t('teclado.head.exportTip')} onClick={() => exportGame(game.id)}>
           <Download aria-hidden="true" />
           {t('common.actions.export')}
         </button>
@@ -292,8 +310,11 @@ function Head() {
             entries={[
               { label: t('common.actions.rename'), onSelect: () => setRenaming(true) },
               { label: t('teclado.add.addExe'), onSelect: () => setAdding({ anchor: menu.anchor, button: menu.button }) },
-              { label: t('teclado.head.lock'), icon: Lock, onSelect: soon },
-              { label: t('common.actions.import'), onSelect: soon },
+              isLocked
+                ? { label: t('teclado.head.unlock'), icon: LockOpen, onSelect: () => lockGame(null) }
+                : { label: t('teclado.head.lock'), icon: Lock, onSelect: lock },
+              // The macros' import: a .trprofile with a Keyboard game brings the game in beside them.
+              { label: t('common.actions.importEllipsis'), disabled: !startImport, onSelect: () => startImport?.() },
               'separator',
               { label: t('common.actions.delete'), danger: true, onSelect: remove },
             ]} />
@@ -718,7 +739,7 @@ function Options({ code, legend, fn, kind, source, patch }: {
         </section>
       );
     case 'macro':
-      return <MacroOptions key={code} legend={legend} gameName={game?.name ?? ''} fn={fn} patch={patch} />;
+      return <MacroOptions key={code} legend={legend} gameName={game?.name ?? ''} wheel={code.startsWith('Wheel')} fn={fn} patch={patch} />;
     case 'text':
       return (
         <section className="rm-sec" aria-label={t('teclado.panel.text')}>
@@ -761,7 +782,9 @@ function macroProblem(name: string, report: TecladoMacroReport | undefined): str
   return t('teclado.macro.unsupported', { steps: new Intl.ListFormat(LANG, { type: 'conjunction' }).format(steps) });
 }
 
-function MacroOptions({ legend, gameName, fn, patch }: { legend: string; gameName: string; fn: KeyFn; patch: (p: Partial<KeyFn>) => void }) {
+function MacroOptions({ legend, gameName, wheel, fn, patch }: {
+  legend: string; gameName: string; wheel: boolean; fn: KeyFn; patch: (p: Partial<KeyFn>) => void;
+}) {
   const profiles = useApp(a => a.profiles);
   const order = useApp(a => a.profileOrder);
   const report = useMk(s => (fn.macro ? s.macros[fn.macro] : undefined));
@@ -828,7 +851,9 @@ function MacroOptions({ legend, gameName, fn, patch }: { legend: string; gameNam
       </section>
       <section className="rm-sec" aria-label={t('teclado.macro.mode')}>
         <span className="rm-label">{t('teclado.macro.mode')}</span>
-        <Segmented label={t('teclado.macro.mode')} value={mode} wrap options={MODES} onChange={(m) => patch({ mode: m })} />
+        {/* A wheel notch is a touch: no "while held", no second touch to stop (TecladoService keeps it to these). */}
+        <Segmented label={t('teclado.macro.mode')} value={mode} wrap onChange={(m) => patch({ mode: m })}
+          options={wheel ? MODES.map(m => (m.value === 'hold' || m.value === 'toggle' ? { ...m, disabled: true, tip: t('teclado.panel.whyWheel') } : m)) : MODES} />
         {mode === 'times' && (
           <div className="insp-row">
             <span className="insp-row-label">{t('teclado.macro.times')}</span>

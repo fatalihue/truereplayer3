@@ -2015,9 +2015,11 @@ namespace TrueReplayer.Controllers
         // any Save-on-export flushed the active profile, so it names exactly what left the machine
         // even when the dialog's pre-export "+N included" preview (built from a disk snapshot) was
         // stale. Empty when nothing extra rode along.
-        public async Task<(int exported, int missingImages, List<string> bundledDependencies, string? savedPath)> ExportProfilesAsync(List<string> profileNames, bool includeOrganization = false, bool includeDependencies = false)
+        // With `teclado` (the Keyboard page's Export), the game rides beside its macros and names the file;
+        // it may run no macro at all, and then the file carries the game alone.
+        public async Task<(int exported, int missingImages, List<string> bundledDependencies, string? savedPath)> ExportProfilesAsync(List<string> profileNames, bool includeOrganization = false, bool includeDependencies = false, TecladoService.Game? teclado = null)
         {
-            var envelope = new ProfileExportEnvelope();
+            var envelope = new ProfileExportEnvelope { Teclado = teclado };
             // Original selection, captured before dependency expansion mutates profileNames, so we
             // can name what the closure ADDED (envelope profiles minus these) for the export toast.
             var seedNames = new HashSet<string>(profileNames, StringComparer.OrdinalIgnoreCase);
@@ -2032,7 +2034,9 @@ namespace TrueReplayer.Controllers
             // count afterwards, so a single selection that pulls deps still names the sensible default.
             // Multi-profile default carries the date: the literal "macros" made every successive
             // export overwrite the previous one in the sender's Save dialog.
-            var defaultName = profileNames.Count == 1
+            var defaultName = teclado != null
+                ? string.Concat(teclado.Name.Split(Path.GetInvalidFileNameChars())).Trim()
+                : profileNames.Count == 1
                 ? profileNames[0]
                 : S.ProfilesNamesExport(date: DateTime.Now.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));
             var fileName = await ShowFileDialogAsync(new WinForms.SaveFileDialog
@@ -2157,7 +2161,8 @@ namespace TrueReplayer.Controllers
                 });
             }
 
-            if (envelope.Profiles.Count == 0) return (0, 0, new List<string>(), null);   // none of the requested names loaded — distinct from cancel
+            // None of the requested names loaded — distinct from cancel. A game still makes a file.
+            if (envelope.Profiles.Count == 0 && teclado == null) return (0, 0, new List<string>(), null);
 
             if (includeOrganization)
             {
@@ -2285,7 +2290,10 @@ namespace TrueReplayer.Controllers
                     TypeInfoResolver = new DefaultJsonTypeInfoResolver()
                 };
                 var envelope = JsonSerializer.Deserialize<ProfileExportEnvelope>(json, options);
-                if (envelope?.Profiles == null || envelope.Profiles.Count == 0) return (null, ImportParseError.NoProfiles);
+                if (envelope == null) return (null, ImportParseError.NoProfiles);
+                envelope.Profiles ??= new List<ProfileExportEntry>();
+                // A Keyboard game exported alone (its keys run no macro) is a file with something in it.
+                if (envelope.Profiles.Count == 0 && envelope.Teclado == null) return (null, ImportParseError.NoProfiles);
                 return (envelope, ImportParseError.None);
             }
             catch (Exception ex)

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Download, AlertTriangle, FolderOpen, Hash, Pencil, Replace, Ban, Type, Zap, PackageCheck, Link2 } from 'lucide-react';
+import { Download, AlertTriangle, FolderOpen, Gamepad2, Hash, Pencil, Replace, Ban, Type, Zap, PackageCheck, Link2 } from 'lucide-react';
 import type { ImportPreviewPayload, ImportConflictResolution } from '../bridge/messageTypes';
 import { Checkbox, CheckboxBox } from './Checkbox';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
@@ -20,8 +20,9 @@ interface ImportPreviewDialogProps {
    * Called with the list of selected profile names and the per-profile resolution
    * for any name conflicts. The map only contains entries for profiles whose name
    * collides with an existing local profile; for the rest, the backend imports normally.
+   * `teclado`: the Keyboard game the file carries comes in too (its card kept ticked).
    */
-  onConfirm: (selectedNames: string[], conflictResolutions: Record<string, ImportConflictResolution>) => void;
+  onConfirm: (selectedNames: string[], conflictResolutions: Record<string, ImportConflictResolution>, teclado: boolean) => void;
   onCancel: () => void;
 }
 
@@ -127,12 +128,20 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
   // for "how many selectable rows are selected" could silently diverge.
   const allSelected = compatibleCount > 0 && selectedCount === compatibleCount;
 
+  // Teclado (branch teclado, phase 7): a Keyboard game in the file, ticked unless the Keyboard is full.
+  // The dialog is mounted anew for each file, so the first value is the file's.
+  const game = preview.teclado ?? null;
+  const [gameOn, setGameOn] = useState(!!game && !game.full);
+  const withGame = !!game && gameOn && !game.full;
+  // What the button counts: the macros that land, and the game.
+  const importTotal = effectiveImportCount + (withGame ? 1 : 0);
+
   const handleConfirm = () => {
     const names = Object.entries(selected)
       .filter(([_, on]) => on)
       .map(([name]) => name)
       .filter(name => preview.profiles.find(p => p.name === name)?.compatible === true);
-    onConfirm(names, conflictResolutions);
+    onConfirm(names, conflictResolutions, withGame);
   };
 
   const toggleAll = (value: boolean) => {
@@ -181,12 +190,14 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
       // proportional digits made the hint and the button label shuffle sideways as they ticked.
       footerHint={
         <span className="tabular-nums">
-          {skipResolvedCount > 0
+          {preview.profiles.length > 0 && (skipResolvedCount > 0
             ? `${t('dialogs.importPreview.willImport', { count: effectiveImportCount })} · ${t('dialogs.importPreview.skipped', { count: skipResolvedCount })}`
-            : t('dialogs.importPreview.willImportOf', { count: effectiveImportCount, total: compatibleCount })}
+            : t('dialogs.importPreview.willImportOf', { count: effectiveImportCount, total: compatibleCount }))}
+          {preview.profiles.length > 0 && withGame && ' · '}
+          {withGame && t('teclado.file.hintGame', { game: game.finalName })}
         </span>
       }
-      footer={<DialogFooter secondary={{ label: t('common.actions.cancel'), onClick: onCancel }} primary={{ label: t('dialogs.importPreview.importSelected', { n: effectiveImportCount }), onClick: handleConfirm, disabled: effectiveImportCount === 0, className: 'tabular-nums' }} />}
+      footer={<DialogFooter secondary={{ label: t('common.actions.cancel'), onClick: onCancel }} primary={{ label: t('dialogs.importPreview.importSelected', { n: importTotal }), onClick: handleConfirm, disabled: importTotal === 0, className: 'tabular-nums' }} />}
       // No Enter rule (unchanged from the hand-rolled version); this handler only
       // preserves the old scrim-level stopPropagation so keystrokes typed while
       // reviewing don't leak to app-level shortcut handlers. Esc is owned by the
@@ -204,6 +215,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
           </div>
           <div className="mt-1 text-minor text-text-secondary flex flex-wrap items-center gap-x-3 gap-y-0.5">
             <span>{t('dialogs.file.macros', { count: preview.profiles.length })}</span>
+            {game && <span>{t('teclado.file.summary', { game: game.name })}</span>}
             {conflictCountAll > 0 && (
               <span
                 className="text-warning-ink flex items-center gap-1"
@@ -232,10 +244,49 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
           </div>
         </div>
 
+        {/* Teclado (phase 7): the Keyboard game the file carries, above its macros, ticked on its own. */}
+        {game && (
+          <div className="px-2 pt-2">
+            <div className="flex items-start gap-3 px-3 py-2.5 rounded border border-border-subtle bg-bg-card">
+              <div className="pt-0.5">
+                <Checkbox checked={withGame} disabled={game.full} ariaLabel={t('teclado.file.cardLabel', { game: game.name })} onChange={setGameOn} />
+              </div>
+              <Gamepad2 size={16} className="mt-0.5 shrink-0 text-text-tertiary" aria-hidden="true" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-minor font-medium text-text-primary truncate">{game.name}</span>
+                  <span className="text-caption px-1.5 py-px rounded bg-bg-surface text-text-tertiary border border-border-subtle shrink-0">{t('teclado.file.badge')}</span>
+                </div>
+                <div className="mt-0.5 text-caption text-text-secondary flex flex-wrap gap-x-2.5 gap-y-0.5">
+                  {game.exes.map(exe => <span key={exe} className="font-mono">{exe}</span>)}
+                  <span>{t('teclado.file.keys', { count: game.keys })}</span>
+                </div>
+                {game.full ? (
+                  <div className="mt-1.5 flex items-start gap-1.5 text-caption text-warning-ink">
+                    <AlertTriangle size={11} className="mt-0.5 shrink-0" style={{ color: 'var(--color-warning-ink)' }} />
+                    <span>{t('teclado.file.full')}</span>
+                  </div>
+                ) : withGame && (
+                  <>
+                    {game.finalName !== game.name && <div className="mt-1 text-caption text-text-tertiary">{t('teclado.file.renamed', { name: game.finalName })}</div>}
+                    {game.exeTakenBy && (
+                      <div className="mt-1.5 flex items-start gap-1.5 text-caption text-warning-ink">
+                        <AlertTriangle size={11} className="mt-0.5 shrink-0" style={{ color: 'var(--color-warning-ink)' }} />
+                        <span>{t('teclado.file.exeTaken', { other: game.exeTakenBy })}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Select-all — the Export dialog's row idiom (CheckboxBox + count), replacing
             the hover-only "Select all / Clear" text links. The box is aria-hidden, so the
-            row itself carries the checkbox role and its checked / mixed state. */}
-        <div className="px-4 py-1.5 border-b border-border-subtle">
+            row itself carries the checkbox role and its checked / mixed state. A file with
+            the Keyboard game alone has no macro to pick. */}
+        {preview.profiles.length > 0 && <div className="px-4 py-1.5 border-b border-border-subtle">
           <button
             type="button"
             role="checkbox"
@@ -248,7 +299,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
             <span className="text-minor font-medium text-text-secondary">{t('dialogs.importPreview.selectAll')}</span>
             <span className="ml-auto text-caption text-text-tertiary tabular-nums">{selectedCount}/{compatibleCount}</span>
           </button>
-        </div>
+        </div>}
 
         {/* Bulk conflict resolution — rendered only when at least one SELECTED profile
             collides with an existing local name, and bulk-apply touches only those

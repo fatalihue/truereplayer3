@@ -386,6 +386,22 @@ export interface ImportPreviewPayload {
   /** True when the user has never acknowledged the security warning before. */
   requiresAcknowledgement: boolean;
   profiles: ImportPreviewProfile[];
+  /** Teclado (branch teclado, phase 7): a Keyboard game the file carries, as it will come in. */
+  teclado?: TecladoImportPreview;
+}
+
+/** A Keyboard game in an import (TecladoService.ImportPreview). */
+export interface TecladoImportPreview {
+  name: string;
+  /** The name it takes here: "Roblox (2)" when a game has that name already. */
+  finalName: string;
+  exes: string[];
+  /** Keys with a function, base and layer. */
+  keys: number;
+  /** A game turned on that already plays on one of its .exe: this one comes in turned off. */
+  exeTakenBy?: string;
+  /** The Keyboard has its 64 games: this one does not come in. */
+  full: boolean;
 }
 
 /** Detailed metadata payload for the Info tab. */
@@ -641,6 +657,8 @@ export interface TecladoLive {
   front: string | null;
   process: string | null;
   layer: boolean;
+  /** Phase 7: the game locked ("Lock to this game"), in front with any window but the app's. */
+  locked?: string | null;
 }
 
 // ── Automation (trigger daemon) ──
@@ -1084,6 +1102,8 @@ export type IncomingMessage =
   // Teclado (branch teclado): the per-game keyboard's whole config after every load and save, with the
   // quarantine's state (TecladoService, the remaps.json protections).
   | { type: 'teclado:state'; payload: TecladoState }
+  // Phase 7: an import brought a Keyboard game in; the page picks it.
+  | { type: 'teclado:imported'; payload: { id: string } }
   // The process in front and its game (TecladoFront, from the foreground event), on every change.
   | { type: 'teclado:live'; payload: TecladoLive }
   | { type: 'clipboard:content'; payload: { text: string } }
@@ -1194,6 +1214,8 @@ export type IncomingMessage =
       requestedCount: number;
       bundledDependencies: string[];
       missingImages: number;
+      /** Teclado (phase 7): the Keyboard game this export carries (its Export button), by name. */
+      tecladoGame?: string;
     } }
   // Pushed in response to profile:getMetadata for the Info tab.
   | { type: 'profile:metadata'; payload: ProfileMetadataPayload }
@@ -1255,6 +1277,9 @@ export type OutgoingMessage =
   // teclado.json" the quarantine waits for.
   | { type: 'teclado:save'; payload: { config: TecladoConfig } }
   | { type: 'teclado:overwriteUnreadable'; payload: Record<string, never> }
+  // Phase 7: "Lock to this game" (id) and its undoing (null); "Export" of a game with its macros.
+  | { type: 'teclado:lock'; payload: { id: string | null } }
+  | { type: 'teclado:export'; payload: { id: string } }
   | { type: 'recording:toggle'; payload: { insertIndex?: number } }
   // No payload: the loop settings used to ride here, straight out of the React `settings`
   // slice, which no profile-activation path refreshes — so after switching from a 3x profile
@@ -1628,7 +1653,7 @@ export type OutgoingMessage =
   // for each profile name that collides with an existing local profile — defaults to
   // 'rename' server-side if a conflicting profile is missing from the map (defence
   // against frontend bugs / stale previews).
-  | { type: 'profile:confirmImport'; payload: { selectedNames: string[]; conflictResolutions: Record<string, ImportConflictResolution> } }
+  | { type: 'profile:confirmImport'; payload: { selectedNames: string[]; conflictResolutions: Record<string, ImportConflictResolution>; teclado?: boolean } }
   // Sent when the user dismisses the preview without importing (cancels the security
   // warning or the Import Preview dialog). Tells the bridge to drop the server-side
   // parsed envelope so it doesn't linger in memory.

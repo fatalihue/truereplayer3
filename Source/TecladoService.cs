@@ -333,6 +333,100 @@ namespace TrueReplayer.Services
             return true;
         }
 
+        // ── Export and import (phase 7): a game rides in the macros' .trprofile ──
+
+        /// <summary>The library macros a game's keys run (base, then layer), each once, in the order the keys name them.</summary>
+        public static List<string> MacrosOf(Game game)
+        {
+            var names = new List<string>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var layer in new[] { game.Base, game.Layer })
+                foreach (var fn in layer.Values)
+                    if (fn.Kind == "macro" && !string.IsNullOrEmpty(fn.Macro) && seen.Add(fn.Macro)) names.Add(fn.Macro);
+            return names;
+        }
+
+        /// <summary>A copy of the game for a file: its keys and .exe, without the id this install gave it.</summary>
+        public static Game ForExport(Game game)
+        {
+            var copy = Clone(game);
+            copy.Id = "";
+            copy.On = true;
+            return copy;
+        }
+
+        /// <summary>What the import's preview says about a game in the file: the name it will take, and why it may come in off.</summary>
+        public static object? ImportPreview(Game? incoming)
+        {
+            if (incoming == null) return null;
+            var clean = Normalize(new Config { Games = new List<Game> { Clone(incoming) } }).Games.FirstOrDefault();
+            if (clean == null) return null;
+            lock (_lock)
+            {
+                var taken = TakenBy(clean);
+                return new
+                {
+                    name = clean.Name,
+                    finalName = FreeGameName(clean.Name),
+                    exes = clean.Exes,
+                    keys = clean.Base.Count + clean.Layer.Count,
+                    // Another game already plays on one of its .exe: this one comes in turned off.
+                    exeTakenBy = taken?.Name,
+                    full = Current.Games.Count >= MaxGames,
+                };
+            }
+        }
+
+        /// <summary>
+        /// Adds a game from a file: a new id, a free name ("Roblox (2)"), its macros under the names the
+        /// import gave them, and turned off when another game already plays on one of its .exe (with two
+        /// games on one .exe the one turned on wins, so nothing changes until the user picks it). The
+        /// name it took and whether it came in on, or null when the Teclado is full.
+        /// </summary>
+        public static (string Id, string Name, bool On)? ImportGame(Game incoming, IEnumerable<(string requested, string final)> renamed)
+        {
+            var map = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var (requested, final) in renamed) map.TryAdd(requested, final);
+            var clean = Normalize(new Config { Games = new List<Game> { Clone(incoming) } }).Games.FirstOrDefault();
+            if (clean == null) return null;
+            Config next;
+            (string, string, bool) result;
+            lock (_lock)
+            {
+                if (Current.Games.Count >= MaxGames) return null;
+                foreach (var layer in new[] { clean.Base, clean.Layer })
+                    foreach (var fn in layer.Values)
+                        if (fn.Kind == "macro" && fn.Macro != null && map.TryGetValue(fn.Macro, out var final)) fn.Macro = final;
+                clean.Id = "g-" + Guid.NewGuid().ToString("N")[..10];
+                clean.Name = FreeGameName(clean.Name);
+                clean.On = TakenBy(clean) == null;
+                next = new Config { Enabled = Current.Enabled, Layout = Current.Layout, Games = Current.Games.Append(clean).ToList() };
+                result = (clean.Id, clean.Name, clean.On);
+            }
+            Save(next);
+            return result;
+        }
+
+        // The game turned on that already plays on one of this game's .exe, if any.
+        private static Game? TakenBy(Game game) => Current.Games.FirstOrDefault(g => g.On
+            && g.Exes.Any(e => game.Exes.Any(x => string.Equals(RemapService.NormalizeProcess(e), RemapService.NormalizeProcess(x), StringComparison.Ordinal))));
+
+        // "Roblox", or "Roblox (2)" and on when a game has that name already (as the library numbers an imported macro).
+        private static string FreeGameName(string name)
+        {
+            bool Taken(string n) => Current.Games.Any(g => string.Equals(g.Name, n, StringComparison.OrdinalIgnoreCase));
+            if (!Taken(name)) return name;
+            for (int i = 2; ; i++)
+            {
+                var suffix = $" ({i})";
+                var candidate = (name.Length + suffix.Length > MaxNameLength ? name[..(MaxNameLength - suffix.Length)] : name) + suffix;
+                if (!Taken(candidate)) return candidate;
+            }
+        }
+
+        private static Game Clone(Game game) =>
+            JsonSerializer.Deserialize<Game>(JsonSerializer.Serialize(game, WriteOptions), ReadOptions) ?? new Game();
+
         /// <summary>A config the page sent, read with the same names the file uses.</summary>
         public static Config? FromJson(JsonElement element)
         {

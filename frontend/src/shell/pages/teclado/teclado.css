@@ -72,6 +72,8 @@
 .tk-game[aria-current='true'] .tk-game-name { font-weight: 600; }
 .tk-game-exe { font-family: var(--font-mono); font-size: var(--text-caption); line-height: 1rem; color: var(--color-text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tk-front-dot { width: 0.4375rem; height: 0.4375rem; flex: none; border-radius: 50%; background: var(--color-replay); }
+/* The locked game's padlock, in the dot's place (phase 7). */
+.tk-game-lock { width: 0.8125rem; height: 0.8125rem; flex: none; color: var(--color-accent); }
 .tk-games-foot { margin: 0; padding: 0.625rem 1rem 0.75rem; border-top: 1px solid var(--color-border-subtle); font-size: var(--text-minor); line-height: 1rem; color: var(--color-text-tertiary); }
 .tk-games-none { padding: 0.25rem 0.5rem; font-size: var(--text-minor); color: var(--color-text-tertiary); }
 /* Add a game: the open programs (the Key Remaps' picker), then the .exe typed. */
@@ -133,6 +135,10 @@
 }
 .tk-pill::before { content: ''; width: 0.375rem; height: 0.375rem; border-radius: 50%; background: var(--pill); }
 .tk-pill[data-tone='layer'] { --pill: var(--color-action-if-fg); }
+/* Locked (phase 7): the padlock takes the dot's place, in the accent. */
+.tk-pill[data-tone='locked'] { --pill: var(--color-accent); }
+.tk-pill[data-tone='locked']::before { display: none; }
+.tk-pill svg { width: 0.75rem; height: 0.75rem; color: var(--pill); }
 .tk-head-end { display: flex; align-items: center; gap: 0.625rem; flex: none; }
 .tk-use { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--color-text-secondary); }
 .tk .tk-file { height: 1.875rem; padding: 0 0.625rem; gap: 0.375rem; border-color: var(--color-border-default); background: transparent; font-size: var(--text-minor); }
@@ -366,7 +372,8 @@
   /* The list's own "no games yet" too: the main area says it, with the way to add one. */
   .tk-game-text, .tk-games-foot, .tk-games-none, .tk-games .lib-title, .tk-games .lib-new span, .tk-games .lib-heading { display: none; }
   .tk-games .lib-header { justify-content: center; padding: 0; }
-  .tk-front-dot { position: absolute; top: 0.25rem; right: 0.25rem; }
+  .tk-front-dot, .tk-game-lock { position: absolute; top: 0.25rem; right: 0.25rem; }
+  .tk-game-lock { width: 0.625rem; height: 0.625rem; }
 }
 /* 760–1023: the key's panel lies over the drawing. */
 @container shell (max-width: 63.99rem) {

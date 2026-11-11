@@ -597,5 +597,12 @@ namespace TrueReplayer.Models
         public string ExportedAt { get; set; } = DateTime.UtcNow.ToString("o");
         public List<ProfileExportEntry> Profiles { get; set; } = new();
         public ProfileExportOrganization? Organization { get; set; }
+        /// <summary>
+        /// Teclado (branch teclado, phase 7): the game exported from the Keyboard page, beside the macros
+        /// its keys run. Left out of every other export, so their files stay as they were; a TR3 without
+        /// the Teclado reads the macros and skips it.
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public TrueReplayer.Services.TecladoService.Game? Teclado { get; set; }
     }
 }

@@ -34,7 +34,9 @@ export function Rail() {
   const clicker = useApp(a => a.settings.useCursorClick);
   const armed = useApp(a => (a.automation.enabled ? a.automation.entries.filter(e => e.trigger.armed && !e.isDisabled).length : 0));
   const { send } = useBridge();
-  const front = useMk(s => (s.enabled ? s.games.find(g => g.id === s.front && g.on)?.name ?? null : null));
+  // The game playing: the one in front, or the one locked (phase 7), which plays with the app in front too.
+  const front = useMk(s => (s.enabled ? s.games.find(g => g.id === (s.locked ?? s.front) && g.on)?.name ?? null : null));
+  const locked = useMk(s => s.locked !== null);
   const peeks = band !== 'wide' && page === 'macros';
   const openMacros = () => {
     // The write useSettings().change makes, sent here so the settings hook stays out of the opening
@@ -70,7 +72,7 @@ export function Rail() {
             data-library-toggle={id === 'macros' && peeks ? '' : undefined}
             data-tip={id === 'macros' && clicker ? t('rail.backToMacros')
               : badge ? t('rail.automationsArmed', { count: armed })
-              : playing ? t('teclado.railPlaying', { game: front })
+              : playing ? (locked ? t('teclado.status.locked', { game: front }) : t('teclado.railPlaying', { game: front }))
               : label}
             data-tip-pos="right"
             onPointerEnter={() => warm(id)}

@@ -71,6 +71,9 @@ export default {
     // A chave do Teclado (branch teclado), e quantos jogos ele tem ativados.
     teclado: 'Teclado',
     tecladoGames: { zero: '· {{n}} jogos', one: '· {{n}} jogo', other: '· {{n}} jogos' },
+    // O jogo travado na página Teclado ("Travar neste jogo"), e o link que o destrava daqui.
+    tecladoLocked: '· {{game}} travado',
+    tecladoUnlock: 'Destravar o {{game}}',
     armed: { zero: '· {{n}} armadas', one: '· {{n}} armada', other: '· {{n}} armadas' },
     active: { zero: '· {{n}} ativos', one: '· {{n}} ativo', other: '· {{n}} ativos' },
     clicker: 'Clicker',

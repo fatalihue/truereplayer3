@@ -526,6 +526,12 @@ namespace TrueReplayer.Services
         public static string BridgeAlertImportAllSkipped(string n, int count) => IsPt ? (count == 0 ? "Nenhuma macro foi pulada." : (count < 2 ? "A macro foi pulada." : $"Todas as {n} macros foram puladas.")) : $"All {n} macro(s) were skipped.";
         /// <summary>engine-bridge.alert.import.noneImported · No macros were imported.</summary>
         public static string BridgeAlertImportNoneImported => IsPt ? "Nenhuma macro foi importada." : "No macros were imported.";
+        /// <summary>engine-bridge.alert.import.tecladoAdded · {{game}} was added to the Keyboard.</summary>
+        public static string BridgeAlertImportTecladoAdded(string game) => IsPt ? $"{game} entrou no Teclado." : $"{game} was added to the Keyboard.";
+        /// <summary>engine-bridge.alert.import.tecladoAddedOff · {{game}} was added to the Keyboard turned off: another game already uses its .exe. Turn one or the other on with "Use".</summary>
+        public static string BridgeAlertImportTecladoAddedOff(string game) => IsPt ? $"{game} entrou no Teclado desativado: outro jogo já usa o .exe dele. Ative um ou outro em \"Usar\"." : $"{game} was added to the Keyboard turned off: another game already uses its .exe. Turn one or the other on with \"Use\".";
+        /// <summary>engine-bridge.alert.import.tecladoFull · The game was not added: the Keyboard already has {{max}} games.</summary>
+        public static string BridgeAlertImportTecladoFull(string max) => IsPt ? $"O jogo não entrou: o Teclado já tem {max} jogos." : $"The game was not added: the Keyboard already has {max} games.";
         /// <summary>engine-bridge.alert.settings.resetBusy · Stop the recording or replay before resetting settings.</summary>
         public static string BridgeAlertSettingsResetBusy => IsPt ? "Pare a gravação ou a reprodução antes de redefinir as configurações." : "Stop the recording or replay before resetting settings.";
         /// <summary>engine-bridge.alert.settings.saveFailed · Couldn't save your settings to disk. They're kept for this session and will be retried on the next change and on exit.</summary>
@@ -1562,6 +1568,10 @@ namespace TrueReplayer.Services
         public static string TrayPanelTeclado => IsPt ? "Teclado" : "Keyboard";
         /// <summary>engine-tray.panel.tecladoGames · · {{n}} game</summary>
         public static string TrayPanelTecladoGames(string n, int count) => IsPt ? (count == 0 ? $"· {n} jogos" : (count < 2 ? $"· {n} jogo" : $"· {n} jogos")) : (count == 1 ? $"· {n} game" : $"· {n} games");
+        /// <summary>engine-tray.panel.tecladoLocked · · locked to {{game}}</summary>
+        public static string TrayPanelTecladoLocked(string game) => IsPt ? $"· {game} travado" : $"· locked to {game}";
+        /// <summary>engine-tray.panel.tecladoUnlock · Unlock {{game}}</summary>
+        public static string TrayPanelTecladoUnlock(string game) => IsPt ? $"Destravar o {game}" : $"Unlock {game}";
         /// <summary>engine-tray.panel.armed · · {{n}} armed</summary>
         public static string TrayPanelArmed(string n, int count) => IsPt ? (count == 0 ? $"· {n} armadas" : (count < 2 ? $"· {n} armada" : $"· {n} armadas")) : $"· {n} armed";
         /// <summary>engine-tray.panel.active · · {{n}} active</summary>

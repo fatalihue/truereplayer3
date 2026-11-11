@@ -24,7 +24,8 @@ namespace TrueReplayer
     /// the table: a change of game or of layer mid-hold never leaves a key stuck. Everything is compiled
     /// off this thread and swapped whole; the callback only indexes arrays. Injections carry TecladoMark
     /// in dwExtraInfo and pass the hook's injected gate like every other injection of the app.
-    /// Phase 3 covers keyboard keys; the mouse's own buttons as sources, and Macro, come later.
+    /// The mouse's middle and side buttons and its wheel are sources too (phase 7), with the same two
+    /// entry points in MouseHookCallbackCore and the same slots, after the keys' in the tables.
     /// </summary>
     public static partial class InputHookManager
     {
@@ -45,6 +46,8 @@ namespace TrueReplayer
             /// <summary>macro: the game also gets the key itself ("Manter a tecla original"), re-sent by scan code.</summary>
             public bool KeepOriginal;
             public TecladoStroke Original;
+            /// <summary>macro on a mouse button: the button itself, re-sent when the original is kept.</summary>
+            public TecladoAction? OriginalMouse;
         }
 
         internal readonly record struct TecladoStroke(ushort Vk, ushort Scan, bool Extended);
@@ -203,9 +206,11 @@ namespace TrueReplayer
         /// The same comparisons, in the same modes, as the hotkey block of KeyboardHookCallbackCore.
         /// Composed only for a key the game in front changes; every other key never gets here.
         /// </summary>
-        private static bool TecladoYields(int vk)
+        private static bool TecladoYields(int vk) => TecladoYieldsTo(BuildComposedKey(vk));
+
+        /// <summary>The same, for a press already composed (a side button or a wheel notch, by ComposeMouseCombo).</summary>
+        private static bool TecladoYieldsTo(string key)
         {
-            var key = BuildComposedKey(vk);
             if (key.Length == 0) return false;
             var p = UserProfile.Current;
             if (IsCursorClickMode)
@@ -233,6 +238,137 @@ namespace TrueReplayer
             return TecladoKeys.TryIndexOf(scan, extended, out index);
         }
 
+        // ── The mouse's two entry points (phase 7), in MouseHookCallbackCore ──
+
+        // A wheel turned by less than a notch per message (a free-spinning or high-resolution one) adds
+        // up here: the function fires once per whole notch, in the direction of the turn.
+        private static int _tecladoWheel;
+        private const int WheelNotch = 120;
+        // At most this many notches in one message: a wheel let spin fires its function, not a flood.
+        private const int MaxNotchesPerMessage = 8;
+
+        /// <summary>A release of the middle or a side button the Teclado took: let go of what it did, and swallow the release.</summary>
+        private static bool TecladoMouseUp(int message, in NativeMethods.MSLLHOOKSTRUCT m)
+        {
+            int index = message switch
+            {
+                NativeMethods.WM_MBUTTONUP => TecladoKeys.MouseMiddle,
+                NativeMethods.WM_XBUTTONUP => TecladoXIndex(m.mouseData),
+                _ => -1,
+            };
+            if (index < 0 || !TecladoMousePhysical(m)) return false;
+            var action = _tecladoSlots[index];
+            if (action == null) return false;
+            _tecladoSlots[index] = null;
+            _tecladoHeld--;
+            TecladoMouseFunction(action, index, down: false);
+            return true;
+        }
+
+        /// <summary>
+        /// A press of the middle or a side button, or a wheel notch, with a game in front that changes it.
+        /// The same verdicts as a key's first press: the Shortcuts on, no modal gate up, no recording, and
+        /// the app's own hotkeys win. Left and right never come here: they stay out, so a click is never lost.
+        /// </summary>
+        private static bool TecladoMouseDown(int message, in NativeMethods.MSLLHOOKSTRUCT m, bool gated, bool profileKeysOn)
+        {
+            int index;
+            string? combo;
+            int delta = 0;
+            switch (message)
+            {
+                case NativeMethods.WM_MBUTTONDOWN:
+                    index = TecladoKeys.MouseMiddle;
+                    // The middle button is no hotkey of the app's: nothing to yield to.
+                    combo = null;
+                    break;
+                case NativeMethods.WM_XBUTTONDOWN:
+                    index = TecladoXIndex(m.mouseData);
+                    combo = XButtonName(m.mouseData);
+                    break;
+                case NativeMethods.WM_MOUSEWHEEL:
+                    delta = (short)((m.mouseData >> 16) & 0xffff);
+                    if (delta == 0) return false;
+                    index = delta > 0 ? TecladoKeys.WheelUp : TecladoKeys.WheelDown;
+                    combo = delta > 0 ? "ScrollUp" : "ScrollDown";
+                    break;
+                default:
+                    return false;
+            }
+            var active = _tecladoActive;
+            if (active == null || !TecladoMousePhysical(m)) return false;
+            // A button already taken (a second press with no release between, which a mouse does not
+            // send): it stays the slot's, and the press is swallowed.
+            if (_tecladoSlots[index] != null) return true;
+            if (gated || !profileKeysOn) return false;
+            if (MainController.Instance?.IsRecording() == true) return false;
+            var action = (_tecladoLayer ? active.Layer[index] : null) ?? active.Base[index];
+            if (action == null) return false;
+            if (combo != null && TecladoYieldsTo(ComposeMouseCombo(combo))) return false;
+
+            if (delta != 0)
+            {
+                // A notch is a touch: down and up at once, never a slot (no "while held" on a wheel).
+                if (Math.Sign(delta) != Math.Sign(_tecladoWheel)) _tecladoWheel = 0;
+                _tecladoWheel += delta;
+                int whole = Math.Abs(_tecladoWheel) / WheelNotch;
+                _tecladoWheel -= Math.Sign(_tecladoWheel) * whole * WheelNotch;
+                for (int i = 0; i < Math.Min(whole, MaxNotchesPerMessage); i++)
+                {
+                    TecladoMouseFunction(action, index, down: true);
+                    TecladoMouseFunction(action, index, down: false);
+                }
+                return true;
+            }
+
+            _tecladoSlots[index] = action;
+            _tecladoHeld++;
+            TecladoMouseFunction(action, index, down: true);
+            return true;
+        }
+
+        private static int TecladoXIndex(uint mouseData) => XButtonName(mouseData) == "XButton2" ? TecladoKeys.MouseX2 : TecladoKeys.MouseX1;
+
+        // Set while a mouse callback runs a button's function (TecladoMouseDown, TecladoMouseUp).
+        private static bool _tecladoInMouseHook;
+
+        private static void TecladoMouseFunction(TecladoAction action, int index, bool down)
+        {
+            _tecladoInMouseHook = true;
+            try
+            {
+                if (down) TecladoDown(action, index);
+                else TecladoUp(action, index);
+            }
+            finally { _tecladoInMouseHook = false; }
+        }
+
+        /// <summary>
+        /// A mouse event the Teclado injects. Inside the mouse hook's own callback it goes out once the
+        /// callback has returned: a mouse SendInput made there let the very event the hook was swallowing
+        /// through to the app as well (measured: the middle button turned into the left one reached the
+        /// window as both). Queued on this thread, in order; a keyboard injection has no such problem.
+        /// </summary>
+        private static void TecladoMouse(uint flags, uint data)
+        {
+            if (_tecladoInMouseHook) TecladoAfterMouseHook(() => InjectRemappedMouse(flags, data));
+            else InjectRemappedMouse(flags, data);
+        }
+
+        // Runs on this thread after the callback in progress, behind whatever is queued already
+        // (PostToHookThread would run it at once, from here).
+        private static void TecladoAfterMouseHook(Action work)
+        {
+            _hookWork.Enqueue(work);
+            if (!NativeMethods.PostThreadMessage(_hookThreadId, WM_HOOK_WORK, IntPtr.Zero, IntPtr.Zero))
+                DiagnosticLog.Error($"Teclado: the hook thread refused a queued click (PostThreadMessage error {Marshal.GetLastWin32Error()}).");
+        }
+
+        // Physical only (LLMHF_INJECTED clear), or the test probe's mark in a test house: the Teclado's own
+        // clicks, the remaps' and a macro's never come back in as a source.
+        private static bool TecladoMousePhysical(in NativeMethods.MSLLHOOKSTRUCT m) =>
+            (m.flags & 0x1) == 0 || (TecladoTestPhysical && m.dwExtraInfo == TecladoTestMark);
+
         // ── What a function does ──
 
         private static void TecladoDown(TecladoAction a, int index)
@@ -243,8 +379,8 @@ namespace TrueReplayer
                     foreach (var stroke in a.Keys) TecladoSend(stroke, down: true);
                     break;
                 case "mouse":
-                    if (a.Wheel != 0) InjectRemappedMouse(NativeMethods.MOUSEEVENTF_WHEEL, unchecked((uint)a.Wheel));
-                    else InjectRemappedMouse(a.MouseDown, a.MouseData);
+                    if (a.Wheel != 0) TecladoMouse(NativeMethods.MOUSEEVENTF_WHEEL, unchecked((uint)a.Wheel));
+                    else TecladoMouse(a.MouseDown, a.MouseData);
                     break;
                 case "layer":
                     _tecladoLayer = true;
@@ -259,10 +395,20 @@ namespace TrueReplayer
                     break;
                 }
                 case "macro":
-                    // The original first, so the game sees its key before what the macro sends.
-                    if (a.KeepOriginal) TecladoSend(a.Original, down: true);
-                    TecladoRunner.Press(index, a.Binding!);
+                {
+                    // The original first, so the game sees its key before what the macro sends. A mouse
+                    // button's original goes out after the mouse callback (TecladoMouse), so the macro
+                    // starts behind it.
+                    var binding = a.Binding!;
+                    if (a.KeepOriginal && a.OriginalMouse != null)
+                    {
+                        TecladoDown(a.OriginalMouse, index);
+                        if (_tecladoInMouseHook) { TecladoAfterMouseHook(() => TecladoRunner.Press(index, binding)); break; }
+                    }
+                    else if (a.KeepOriginal) TecladoSend(a.Original, down: true);
+                    TecladoRunner.Press(index, binding);
                     break;
+                }
                 // "off": the key does nothing.
             }
         }
@@ -270,7 +416,7 @@ namespace TrueReplayer
         private static void TecladoRepeat(TecladoAction a)
         {
             if (a.Kind == "key" && a.Keys.Length > 0) TecladoSend(a.Keys[^1], down: true);
-            else if (a.Kind == "mouse" && a.Wheel != 0) InjectRemappedMouse(NativeMethods.MOUSEEVENTF_WHEEL, unchecked((uint)a.Wheel));
+            else if (a.Kind == "mouse" && a.Wheel != 0) TecladoMouse(NativeMethods.MOUSEEVENTF_WHEEL, unchecked((uint)a.Wheel));
             // A held macro key repeats only the original it keeps; the macro is already running.
             else if (a.Kind == "macro" && a.KeepOriginal) TecladoSend(a.Original, down: true);
         }
@@ -283,14 +429,20 @@ namespace TrueReplayer
                     for (int i = a.Keys.Length - 1; i >= 0; i--) TecladoSend(a.Keys[i], down: false);
                     break;
                 case "mouse":
-                    if (a.Wheel == 0) InjectRemappedMouse(a.MouseUp, a.MouseData);
+                    if (a.Wheel == 0) TecladoMouse(a.MouseUp, a.MouseData);
                     break;
                 case "layer":
                     _tecladoLayer = false;
                     TecladoFront.SetLayer(false);
                     break;
                 case "macro":
-                    if (a.KeepOriginal) TecladoSend(a.Original, down: false);
+                    if (a.KeepOriginal && a.OriginalMouse != null)
+                    {
+                        TecladoUp(a.OriginalMouse, index);
+                        // Behind the original's release and the macro's start, both queued from a mouse callback.
+                        if (_tecladoInMouseHook) { TecladoAfterMouseHook(() => TecladoRunner.Release(index)); break; }
+                    }
+                    else if (a.KeepOriginal) TecladoSend(a.Original, down: false);
                     // Only a "hold" run stops at the release; the executor knows the mode.
                     TecladoRunner.Release(index);
                     break;
@@ -384,14 +536,16 @@ namespace TrueReplayer
         {
             foreach (var (code, fn) in keys)
             {
-                // The mouse's own buttons as sources come in a later phase: only keyboard keys here.
-                if (!TecladoKeys.TryGetScan(code, out var scan, out var extended)) continue;
+                // A keyboard key by its scan code, or one of the mouse's buttons after the keys (phase 7).
+                int index;
+                if (TecladoKeys.TryGetScan(code, out var scan, out var extended)) index = TecladoKeys.IndexOf(scan, extended);
+                else if (!TecladoKeys.TryMouseIndex(code, out index)) continue;
                 var action = fn.Kind == "macro"
-                    ? MacroAction(fn, scan, extended, layout, reports)
+                    ? MacroAction(fn, index, scan, extended, layout, reports)
                     : CompileAction(fn, layout);
                 if (action == null) continue;
                 if (action.Kind == "macro") anyMacro = true;
-                into[TecladoKeys.IndexOf(scan, extended)] = action;
+                into[index] = action;
             }
         }
 
@@ -411,14 +565,16 @@ namespace TrueReplayer
         /// (missing, empty, or with steps the Teclado does not run) compiles to nothing, so the key does
         /// what it always did, and the page says why.
         /// </summary>
-        private static TecladoAction? MacroAction(TecladoService.KeyFunction fn, uint scan, bool extended, IntPtr layout,
+        private static TecladoAction? MacroAction(TecladoService.KeyFunction fn, int index, ushort scan, bool extended, IntPtr layout,
             Dictionary<string, TecladoMacros.Report> reports)
         {
             if (string.IsNullOrEmpty(fn.Macro)) return null;
             var macro = TecladoMacros.Resolve(fn.Macro, layout, reports);
             if (macro == null) return null;
-            // MAPVK_VSC_TO_VK_EX: the original key's VK (only Pause needs it to be re-sent).
-            ushort vk = (ushort)NativeMethods.MapVirtualKeyEx(extended ? 0xE000 | scan : scan, 3, layout);
+            // MAPVK_VSC_TO_VK_EX: the original key's VK (only Pause needs it to be re-sent). A mouse
+            // button has no scan code: its original is the button itself.
+            bool mouse = index >= TecladoKeys.MouseBase;
+            ushort vk = mouse ? (ushort)0 : (ushort)NativeMethods.MapVirtualKeyEx(extended ? 0xE000u | scan : scan, 3, layout);
             return new TecladoAction
             {
                 Kind = "macro",
@@ -430,7 +586,15 @@ namespace TrueReplayer
                     IntervalMs = fn.Interval ?? 0,
                 },
                 KeepOriginal = fn.KeepOriginal == true,
-                Original = new TecladoStroke(vk, (ushort)scan, extended),
+                Original = mouse ? default : new TecladoStroke(vk, scan, extended),
+                OriginalMouse = mouse ? MouseAction(index switch
+                {
+                    TecladoKeys.MouseMiddle => "MiddleClick",
+                    TecladoKeys.MouseX1 => "XButton1",
+                    TecladoKeys.MouseX2 => "XButton2",
+                    TecladoKeys.WheelUp => "ScrollUp",
+                    _ => "ScrollDown",
+                }) : null,
             };
         }
 

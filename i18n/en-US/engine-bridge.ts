@@ -326,6 +326,10 @@ export default {
       doneWithFolders: { one: 'Imported {{n}} macro(s). Folder organization imported.', other: 'Imported {{n}} macro(s). Folder organization imported.' },
       allSkipped: { one: 'All {{n}} macro(s) were skipped.', other: 'All {{n}} macro(s) were skipped.' },
       noneImported: 'No macros were imported.',
+      // Teclado (branch teclado): the game the file carries, after its macros.
+      tecladoAdded: '{{game}} was added to the Keyboard.',
+      tecladoAddedOff: '{{game}} was added to the Keyboard turned off: another game already uses its .exe. Turn one or the other on with "Use".',
+      tecladoFull: 'The game was not added: the Keyboard already has {{max}} games.',
     },
 
     settings: {

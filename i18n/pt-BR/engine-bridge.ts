@@ -308,6 +308,10 @@ export default {
       },
       allSkipped: { zero: 'Nenhuma macro foi pulada.', one: 'A macro foi pulada.', other: 'Todas as {{n}} macros foram puladas.' },
       noneImported: 'Nenhuma macro foi importada.',
+      // Teclado (branch teclado): o jogo que o arquivo traz, depois das macros dele.
+      tecladoAdded: '{{game}} entrou no Teclado.',
+      tecladoAddedOff: '{{game}} entrou no Teclado desativado: outro jogo já usa o .exe dele. Ative um ou outro em "Usar".',
+      tecladoFull: 'O jogo não entrou: o Teclado já tem {{max}} jogos.',
     },
 
     settings: {

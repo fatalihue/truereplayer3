@@ -10,6 +10,7 @@ export default {
     title: 'Games',
     heading: 'Games',
     inFront: 'In front now',
+    locked: 'Locked',
     none: 'No game yet',
     foot: 'A game turns on by itself with its .exe in front. Outside games nothing changes: the macros and the Key Remaps apply.',
   },
@@ -37,9 +38,28 @@ export default {
     more: 'More game actions',
     renameLabel: 'Game name',
     lock: 'Lock to this game',
+    // Travar (fase 7): as teclas do jogo valem com qualquer janela na frente, menos a do app, até destravar ou fechar o app.
+    unlock: 'Unlock',
+    locked: 'Locked',
+    lockedTip: 'The keys of {{game}} work with any window in front except {{app}}’s. Unlock from the ⋯ menu or the tray.',
+    lockedToast: 'The keys of {{game}} now work with any window in front except {{app}}’s, until you unlock or close the app.',
     removeExe: 'Remove {{exe}}',
     deleted: '{{game}} deleted',
-    soon: 'Not yet: this comes in a later phase of the Keyboard.',
+  },
+  // Exportar e Importar (fase 7): o jogo vai no .trprofile das macros, ao lado das macros que as teclas dele rodam.
+  file: {
+    exported: {
+      one: '{{game}} exported to {{file}}, with {{n}} macro.',
+      other: '{{game}} exported to {{file}}, with {{n}} macros.',
+    },
+    summary: '· and the Keyboard game {{game}}',
+    badge: 'Keyboard',
+    cardLabel: 'Import the game {{game}} into the Keyboard',
+    keys: { one: '{{count}} key with a function', other: '{{count}} keys with a function' },
+    renamed: 'Comes in as {{name}}: a game with this name already exists.',
+    exeTaken: 'Comes in turned off: {{other}} already uses its .exe. Turn one or the other on with "Use".',
+    full: 'Does not come in: the Keyboard already has 64 games.',
+    hintGame: 'and the game {{game}}',
   },
   // teclado.json não pôde ser lido (a quarentena do TecladoService, como a do remaps.json).
   warn: {
@@ -192,9 +212,11 @@ export default {
     front: 'Keyboard · {{game}} in front',
     frontLayer: 'Keyboard · {{game}} · Layer',
     idle: 'Keyboard On · no game in front',
+    locked: 'Keyboard · locked to {{game}}',
     offTip: 'Off: no key changes, in any game.',
     pausedTip: 'On, but paused while the shortcuts are off.',
     onTip: 'With a game in front, its keys change as set on the Keyboard. Turning it off brings every key back at once and releases whatever was held.',
+    lockedTip: 'Locked: the keys of {{game}} work with any window in front except {{app}}’s. Turning it off brings every key back at once.',
   },
   // A seção dos ajustes da macro: as teclas de jogo que usam esta macro.
   section: {

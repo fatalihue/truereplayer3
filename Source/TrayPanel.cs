@@ -37,8 +37,8 @@ namespace TrueReplayer.Services
             IReadOnlyList<MacroRow> Macros,
             bool Shortcuts, bool Automations, int Armed, bool Remaps, int ActiveRemaps, bool Clicker,
             IReadOnlyList<(string Message, DateTime At)> Notices,
-            // Teclado (branch teclado): the master switch, and how many of its games are on.
-            bool Teclado = false, int TecladoGames = 0);
+            // Teclado (branch teclado): the master switch, how many of its games are on, and the game locked.
+            bool Teclado = false, int TecladoGames = 0, string? TecladoLocked = null);
 
         // Wired by MainWindow: where the panel reads from and what its buttons do.
         public static Func<Snapshot>? Read { get; set; }
@@ -50,6 +50,7 @@ namespace TrueReplayer.Services
         public static Action<bool>? OnSetAutomations { get; set; }
         public static Action<bool>? OnSetRemaps { get; set; }
         public static Action<bool>? OnSetTeclado { get; set; }
+        public static Action? OnUnlockTeclado { get; set; }
         public static Action? OnOpenClicker { get; set; }
         public static Action? OnOpenSettings { get; set; }
         public static Action? OnQuit { get; set; }
@@ -87,7 +88,7 @@ namespace TrueReplayer.Services
         // The fixed labels, written in the interface's language when it changes (ApplyLabels): the
         // panel is made once, and the language can change while the app runs.
         private static Button _open = null!, _clicker = null!, _settings = null!, _quit = null!;
-        private static HyperlinkButton _clear = null!, _allMacros = null!;
+        private static HyperlinkButton _clear = null!, _allMacros = null!, _tecladoUnlock = null!;
         private static TextBlock _macrosCaption = null!, _shortcutsLabel = null!, _automationsLabel = null!, _remapsLabel = null!;
         private static TextBlock _settingsLabel = null!, _quitLabel = null!;
         private static string? _labelsLanguage;
@@ -282,6 +283,10 @@ namespace TrueReplayer.Services
             _automations = AddSwitch(stack, out _automationsLabel, out _automationsText, on => OnSetAutomations?.Invoke(on));
             _remaps = AddSwitch(stack, out _remapsLabel, out _remapsText, on => OnSetRemaps?.Invoke(on));
             _teclado = AddSwitch(stack, out _tecladoLabel, out _tecladoText, on => OnSetTeclado?.Invoke(on));
+            // A game locked on the Keyboard page ("Lock to this game"): lifted here without opening the app.
+            _tecladoUnlock = new HyperlinkButton { Padding = new Thickness(8, 0, 6, 2), Visibility = Visibility.Collapsed };
+            _tecladoUnlock.Click += (_, _) => OnUnlockTeclado?.Invoke();
+            stack.Children.Add(_tecladoUnlock);
             _clicker = new Button { HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(8, 6, 8, 6), Background = new SolidColorBrush(Colors.Transparent), BorderThickness = new Thickness(0) };
             var clickerGrid = new Grid();
             clickerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -470,7 +475,11 @@ namespace TrueReplayer.Services
                 _remaps.IsOn = s.Remaps;
                 _remapsText.Text = s.ActiveRemaps > 0 ? S.TrayPanelActive(n: S.Num(s.ActiveRemaps), count: s.ActiveRemaps) : "";
                 _teclado.IsOn = s.Teclado;
-                _tecladoText.Text = s.TecladoGames > 0 ? S.TrayPanelTecladoGames(n: S.Num(s.TecladoGames), count: s.TecladoGames) : "";
+                _tecladoText.Text = s.TecladoLocked != null ? S.TrayPanelTecladoLocked(s.TecladoLocked)
+                    : s.TecladoGames > 0 ? S.TrayPanelTecladoGames(n: S.Num(s.TecladoGames), count: s.TecladoGames) : "";
+                _tecladoUnlock.Visibility = s.TecladoLocked != null ? Visibility.Visible : Visibility.Collapsed;
+                _tecladoUnlock.Content = s.TecladoLocked != null ? S.TrayPanelTecladoUnlock(s.TecladoLocked) : "";
+                AutomationProperties.SetName(_tecladoUnlock, s.TecladoLocked != null ? S.TrayPanelTecladoUnlock(s.TecladoLocked) : "");
                 _clickerText.Text = s.Clicker ? S.TrayPanelClickerOpen : S.TrayPanelClicker;
             }
             finally { _refreshing = false; }

@@ -722,6 +722,8 @@ namespace TrueReplayer
                 TecladoFront.ConfigChanged();
                 bridge?.PushTecladoState();
             };
+            // "Lock to this game" lifted from the tray (phase 7): the page hears it from teclado:live.
+            TrayPanel.OnUnlockTeclado = () => TecladoFront.Lock(null);
             TrayPanel.OnOpenClicker = () => TrayIconService.OnOpenClicker?.Invoke();
             TrayPanel.OnOpenSettings = () => TrayIconService.OnOpenSettings?.Invoke();
             TrayPanel.OnQuit = () => _ = TrayIconService.QuitAsync();
@@ -1957,7 +1959,7 @@ namespace TrueReplayer
                 UserProfile.Current.ProfileKeyEnabled, settings.AutomationEnabled, triggerService?.ConfiguredArmedCount ?? 0,
                 RemapService.Current.Enabled, RemapService.Current.Remaps.Count(r => r.Enabled), clicker,
                 bridge?.PendingNotices ?? Array.Empty<(string, DateTime)>(),
-                TecladoService.Current.Enabled, TecladoService.Current.Games.Count(g => g.On));
+                TecladoService.Current.Enabled, TecladoService.Current.Games.Count(g => g.On), TecladoFront.LockedName);
         }
 
         /// <summary>

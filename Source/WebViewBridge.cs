@@ -1181,6 +1181,8 @@ namespace TrueReplayer
                     case "remap:overwriteUnreadable": HandleRemapOverwriteUnreadable(); break;
                     case "teclado:save": HandleTecladoSave(payload); break;
                     case "teclado:overwriteUnreadable": HandleTecladoOverwriteUnreadable(); break;
+                    case "teclado:lock": HandleTecladoLock(payload); break;
+                    case "teclado:export": HandleTecladoExport(payload); break;
                     case "actions:reorder": HandleActionsReorder(payload); break;
                     case "actions:convertMode": HandleConvertActionMode(payload); break;
                     case "actions:bulkUpdateType": HandleBulkUpdateType(payload); break;
@@ -2625,11 +2627,65 @@ namespace TrueReplayer
 
         internal void PushTecladoState() => SendMessage("teclado:state", TecladoService.StatePayload());
 
-        // The process in front and its game (phase 2), and the layer key held (phase 3).
+        // The process in front and its game (phase 2), the layer key held (phase 3), and the game locked (phase 7).
         private void PushTecladoLive()
         {
             var s = TecladoFront.Current;
-            SendMessage("teclado:live", new { front = s.GameId, process = s.Process, layer = s.Layer });
+            SendMessage("teclado:live", new { front = s.GameId, process = s.Process, layer = s.Layer, locked = s.LockedId });
+        }
+
+        // "Lock to this game" and its undoing (phase 7): the page's head menu. The answer is the
+        // teclado:live the foreground state pushes when the lock changes it.
+        private void HandleTecladoLock(JsonElement payload)
+        {
+            string? id = payload.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String ? idEl.GetString() : null;
+            if (id != null && !TecladoService.Current.Games.Any(g => g.Id == id)) return;
+            TecladoFront.Lock(id);
+        }
+
+        /// <summary>
+        /// "Export" (phase 7): the game and the macros its keys run, in one .trprofile — the macros'
+        /// own export, carrying the game beside them. The file opens in any TR3: one with the Teclado
+        /// brings the game in too (the import's preview shows it).
+        /// </summary>
+        private async void HandleTecladoExport(JsonElement payload)
+        {
+            string? id = payload.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String ? idEl.GetString() : null;
+            var game = TecladoService.Current.Games.FirstOrDefault(g => g.Id == id);
+            if (game == null) return;
+            if (replayService.IsReplaying || recordingService.IsRecording) { SendMessage("alert:show", new { message = S.BridgeAlertExportBusy, type = "error" }); return; }
+            var names = TecladoService.MacrosOf(game);
+            try
+            {
+                // As the macros' export: an open macro with unsaved edits is saved first, or the file
+                // would carry the copy on disk.
+                if (HasUnsavedChanges && CurrentProfileName != "No Profile"
+                    && names.Any(n => string.Equals(n, CurrentProfileName, StringComparison.OrdinalIgnoreCase))
+                    && !await CheckUnsavedChangesAsync(S.ProfilesUnsavedBeforeExporting))
+                    return;
+                var (exported, missingImages, bundledDependencies, savedPath) =
+                    await profileController.ExportProfilesAsync(names, includeOrganization: false, includeDependencies: true, teclado: TecladoService.ForExport(game));
+                // Cancelled in the Save dialog: nothing written, nothing said.
+                if (savedPath == null) return;
+                int exportId = ++_exportSeq;
+                _recentExportPaths[exportId] = savedPath;
+                _recentExportPaths.Remove(exportId - 8);
+                SendMessage("profile:exportResult", new
+                {
+                    exportId,
+                    fileName = Path.GetFileName(savedPath),
+                    // The game's own macros that made it (the ones a Run Macro step pulled in are disclosed apart).
+                    exportedCount = Math.Max(0, exported - bundledDependencies.Count),
+                    requestedCount = names.Count,
+                    bundledDependencies,
+                    missingImages,
+                    tecladoGame = game.Name,
+                });
+            }
+            catch (Exception ex)
+            {
+                SendMessage("alert:show", new { message = S.BridgeAlertExportFailed(S.Reason(ex)), type = "error" });
+            }
         }
 
         // Settings-blob projection for the remap layer (rides settings:loaded + state:init). The
@@ -13665,7 +13721,9 @@ namespace TrueReplayer
                 runningVersion,
                 hasOrganization = envelope.Organization != null,
                 requiresAcknowledgement = !AppSettingsManager.Load().HasAcknowledgedImportWarning,
-                profiles = previewProfiles
+                profiles = previewProfiles,
+                // Teclado (phase 7): a Keyboard game in the file, as it will come in.
+                teclado = TecladoService.ImportPreview(envelope.Teclado),
             });
             if (renamedDuplicates > 0)
             {
@@ -13773,6 +13831,11 @@ namespace TrueReplayer
                 }
             }
 
+            // Teclado (phase 7): the Keyboard game the file carries, when the preview kept it ticked. It
+            // comes in after the macros, with its keys pointing at the names they took.
+            var tecladoGame = payload.TryGetProperty("teclado", out var tecladoProp) && tecladoProp.ValueKind == JsonValueKind.True
+                ? _pendingImportEnvelope.Teclado : null;
+
             if (selectedNames.Count == 0)
             {
                 _pendingImportEnvelope = null;
@@ -13781,6 +13844,8 @@ namespace TrueReplayer
                 // the picker-cancel path is the only legitimate silence.
                 if (unsafeDropped > 0)
                     SendMessage("alert:show", new { message = S.BridgeAlertImportSkippedInvalid(n: S.Num(unsafeDropped), count: unsafeDropped), type = "error" });
+                // A file with the game alone, or the game ticked without its macros.
+                if (tecladoGame != null) AddImportedTecladoGame(tecladoGame, Array.Empty<(string, string)>(), null);
                 return;
             }
 
@@ -13877,10 +13942,13 @@ namespace TrueReplayer
                         string msg = hasOrganization
                             ? S.BridgeAlertImportDoneWithFolders(n: S.Num(imported), count: imported)
                             : S.BridgeAlertImportDone(n: S.Num(imported), count: imported);
-                        SendMessage("alert:show", new { message = msg, type = "success" });
+                        // With a Keyboard game, one notice says both.
+                        if (tecladoGame != null) AddImportedTecladoGame(tecladoGame, renamedPairs, msg);
+                        else SendMessage("alert:show", new { message = msg, type = "success" });
                     }
                     else
                     {
+                        if (tecladoGame != null) AddImportedTecladoGame(tecladoGame, renamedPairs, null);
                         SendMessage("profile:importResult", new
                         {
                             imported,
@@ -13909,6 +13977,8 @@ namespace TrueReplayer
                 else if (totalSkipped > 0)
                 {
                     SendMessage("alert:show", new { message = S.BridgeAlertImportAllSkipped(n: S.Num(totalSkipped), count: totalSkipped), type = "info" });
+                    // Skipped macros keep the local ones of the same name, which the game's keys then run.
+                    if (tecladoGame != null) AddImportedTecladoGame(tecladoGame, renamedPairs, null);
                 }
                 else
                 {
@@ -13916,6 +13986,7 @@ namespace TrueReplayer
                     // (a stale or hand-crafted confirm payload). Previously fell through both branches
                     // and showed NOTHING — the user clicked Import and got silence.
                     SendMessage("alert:show", new { message = S.BridgeAlertImportNoneImported, type = "info" });
+                    if (tecladoGame != null) AddImportedTecladoGame(tecladoGame, renamedPairs, null);
                 }
             }
             catch (Exception ex)
@@ -13928,6 +13999,27 @@ namespace TrueReplayer
                 _pendingImportFileName = null;
                 if (overOpenMacro) _autoSaveHolds--;
             }
+        }
+
+        /// <summary>
+        /// Adds the Keyboard game an import carries (phase 7) and says so: alone, or after the macros'
+        /// own sentence (<paramref name="before"/>) in one notice. The page picks the new game.
+        /// </summary>
+        private void AddImportedTecladoGame(TecladoService.Game game, IEnumerable<(string requested, string final)> renamed, string? before)
+        {
+            var added = TecladoService.ImportGame(game, renamed);
+            string sentence;
+            bool on = false;
+            if (added is { } a)
+            {
+                TecladoFront.ConfigChanged();
+                PushTecladoState();
+                SendMessage("teclado:imported", new { id = a.Id });
+                on = a.On;
+                sentence = a.On ? S.BridgeAlertImportTecladoAdded(a.Name) : S.BridgeAlertImportTecladoAddedOff(a.Name);
+            }
+            else sentence = S.BridgeAlertImportTecladoFull(S.Num(TecladoService.MaxGames));
+            SendMessage("alert:show", new { message = before != null ? before + " " + sentence : sentence, type = on ? "success" : "info" });
         }
 
         // ── Sharing metadata handlers ──

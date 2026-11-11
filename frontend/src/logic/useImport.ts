@@ -38,9 +38,10 @@ export function useImport() {
     macro.cancelImport();
   }, [macro]);
 
-  const confirm = useCallback((names: string[], resolutions: Record<string, ImportConflictResolution>) => {
-    // Confirming with nothing chosen is a cancel: the engine still drops the file it read.
-    if (names.length > 0) macro.confirmImport(names, resolutions);
+  const confirm = useCallback((names: string[], resolutions: Record<string, ImportConflictResolution>, teclado = false) => {
+    // Confirming with nothing chosen is a cancel: the engine still drops the file it read. A Keyboard
+    // game kept ticked is something chosen, even with no macro.
+    if (names.length > 0 || teclado) macro.confirmImport(names, resolutions, teclado);
     else macro.cancelImport();
     setPreview(null);
   }, [macro]);

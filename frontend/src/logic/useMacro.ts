@@ -95,8 +95,9 @@ export function useMacro() {
     startImport: () => send({ type: 'profile:import', payload: {} }),
     /** "Don't show again" on the import security warning. */
     acknowledgeImportWarning: () => send({ type: 'settings:acknowledgeImportWarning', payload: {} }),
-    confirmImport: (selectedNames: string[], conflictResolutions: PayloadOf<'profile:confirmImport'>['conflictResolutions']) =>
-      send({ type: 'profile:confirmImport', payload: { selectedNames, conflictResolutions } }),
+    /** `teclado`: the Keyboard game the file carries comes in too (it is left out of the message otherwise). */
+    confirmImport: (selectedNames: string[], conflictResolutions: PayloadOf<'profile:confirmImport'>['conflictResolutions'], teclado = false) =>
+      send({ type: 'profile:confirmImport', payload: teclado ? { selectedNames, conflictResolutions, teclado } : { selectedNames, conflictResolutions } }),
     /** Drops the parsed import the engine is holding. */
     cancelImport: () => send({ type: 'profile:cancelImport', payload: {} }),
     /** Exports the named macros; the sub-macros they run go along. */

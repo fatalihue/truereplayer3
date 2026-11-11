@@ -150,10 +150,14 @@ export function installDemoEngine() {
   // The window in front, as TecladoFront would say it. In Vite: window.__frente('RobloxPlayerBeta.exe', true).
   let process: string | null = null;
   let layer = false;
+  // "Lock to this game" (phase 7): the locked game is in front with any window (the page is TR3's own, which keeps its keys).
+  let locked: string | null = null;
   const tecladoLive = () => {
+    if (locked && !teclado.games.some(g => g.id === locked)) locked = null;
     const key = (process ?? '').toLowerCase().replace(/\.exe$/, '');
-    const game = key ? teclado.games.find(g => g.exes.some(e => e.toLowerCase().replace(/\.exe$/, '') === key)) : undefined;
-    return { type: 'teclado:live', payload: { front: game?.id ?? null, process, layer: !!game && layer } };
+    const game = locked ? teclado.games.find(g => g.id === locked)
+      : key ? teclado.games.find(g => g.exes.some(e => e.toLowerCase().replace(/\.exe$/, '') === key)) : undefined;
+    return { type: 'teclado:live', payload: { front: game?.id ?? null, process, layer: !!game && layer, locked } };
   };
   (window as unknown as { __frente: (p: string | null, l?: boolean) => void }).__frente = (p, l = false) => {
     process = p;
@@ -190,6 +194,10 @@ export function installDemoEngine() {
         // front is matched again, as TecladoFront.ConfigChanged does.
         teclado = p.config as TecladoConfig;
         emit(tecladoState());
+        emit(tecladoLive());
+        break;
+      case 'teclado:lock':
+        locked = (p.id as string | null) ?? null;
         emit(tecladoLive());
         break;
       case 'process:list':

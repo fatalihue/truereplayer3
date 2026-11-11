@@ -161,7 +161,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         const n = fmtNum(p.exportedCount);
         const total = fmtNum(p.requestedCount);
         const frases = [
-          partial
+          // Teclado (phase 7): the Keyboard's Export names the game, and the macros that went with it.
+          p.tecladoGame && !partial
+            ? t('teclado.file.exported', { count: p.exportedCount, n, game: p.tecladoGame, file: p.fileName ?? '' })
+            : partial
             ? (p.fileName
               ? t('ui.export.partialTo', { count: p.requestedCount, n, total, file: p.fileName })
               : t('ui.export.partial', { count: p.requestedCount, n, total }))

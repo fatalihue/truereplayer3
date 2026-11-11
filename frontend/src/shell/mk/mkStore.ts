@@ -35,6 +35,8 @@ interface MkState {
   front: string | null;
   frontProcess: string | null;
   holding: boolean;
+  /** The game locked ("Lock to this game", phase 7): in front with any window but the app's, until unlocked. */
+  locked: string | null;
   /** What each macro a key points to is to the executor (phase 4); a name missing here is not known yet. */
   macros: Record<string, TecladoMacroReport>;
   /** The drawing (phase 5): the layout chosen, the one Windows says, its labels, and a version bumped on every change. */
@@ -60,6 +62,7 @@ export const useMk = create<MkState>(() => ({
   front: null,
   frontProcess: null,
   holding: false,
+  locked: null,
   macros: {},
   layoutPref: 'auto',
   detected: 'abnt2',
@@ -82,6 +85,8 @@ export function useTecladoSync() {
     const off = bridge.subscribe((message) => {
       if (message.type === 'teclado:state') receive(message.payload);
       else if (message.type === 'teclado:live') receiveLive(message.payload);
+      // An import brought a game in (phase 7): the page shows it, on whatever page the import began.
+      else if (message.type === 'teclado:imported') useMk.setState({ open: message.payload.id, key: null, view: 'base' });
     });
     readLabels();
     window.addEventListener('focus', readLabels);
@@ -111,8 +116,14 @@ function receive(state: TecladoState) {
 }
 
 function receiveLive(live: TecladoLive) {
-  useMk.setState({ front: live.front ?? null, frontProcess: live.process ?? null, holding: !!live.layer });
+  useMk.setState({ front: live.front ?? null, frontProcess: live.process ?? null, holding: !!live.layer, locked: live.locked ?? null });
 }
+
+/** "Lock to this game" (phase 7), or its undoing with null: the engine answers with teclado:live. Lasts until the app closes. */
+export const lockGame = (id: string | null) => send?.({ type: 'teclado:lock', payload: { id } });
+
+/** "Export" (phase 7): the game and the macros its keys run, in one .trprofile (the engine opens the Save dialog). */
+export const exportGame = (id: string) => send?.({ type: 'teclado:export', payload: { id } });
 
 /** An edit: on the page at once, and whole to the engine, whose teclado:state then settles it. */
 function commit(games: Game[], enabled = useMk.getState().enabled, layoutPref = useMk.getState().layoutPref) {
