@@ -466,15 +466,35 @@ namespace TrueReplayer
         // side button in mouseData, or one wheel notch. Injected, therefore LLMHF_INJECTED, so the
         // mouse hook's trigger path ignores them exactly as it ignores replayed clicks.
         // True for the duration of our own mouse SendInput. Both hooks are installed from the hook
-        // thread and this runs inside their callbacks, so the injected event re-enters
+        // thread and this runs on it — inside the keyboard callback, or right after the mouse
+        // callback (see _inMouseHookCallback) — so the injected event re-enters
         // MouseHookCallbackCore synchronously and this flag is still up when it arrives. The
         // keyboard hook has a blanket LLKHF_INJECTED gate; the mouse hook does not (third-party
         // mouse software injects clicks that recordings are supposed to capture), so the recorder
         // is told to skip only OUR injections.
         [ThreadStatic] private static bool _injectingRemapMouse;
 
+        // True while the mouse hook's callback runs (MouseHookCallback), on the hook thread.
+        // A mouse SendInput made from inside that callback does not return until Windows gives up
+        // waiting for the callback (LowLevelHooksTimeout, ~300 ms on the owner's PC), and the event
+        // the callback was swallowing is then delivered anyway. Measured on 11-11-2026 with 3.0.3
+        // and a side button remapped to the middle one (a Scimitar key sent as XButton1 by iCUE's
+        // virtual mouse): every press and every release reached the app as the side button AND the
+        // middle one, ~300 ms late, and even the physical release was read only after that wait.
+        // So a remap's mouse injection from in here waits until the callback has returned — queued
+        // on this thread, in order with everything queued before it, which keeps a down ahead of
+        // its up (measured: the middle one alone, ~3 ms after the press). A keyboard injection from
+        // the mouse callback does not do it (XButton2 → F8 arrived alone, in ~3 ms, before and
+        // after), nor does the keyboard callback (Teclado branch): those still go out at once.
+        [ThreadStatic] private static bool _inMouseHookCallback;
+
         private static void InjectRemappedMouse(uint flags, uint mouseData)
         {
+            if (_inMouseHookCallback)
+            {
+                AfterMouseHookCallback(() => InjectRemappedMouse(flags, mouseData));
+                return;
+            }
             var input = new NativeMethods.INPUT
             {
                 type = NativeMethods.INPUT_MOUSE,
@@ -486,6 +506,16 @@ namespace TrueReplayer
             _injectingRemapMouse = true;
             try { NativeMethods.SendInput(1, ref input, NativeMethods.InputSize); }
             finally { _injectingRemapMouse = false; }
+        }
+
+        // Runs work on the hook thread once the mouse callback in progress has returned, behind
+        // whatever is queued already. PostToHookThread would run it at once, since this is the hook
+        // thread: the post is what makes it wait for the callback.
+        private static void AfterMouseHookCallback(Action work)
+        {
+            _hookWork.Enqueue(work);
+            if (!NativeMethods.PostThreadMessage(_hookThreadId, WM_HOOK_WORK, IntPtr.Zero, IntPtr.Zero))
+                TrueReplayer.Services.DiagnosticLog.Error($"Input hook thread refused a queued remap click (PostThreadMessage error {Marshal.GetLastWin32Error()}).");
         }
 
         /// <summary>
@@ -2087,10 +2117,15 @@ namespace TrueReplayer
             // Core. "The hook ran" is the one fact this must record, and no policy inside the hook
             // may be able to make a live hook look dead.
             System.Threading.Volatile.Write(ref _mouseBeat, Environment.TickCount64);
+            // Saved and restored, not cleared: our own deferred injection re-enters this callback
+            // from inside its SendInput, and the restore must leave the flag as that call found it.
+            bool outerCallback = _inMouseHookCallback;
+            _inMouseHookCallback = true;
             // A low-level hook must never let an exception escape — it can unhook itself or crash
             // the process. Run the real handler guarded; on failure log and pass the event through.
             try { return MouseHookCallbackCore(nCode, wParam, lParam); }
             catch (Exception ex) { try { TrueReplayer.Services.DiagnosticLog.Error("MouseHookCallback", ex); } catch { } }
+            finally { _inMouseHookCallback = outerCallback; }
             return NativeMethods.CallNextHookEx(_mouseHookId, nCode, wParam, lParam);
         }
 
@@ -2276,7 +2311,10 @@ namespace TrueReplayer
                                             // Side button → another mouse button (XButton1 → middle
                                             // click). The injected event is LLMHF_INJECTED and the
                                             // injected-gate above passes it to the app untouched.
-                                            // Same physical-hold guard as the keyboard branch.
+                                            // It goes out once this callback has returned (see
+                                            // _inMouseHookCallback), and so does the wheel's below;
+                                            // the receipt is taken now, so the release still owes
+                                            // its up. Same physical-hold guard as the keyboard branch.
                                             if (!AppHoldsMouseButton(xTarget))
                                             {
                                                 InjectRemapped(xTarget, down: true);
