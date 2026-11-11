@@ -15,7 +15,7 @@ import { keycaps } from '../../library/model';
 import { Menu } from '../../Menu';
 import { anchorBelow, type MenuAnchor } from '../../menuAnchor';
 import { useApp } from '../../store';
-import { useUi } from '../../ui';
+import { openPage, useUi } from '../../ui';
 import {
   appName, describeKey, draftOf, draftProblem, emptyDraft, EXPORT_KIND, fromWarning, hotkeysOf, indexOf, MAX_REMAPS,
   mergeImport, MOUSE_TARGETS, mouseTarget, normProcess, parseRemapImport, refOf, ruleArrow, ruleKey, ruleOf, ruleWords,
@@ -410,6 +410,7 @@ function Table({ editing }: { editing: number | null }) {
       </table>
       {rows.length === 0 && <p className="rm-none" role="status">{t('remaps.table.none')}</p>}
       <ShortcutsNote />
+      <TecladoNote />
       {menu && entries[menu.i] && (
         <Menu
           anchor={menu.anchor}
@@ -433,6 +434,16 @@ function ShortcutsNote() {
   return (
     <p className="rm-note">
       {key ? t('remaps.shortcutsNote.key', { key: keycaps(key) }) : t('remaps.shortcutsNote.noKey')}
+    </p>
+  );
+}
+
+/** The way to the Teclado (branch teclado), where a game's keys live; it points back here (decision 1). */
+function TecladoNote() {
+  return (
+    <p className="rm-note">
+      {t('remaps.tecladoNote.text')}{' '}
+      <button type="button" className="insp-link" onClick={() => openPage('teclado')}>{t('remaps.tecladoNote.open')}</button>
     </p>
   );
 }

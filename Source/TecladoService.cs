@@ -62,7 +62,26 @@ namespace TrueReplayer.Services
             public int Version { get; set; } = SchemaVersion;
             /// <summary>The mode's master switch (the status bar's "Teclado").</summary>
             public bool Enabled { get; set; } = true;
+            /// <summary>The drawing's physical layout chosen by hand (abnt2, ansi, iso), or null to follow Windows' (phase 5).</summary>
+            public string? Layout { get; set; }
             public List<Game> Games { get; set; } = new();
+        }
+
+        public static readonly IReadOnlyCollection<string> Layouts = new[] { "abnt2", "ansi", "iso" };
+
+        /// <summary>
+        /// The drawing's physical family from Windows' keyboard layout (the UI thread's, the one the user
+        /// types with): ABNT2 for Brazilian Portuguese, ANSI for US English and the East Asian layouts,
+        /// ISO for the rest. A guess about the hardware, which the page lets the user correct.
+        /// </summary>
+        public static string DetectLayout()
+        {
+            int lang = (int)((long)Interop.NativeMethods.GetKeyboardLayout(0) & 0xFFFF);
+            int primary = lang & 0x3FF;
+            if (lang == 0x0416) return "abnt2";
+            // English (US), Chinese, Japanese, Korean.
+            if (lang == 0x0409 || primary == 0x04 || primary == 0x11 || primary == 0x12) return "ansi";
+            return "iso";
         }
 
         public const int SchemaVersion = 1;
@@ -225,7 +244,7 @@ namespace TrueReplayer.Services
         public static void SetEnabled(bool enabled)
         {
             Config next;
-            lock (_lock) next = new Config { Enabled = enabled, Games = Current.Games };
+            lock (_lock) next = new Config { Enabled = enabled, Layout = Current.Layout, Games = Current.Games };
             Save(next);
         }
 
@@ -247,6 +266,7 @@ namespace TrueReplayer.Services
                     loadFailureDetail = LoadFailureDetail,
                     pendingFile = PendingFileName,
                     macros,
+                    detectedLayout = DetectLayout(),
                 };
             }
         }
@@ -331,7 +351,13 @@ namespace TrueReplayer.Services
         /// </summary>
         public static Config Normalize(Config? raw)
         {
-            var config = new Config { Version = SchemaVersion, Enabled = raw?.Enabled ?? true };
+            var layout = raw?.Layout?.Trim().ToLowerInvariant();
+            var config = new Config
+            {
+                Version = SchemaVersion,
+                Enabled = raw?.Enabled ?? true,
+                Layout = layout != null && Layouts.Contains(layout) ? layout : null,
+            };
             if (raw?.Games == null) return config;
             var ids = new HashSet<string>(StringComparer.Ordinal);
             foreach (var g in raw.Games)

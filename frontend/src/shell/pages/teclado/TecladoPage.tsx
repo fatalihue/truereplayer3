@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { ArrowRightLeft, Download, Ellipsis, Gamepad2, Keyboard, ListChecks, Lock, Plus, X } from 'lucide-react';
 import { useBridge } from '../../../bridge/BridgeContext';
-import type { TecladoMacroReport } from '../../../bridge/messageTypes';
+import type { RemapEntryDto, TecladoMacroReport } from '../../../bridge/messageTypes';
 import { LANG, t, tn } from '../../../i18n';
 import { useEditorTools } from '../../../logic/useEditorTools';
 import { useToast } from '../../../state/ToastContext';
@@ -12,11 +12,11 @@ import { stepName } from '../../list/stepTypes';
 import { Menu } from '../../Menu';
 import { anchorBelow, type MenuAnchor } from '../../menuAnchor';
 import {
-  FNS, fnInfo, KEYS, legendOf, MODES, MOUSE_CODES, trKeyName, type FnKind, type Game, type KeyCap, type KeyFn,
+  codeOfTr, currentKeys, FAMILIES, FNS, fnInfo, legendOf, MODES, MOUSE_CODES, trKeyName, type FnKind, type Game, type KeyCap, type KeyFn,
 } from '../../mk/mkModel';
 import {
-  addExe, addGame, fnAt, gameOf, globalsOf, layerKeyOf, openGame, overwriteUnreadable, pickKey, removeExe,
-  removeGame, renameGame, setGameFn, setGameOn, useMk, type Source,
+  addExe, addGame, fnAt, gameOf, layerKeyOf, openGame, overwriteUnreadable, pickKey, removeExe,
+  familyOf, removeGame, renameGame, setGameFn, setGameOn, setLayoutPref, useMk, type Source,
 } from '../../mk/mkStore';
 import { Popover } from '../../Popover';
 import { whenOpen } from '../../recordNew';
@@ -40,6 +40,8 @@ import './teclado.css';
 export default function TecladoPage() {
   const key = useMk(s => s.key);
   const hasGames = useMk(s => s.games.length > 0);
+  // A new drawing (another layout, or Windows' labels arriving) remounts what draws and names keys.
+  const drawingVersion = useMk(s => s.drawingVersion);
   // Esc closes the key, as the Key Remaps' panel does.
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -53,7 +55,7 @@ export default function TecladoPage() {
   }, []);
   const empty = !hasGames;
   return (
-    <section className="shell-page tk" aria-label={t('teclado.page')}>
+    <section key={drawingVersion} className="shell-page tk" aria-label={t('teclado.page')}>
       <Games />
       <div className="tk-main">
         <Warn />
@@ -75,6 +77,26 @@ export default function TecladoPage() {
 }
 
 // ── What the screens read ──
+
+// Only the page reads the Key Remaps under a game (rule 6: remapModel stays out of the opening).
+/**
+ * The Key Remaps under a game's keys: the "everywhere" ones and the "only in one app" ones of its
+ * .exe. They stay on the Key Remaps page; here they only show as what a key without a function does.
+ */
+function globalsOf(remaps: { enabled: boolean; entries: RemapEntryDto[] }, exes: string[]): Record<string, KeyFn> {
+  const out: Record<string, KeyFn> = {};
+  if (!remaps.enabled) return out;
+  const lower = exes.map(e => e.toLowerCase().replace(/\.exe$/, ''));
+  for (const r of remaps.entries) {
+    if (!r.enabled) continue;
+    const scope = (r.process ?? '').toLowerCase().replace(/\.exe$/, '');
+    if (scope && !lower.includes(scope)) continue;
+    const code = codeOfTr(r.from);
+    if (!code) continue;
+    out[code] = !r.to ? { kind: 'off' } : mouseTarget(r.to) ? { kind: 'mouse', mouse: r.to } : { kind: 'key', combo: r.to };
+  }
+  return out;
+}
 
 const SHORT = tn('teclado.short');
 
@@ -367,8 +389,34 @@ function Bar() {
         {view === 'layer' ? t('teclado.bar.changedLayer', { count }) : t('teclado.bar.changed', { count })}
       </span>
       <button type="button" className="rm-chip" aria-pressed={numpad} onClick={() => useMk.setState({ numpad: !numpad })}>{t('teclado.bar.numpad')}</button>
-      <span className="tk-layout" data-tip={t('teclado.bar.layoutTip')}>{t('teclado.bar.layout')}</span>
+      <LayoutButton />
     </div>
+  );
+}
+
+const LAYOUTS = tn('teclado.bar.layouts');
+
+/** The drawing's layout: Windows' (Automatic) or one chosen by hand. A game keeps keys by position, so it changes nothing in the game. */
+function LayoutButton() {
+  const pref = useMk(s => s.layoutPref);
+  const detected = useMk(s => s.detected);
+  const family = useMk(familyOf);
+  const [menu, setMenu] = useState<{ anchor: MenuAnchor; button: HTMLButtonElement } | null>(null);
+  return (
+    <>
+      <button type="button" className="rm-chip tk-layout" aria-haspopup="menu" aria-expanded={!!menu}
+        data-tip={t('teclado.bar.layoutTip')} onClick={(e) => setMenu(menu ? null : { anchor: anchorBelow(e.currentTarget, 'end'), button: e.currentTarget })}>
+        {LAYOUTS[family]}
+      </button>
+      {menu && (
+        <Menu anchor={menu.anchor} label={t('teclado.bar.layoutLabel')} toggle={menu.button} onClose={() => setMenu(null)}
+          entries={[
+            { label: t('teclado.bar.layoutAuto', { layout: LAYOUTS[detected] }), checked: pref === 'auto', onSelect: () => setLayoutPref('auto') },
+            'separator',
+            ...FAMILIES.map(f => ({ label: LAYOUTS[f], checked: pref === f, onSelect: () => setLayoutPref(f) })),
+          ]} />
+      )}
+    </>
   );
 }
 
@@ -377,14 +425,15 @@ function Bar() {
 function Board() {
   const device = useMk(s => s.device);
   const numpad = useMk(s => s.numpad);
-  const caps = numpad ? KEYS : KEYS.filter(k => k.block !== 'num');
+  const keys = currentKeys();
+  const caps = numpad ? keys : keys.filter(k => k.block !== 'num');
   const gridRef = useRef<HTMLDivElement>(null);
   if (device === 'mouse') return <MouseBoard />;
   // The arrows move across the drawing (the MK plan: "setas andam pelo desenho do teclado").
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     const dirs: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
     const d = dirs[e.key];
-    const from = KEYS.find(k => k.code === (e.target as HTMLElement).dataset.code);
+    const from = keys.find(k => k.code === (e.target as HTMLElement).dataset.code);
     if (!d || !from) return;
     e.preventDefault();
     const cx = from.col + from.w / 2;
@@ -527,7 +576,13 @@ function Notes() {
   return (
     <div className="tk-notes">
       <p className="tk-note"><Gamepad2 aria-hidden="true" /><span>{t('teclado.notes.front')}</span></p>
-      <p className="tk-note"><ArrowRightLeft aria-hidden="true" /><span>{t('teclado.notes.beside')}</span></p>
+      <p className="tk-note">
+        <ArrowRightLeft aria-hidden="true" />
+        <span>
+          {t('teclado.notes.beside')}{' '}
+          <button type="button" className="insp-link" onClick={() => openPage('remaps')}>{t('teclado.notes.openRemaps')}</button>
+        </span>
+      </p>
     </div>
   );
 }

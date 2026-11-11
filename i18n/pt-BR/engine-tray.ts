@@ -68,6 +68,9 @@ export default {
     shortcuts: 'Atalhos',
     automations: 'Automações',
     remaps: 'Key Remaps',
+    // A chave do Teclado (branch teclado), e quantos jogos ele tem ativados.
+    teclado: 'Teclado',
+    tecladoGames: { zero: '· {{n}} jogos', one: '· {{n}} jogo', other: '· {{n}} jogos' },
     armed: { zero: '· {{n}} armadas', one: '· {{n}} armada', other: '· {{n}} armadas' },
     active: { zero: '· {{n}} ativos', one: '· {{n}} ativo', other: '· {{n}} ativos' },
     clicker: 'Clicker',

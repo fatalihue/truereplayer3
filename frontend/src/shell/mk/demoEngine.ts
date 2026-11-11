@@ -145,7 +145,7 @@ export function installDemoEngine() {
   };
   const tecladoState = () => ({
     type: 'teclado:state',
-    payload: { config: teclado, loadFailed: false, loadedFromBackup: false, pendingFile: 'teclado.pending.json', macros: macroReports() },
+    payload: { config: teclado, loadFailed: false, loadedFromBackup: false, pendingFile: 'teclado.pending.json', macros: macroReports(), detectedLayout: 'abnt2' },
   });
   // The window in front, as TecladoFront would say it. In Vite: window.__frente('RobloxPlayerBeta.exe', true).
   let process: string | null = null;

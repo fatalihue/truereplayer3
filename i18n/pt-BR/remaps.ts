@@ -72,6 +72,12 @@ export default {
     turnOn: 'Ativar',
   },
 
+  // O caminho para o Teclado (branch teclado): as teclas de um jogo ficam lá.
+  tecladoNote: {
+    text: 'Para mudar teclas só com um jogo na frente, e rodar macros pelas teclas dele, use o Teclado.',
+    open: 'Abrir o Teclado',
+  },
+
   shortcutsNote: {
     key: 'A tecla dos atalhos ({{key}}) também pausa os remaps, e assim uma única tecla silencia tudo o que o app faz com o teclado. A barra de status mostra quando isso acontece.',
     noKey: 'Desativar os atalhos também pausa os remaps, e assim uma única chave silencia tudo o que o app faz com o teclado. A barra de status mostra quando isso acontece.',

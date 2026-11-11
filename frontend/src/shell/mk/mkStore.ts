@@ -6,9 +6,11 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 import { useBridge } from '../../bridge/BridgeContext';
-import type { OutgoingMessage, RemapEntryDto, TecladoConfig, TecladoGame, TecladoLive, TecladoMacroReport, TecladoState } from '../../bridge/messageTypes';
-import { mouseTarget } from '../pages/remaps/remapModel';
-import { codeOfTr, type Game, type KeyFn } from './mkModel';
+import type { OutgoingMessage, TecladoConfig, TecladoGame, TecladoLive, TecladoMacroReport, TecladoState } from '../../bridge/messageTypes';
+import type { Family, Game, KeyFn } from './mkModel';
+
+/** The drawing's layout: chosen by hand, or 'auto' to follow Windows' (phase 5). */
+export type LayoutPref = 'auto' | Family;
 
 interface MkState {
   /** The engine's games (teclado:state). */
@@ -35,6 +37,11 @@ interface MkState {
   holding: boolean;
   /** What each macro a key points to is to the executor (phase 4); a name missing here is not known yet. */
   macros: Record<string, TecladoMacroReport>;
+  /** The drawing (phase 5): the layout chosen, the one Windows says, its labels, and a version bumped on every change. */
+  layoutPref: LayoutPref;
+  detected: Family;
+  labels: Record<string, string> | null;
+  drawingVersion: number;
 }
 
 export const useMk = create<MkState>(() => ({
@@ -54,6 +61,10 @@ export const useMk = create<MkState>(() => ({
   frontProcess: null,
   holding: false,
   macros: {},
+  layoutPref: 'auto',
+  detected: 'abnt2',
+  labels: null,
+  drawingVersion: 0,
 }));
 
 // ── The engine's side ──
@@ -72,7 +83,9 @@ export function useTecladoSync() {
       if (message.type === 'teclado:state') receive(message.payload);
       else if (message.type === 'teclado:live') receiveLive(message.payload);
     });
-    return () => { off(); send = null; };
+    readLabels();
+    window.addEventListener('focus', readLabels);
+    return () => { off(); send = null; window.removeEventListener('focus', readLabels); };
   }, [bridge]);
 }
 
@@ -89,9 +102,12 @@ function receive(state: TecladoState) {
     loadFailureDetail: state.loadFailureDetail ?? null,
     pendingFile: state.pendingFile || s.pendingFile,
     macros: state.macros ?? {},
+    layoutPref: state.config?.layout ?? 'auto',
+    detected: state.detectedLayout ?? s.detected,
     open: stillThere ? s.open : games[0]?.id ?? '',
     key: stillThere ? s.key : null,
   });
+  applyDrawing();
 }
 
 function receiveLive(live: TecladoLive) {
@@ -99,13 +115,48 @@ function receiveLive(live: TecladoLive) {
 }
 
 /** An edit: on the page at once, and whole to the engine, whose teclado:state then settles it. */
-function commit(games: Game[], enabled = useMk.getState().enabled) {
-  useMk.setState({ games, enabled });
-  const config: TecladoConfig = { version: 1, enabled, games: games as TecladoGame[] };
+function commit(games: Game[], enabled = useMk.getState().enabled, layoutPref = useMk.getState().layoutPref) {
+  useMk.setState({ games, enabled, layoutPref });
+  applyDrawing();
+  const config: TecladoConfig = { version: 1, enabled, games: games as TecladoGame[], layout: layoutPref === 'auto' ? undefined : layoutPref };
   send?.({ type: 'teclado:save', payload: { config } });
 }
 
 export const setEnabled = (enabled: boolean) => commit(useMk.getState().games, enabled);
+
+/** The drawing's layout chosen by hand, or 'auto' to follow Windows'. Kept in teclado.json. */
+export const setLayoutPref = (pref: LayoutPref) => commit(useMk.getState().games, useMk.getState().enabled, pref);
+
+/** The family drawn: the one chosen, or the one Windows' layout says. */
+export const familyOf = (s: Pick<MkState, 'layoutPref' | 'detected'>): Family => (s.layoutPref === 'auto' ? s.detected : s.layoutPref);
+
+// The family and labels the drawing was last built for: a change bumps the version the page remounts on.
+let drawn = 'abnt2|';
+
+/** A new family or new labels: the drawing (mkModel.currentKeys) is built again on its next read. */
+function applyDrawing() {
+  const s = useMk.getState();
+  const key = `${familyOf(s)}|${s.labels ? JSON.stringify(s.labels) : ''}`;
+  if (key === drawn) return;
+  drawn = key;
+  useMk.setState({ drawingVersion: s.drawingVersion + 1 });
+}
+
+// Windows' own labels for the character keys (the Keyboard Map API, in WebView2): read on mount and
+// whenever the window comes back, since the layout may have been switched in between.
+interface KeyboardMapApi { getLayoutMap?: () => Promise<{ forEach: (fn: (value: string, code: string) => void) => void }> }
+function readLabels() {
+  const api = (navigator as Navigator & { keyboard?: KeyboardMapApi }).keyboard;
+  if (!api?.getLayoutMap) return;
+  api.getLayoutMap().then((map) => {
+    const labels: Record<string, string> = {};
+    map.forEach((value, code) => { labels[code] = value; });
+    // An empty map (a browser that has the API but no layout behind it) is no labels at all.
+    if (Object.keys(labels).length === 0) return;
+    useMk.setState({ labels });
+    applyDrawing();
+  }).catch(() => { /* no labels: the drawing keeps its own */ });
+}
 export const overwriteUnreadable = () => send?.({ type: 'teclado:overwriteUnreadable', payload: {} });
 
 // ── Reading ──
@@ -115,24 +166,6 @@ export const gameOf = (s: MkState) => s.games.find(g => g.id === s.open) ?? null
 /** Where a shown key's function comes from: its own, the base (on the layer), or the Key Remaps. */
 export type Source = 'own' | 'base' | 'global';
 
-/**
- * The Key Remaps under a game's keys: the "everywhere" ones and the "only in one app" ones of its
- * .exe. They stay on the Key Remaps page; here they only show as what a key without a function does.
- */
-export function globalsOf(remaps: { enabled: boolean; entries: RemapEntryDto[] }, exes: string[]): Record<string, KeyFn> {
-  const out: Record<string, KeyFn> = {};
-  if (!remaps.enabled) return out;
-  const lower = exes.map(e => e.toLowerCase().replace(/\.exe$/, ''));
-  for (const r of remaps.entries) {
-    if (!r.enabled) continue;
-    const scope = (r.process ?? '').toLowerCase().replace(/\.exe$/, '');
-    if (scope && !lower.includes(scope)) continue;
-    const code = codeOfTr(r.from);
-    if (!code) continue;
-    out[code] = !r.to ? { kind: 'off' } : mouseTarget(r.to) ? { kind: 'mouse', mouse: r.to } : { kind: 'key', combo: r.to };
-  }
-  return out;
-}
 
 /** A key's function in the view shown. */
 export function fnAt(s: MkState, code: string, globals: Record<string, KeyFn>): { fn: KeyFn; source: Source } {

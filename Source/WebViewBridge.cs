@@ -2623,7 +2623,7 @@ namespace TrueReplayer
             PushTecladoState();
         }
 
-        private void PushTecladoState() => SendMessage("teclado:state", TecladoService.StatePayload());
+        internal void PushTecladoState() => SendMessage("teclado:state", TecladoService.StatePayload());
 
         // The process in front and its game (phase 2), and the layer key held (phase 3).
         private void PushTecladoLive()

@@ -9,10 +9,11 @@ import { useShell } from './shell/store'
 import { ThemeProvider } from './state/ThemeContext'
 import { ToastProvider } from './state/ToastContext'
 import { applyThemeConfig, loadCustomPresets, loadThemeConfig, resolveThemeColors } from './themes'
-import { installDemoEngine } from './shell/mk/demoEngine'
-
-// Teclado (branch teclado): in Vite, without WebView2, a fake engine answers with sample data.
-if (import.meta.env.DEV && !window.chrome?.webview) installDemoEngine()
+// Teclado (branch teclado): in Vite, without WebView2, a fake engine answers with sample data. Imported
+// only in development, so none of it reaches the app's bundle (rule 6); the first render waits for it.
+const demo = import.meta.env.DEV && !window.chrome?.webview
+  ? import('./shell/mk/demoEngine').then(m => m.installDemoEngine())
+  : null
 
 // The theme's TOKENS go on <html> before the first render; data-animations stays off until
 // ThemeProvider's mount effect turns it on.
@@ -72,7 +73,8 @@ let started = false
 function start() {
   if (started) return
   started = true
-  render()
+  if (demo) void demo.then(render, render)
+  else render()
 }
 void document.fonts.ready.then(start, start)
 setTimeout(start, 50)

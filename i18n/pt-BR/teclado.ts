@@ -56,8 +56,11 @@ export default {
     changed: { zero: 'Nenhuma tecla mudada', one: '{{count}} tecla mudada', other: '{{count}} teclas mudadas' },
     changedLayer: { zero: 'Nenhuma tecla mudada na Camada', one: '{{count}} tecla mudada na Camada', other: '{{count}} teclas mudadas na Camada' },
     numpad: 'Numérico',
-    layout: 'ABNT2',
-    layoutTip: 'O desenho segue o layout do Windows (ABNT2, ANSI ou ISO). O jogo guarda cada tecla pela posição física.',
+    // O desenho do teclado: ABNT2, ANSI ou ISO (nomes de norma, iguais nos dois idiomas).
+    layouts: { abnt2: 'ABNT2', ansi: 'ANSI', iso: 'ISO' },
+    layoutLabel: 'Layout do desenho',
+    layoutAuto: 'Automático · {{layout}}',
+    layoutTip: 'O desenho segue o layout do Windows, ou o que você escolher aqui. Um jogo guarda cada tecla pela posição física, então trocar o desenho não muda as funções.',
   },
   board: {
     label: 'Teclado ABNT2',
@@ -105,6 +108,7 @@ export default {
   },
   notes: {
     front: 'Com o jogo na frente, a tecla faz o que está aqui; a macro começa no apertar. Fora dele, ela volta ao normal sozinha, e o que estava segurado é solto.',
+    openRemaps: 'Abrir os Key Remaps',
     beside: 'Os Key Remaps continuam na página deles. Uma tecla sem função aqui segue o remap (a marca ⇄); uma tecla com função aqui ganha do remap enquanto o jogo está na frente.',
   },
   panel: {

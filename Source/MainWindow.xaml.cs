@@ -715,6 +715,13 @@ namespace TrueReplayer
                 bridge?.PushSettingsLoaded();
                 TrayIconService.UpdateTrayIcon();
             };
+            // Teclado (branch teclado): the same switch as the status bar's; off lets go of everything at once.
+            TrayPanel.OnSetTeclado = on =>
+            {
+                TecladoService.SetEnabled(on);
+                TecladoFront.ConfigChanged();
+                bridge?.PushTecladoState();
+            };
             TrayPanel.OnOpenClicker = () => TrayIconService.OnOpenClicker?.Invoke();
             TrayPanel.OnOpenSettings = () => TrayIconService.OnOpenSettings?.Invoke();
             TrayPanel.OnQuit = () => _ = TrayIconService.QuitAsync();
@@ -1949,7 +1956,8 @@ namespace TrueReplayer
             return new TrayPanel.Snapshot(macro, line, action, key, stops, rows,
                 UserProfile.Current.ProfileKeyEnabled, settings.AutomationEnabled, triggerService?.ConfiguredArmedCount ?? 0,
                 RemapService.Current.Enabled, RemapService.Current.Remaps.Count(r => r.Enabled), clicker,
-                bridge?.PendingNotices ?? Array.Empty<(string, DateTime)>());
+                bridge?.PendingNotices ?? Array.Empty<(string, DateTime)>(),
+                TecladoService.Current.Enabled, TecladoService.Current.Games.Count(g => g.On));
         }
 
         /// <summary>

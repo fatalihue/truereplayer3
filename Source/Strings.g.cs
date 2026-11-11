@@ -1558,6 +1558,10 @@ namespace TrueReplayer.Services
         public static string TrayPanelAutomations => IsPt ? "Automações" : "Automations";
         /// <summary>engine-tray.panel.remaps · Key Remaps</summary>
         public static string TrayPanelRemaps => IsPt ? "Key Remaps" : "Key Remaps";
+        /// <summary>engine-tray.panel.teclado · Keyboard</summary>
+        public static string TrayPanelTeclado => IsPt ? "Teclado" : "Keyboard";
+        /// <summary>engine-tray.panel.tecladoGames · · {{n}} game</summary>
+        public static string TrayPanelTecladoGames(string n, int count) => IsPt ? (count == 0 ? $"· {n} jogos" : (count < 2 ? $"· {n} jogo" : $"· {n} jogos")) : (count == 1 ? $"· {n} game" : $"· {n} games");
         /// <summary>engine-tray.panel.armed · · {{n}} armed</summary>
         public static string TrayPanelArmed(string n, int count) => IsPt ? (count == 0 ? $"· {n} armadas" : (count < 2 ? $"· {n} armada" : $"· {n} armadas")) : $"· {n} armed";
         /// <summary>engine-tray.panel.active · · {{n}} active</summary>

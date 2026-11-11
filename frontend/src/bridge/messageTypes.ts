@@ -609,6 +609,8 @@ export interface TecladoGame {
 export interface TecladoConfig {
   version: number;
   enabled: boolean;
+  /** The drawing's layout chosen by hand; absent to follow Windows' (phase 5). */
+  layout?: 'abnt2' | 'ansi' | 'iso';
   games: TecladoGame[];
 }
 
@@ -630,6 +632,8 @@ export interface TecladoState {
   pendingFile: string;
   /** Only the macros the config names, once the library is in (absent before). */
   macros?: Record<string, TecladoMacroReport>;
+  /** The physical family Windows' keyboard layout suggests (TecladoService.DetectLayout). */
+  detectedLayout?: 'abnt2' | 'ansi' | 'iso';
 }
 
 /** What is in front now (TecladoFront): the game's id, or null; the process; the layer key held (phase 3). */

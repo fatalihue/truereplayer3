@@ -2478,6 +2478,8 @@ export type Chaves = {
   'remaps.menu.label': never;
   'remaps.menu.turnOff': never;
   'remaps.menu.turnOn': never;
+  'remaps.tecladoNote.text': never;
+  'remaps.tecladoNote.open': never;
   'remaps.shortcutsNote.key': { key: string | number };
   'remaps.shortcutsNote.noKey': never;
   'remaps.panel.label': never;
@@ -2962,7 +2964,11 @@ export type Chaves = {
   'teclado.bar.changed': { count: number };
   'teclado.bar.changedLayer': { count: number };
   'teclado.bar.numpad': never;
-  'teclado.bar.layout': never;
+  'teclado.bar.layouts.abnt2': never;
+  'teclado.bar.layouts.ansi': never;
+  'teclado.bar.layouts.iso': never;
+  'teclado.bar.layoutLabel': never;
+  'teclado.bar.layoutAuto': { layout: string | number };
   'teclado.bar.layoutTip': never;
   'teclado.board.label': never;
   'teclado.board.held': never;
@@ -3014,6 +3020,7 @@ export type Chaves = {
   'teclado.legend.fromBase': never;
   'teclado.legend.fromRemaps': never;
   'teclado.notes.front': never;
+  'teclado.notes.openRemaps': never;
   'teclado.notes.beside': never;
   'teclado.panel.title': { key: string | number };
   'teclado.panel.whereBase': { game: string | number };
@@ -3467,6 +3474,7 @@ export type Tabelas = {
   'remaps.filter': 'label' | 'all' | 'off';
   'remaps.file': 'notJson' | 'notRemaps' | 'noneUsable';
   'remaps.menu': 'label' | 'turnOff' | 'turnOn';
+  'remaps.tecladoNote': 'text' | 'open';
   'remaps.capture': 'listening' | 'change' | 'press';
   'remaps.mouse': 'LeftClick' | 'MiddleClick' | 'RightClick' | 'XButton1' | 'XButton2' | 'ScrollUp' | 'ScrollDown';
   'remaps.refuse': 'combo' | 'wheel';
@@ -3519,12 +3527,13 @@ export type Tabelas = {
   'teclado.games': 'title' | 'heading' | 'inFront' | 'none' | 'foot';
   'teclado.add': 'label' | 'addExe' | 'filter' | 'loading' | 'none' | 'typed' | 'typedPlaceholder';
   'teclado.empty': 'title' | 'text';
+  'teclado.bar.layouts': 'abnt2' | 'ansi' | 'iso';
   'teclado.buttons': 'MouseMiddle' | 'MouseX1' | 'MouseX2' | 'WheelUp' | 'WheelDown';
   'teclado.short': 'choose' | 'off' | 'layer' | 'LeftClick' | 'RightClick' | 'MiddleClick' | 'XButton1' | 'XButton2' | 'ScrollUp' | 'ScrollDown';
   'teclado.fns': 'default' | 'key' | 'mouse' | 'macro' | 'text' | 'off' | 'layer';
   'teclado.modes': 'once' | 'times' | 'hold' | 'toggle';
   'teclado.legend': 'label' | 'off' | 'fromBase' | 'fromRemaps';
-  'teclado.notes': 'front' | 'beside';
+  'teclado.notes': 'front' | 'openRemaps' | 'beside';
   'tokenEditor.editor': 'name' | 'placeholder';
   'tokenEditor.toolbar': 'bold' | 'boldTip' | 'italic' | 'italicTip' | 'underline' | 'underlineTip' | 'strikethrough' | 'code' | 'clearFormatting' | 'clearFormattingTip' | 'nothingToClear' | 'bulletList' | 'numberedList' | 'link' | 'removeLink' | 'linkUrl' | 'urlExample' | 'applyLink' | 'cancelLink';
   'tokenEditor.autocomplete': 'name' | 'keys';

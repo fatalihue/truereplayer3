@@ -59,8 +59,11 @@ export default {
     changed: { zero: 'No key changed', one: '{{count}} key changed', other: '{{count}} keys changed' },
     changedLayer: { zero: 'No key changed on the layer', one: '{{count}} key changed on the layer', other: '{{count}} keys changed on the layer' },
     numpad: 'Numpad',
-    layout: 'ABNT2',
-    layoutTip: 'The drawing follows the Windows layout (ABNT2, ANSI or ISO). The game keeps each key by its physical position.',
+    // O desenho do teclado: ABNT2, ANSI ou ISO (nomes de norma, iguais nos dois idiomas).
+    layouts: { abnt2: 'ABNT2', ansi: 'ANSI', iso: 'ISO' },
+    layoutLabel: 'Drawing layout',
+    layoutAuto: 'Automatic · {{layout}}',
+    layoutTip: 'The drawing follows the Windows layout, or the one you choose here. A game keeps each key by its physical position, so changing the drawing does not change the functions.',
   },
   board: {
     label: 'ABNT2 keyboard',
@@ -112,6 +115,7 @@ export default {
   },
   notes: {
     front: 'With the game in front, the key does what is set here; a macro starts on the press. Outside it, the key goes back to normal by itself, and whatever was held is released.',
+    openRemaps: 'Open Key Remaps',
     beside: 'The Key Remaps stay on their page. A key with no function here follows its remap (the ⇄ mark); a key with a function here wins over the remap while the game is in front.',
   },
   // O painel da tecla, nas classes de "Remap settings".

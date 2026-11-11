@@ -36,7 +36,9 @@ namespace TrueReplayer.Services
             string? Macro, string Line, string? ActionText, string? ActionKey, bool ActionStops,
             IReadOnlyList<MacroRow> Macros,
             bool Shortcuts, bool Automations, int Armed, bool Remaps, int ActiveRemaps, bool Clicker,
-            IReadOnlyList<(string Message, DateTime At)> Notices);
+            IReadOnlyList<(string Message, DateTime At)> Notices,
+            // Teclado (branch teclado): the master switch, and how many of its games are on.
+            bool Teclado = false, int TecladoGames = 0);
 
         // Wired by MainWindow: where the panel reads from and what its buttons do.
         public static Func<Snapshot>? Read { get; set; }
@@ -47,6 +49,7 @@ namespace TrueReplayer.Services
         public static Action<bool>? OnSetShortcuts { get; set; }
         public static Action<bool>? OnSetAutomations { get; set; }
         public static Action<bool>? OnSetRemaps { get; set; }
+        public static Action<bool>? OnSetTeclado { get; set; }
         public static Action? OnOpenClicker { get; set; }
         public static Action? OnOpenSettings { get; set; }
         public static Action? OnQuit { get; set; }
@@ -78,8 +81,8 @@ namespace TrueReplayer.Services
         private static TextBlock _macroActionText = null!;
         private static TextBlock _macroActionKey = null!;
         private static StackPanel _macroList = null!;
-        private static ToggleSwitch _shortcuts = null!, _automations = null!, _remaps = null!;
-        private static TextBlock _automationsText = null!, _remapsText = null!;
+        private static ToggleSwitch _shortcuts = null!, _automations = null!, _remaps = null!, _teclado = null!;
+        private static TextBlock _automationsText = null!, _remapsText = null!, _tecladoText = null!, _tecladoLabel = null!;
         private static TextBlock _clickerText = null!;
         // The fixed labels, written in the interface's language when it changes (ApplyLabels): the
         // panel is made once, and the language can change while the app runs.
@@ -278,6 +281,7 @@ namespace TrueReplayer.Services
             _shortcuts = AddSwitch(stack, out _shortcutsLabel, out _, on => OnSetShortcuts?.Invoke(on));
             _automations = AddSwitch(stack, out _automationsLabel, out _automationsText, on => OnSetAutomations?.Invoke(on));
             _remaps = AddSwitch(stack, out _remapsLabel, out _remapsText, on => OnSetRemaps?.Invoke(on));
+            _teclado = AddSwitch(stack, out _tecladoLabel, out _tecladoText, on => OnSetTeclado?.Invoke(on));
             _clicker = new Button { HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(8, 6, 8, 6), Background = new SolidColorBrush(Colors.Transparent), BorderThickness = new Thickness(0) };
             var clickerGrid = new Grid();
             clickerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -322,6 +326,7 @@ namespace TrueReplayer.Services
             SetLabel(_shortcuts, _shortcutsLabel, S.TrayPanelShortcuts);
             SetLabel(_automations, _automationsLabel, S.TrayPanelAutomations);
             SetLabel(_remaps, _remapsLabel, S.TrayPanelRemaps);
+            SetLabel(_teclado, _tecladoLabel, S.TrayPanelTeclado);
             AutomationProperties.SetName(_clicker, S.TrayPanelClicker);
             SetLabel(_settings, _settingsLabel, S.TrayPanelSettings);
             // Only the verb on the button, as in the right-click menu: "Sair do TrueReplayer 3" beside it
@@ -381,6 +386,7 @@ namespace TrueReplayer.Services
             _macroLine.Foreground = muted;
             _automationsText.Foreground = muted;
             _remapsText.Foreground = muted;
+            _tecladoText.Foreground = muted;
             // The name and the notices' title in the theme's text color; the rest of the labels keep the
             // light or dark theme's own, so the rows read alike.
             if (_text is { } fg)
@@ -463,6 +469,8 @@ namespace TrueReplayer.Services
                 _automationsText.Text = s.Armed > 0 ? S.TrayPanelArmed(n: S.Num(s.Armed), count: s.Armed) : "";
                 _remaps.IsOn = s.Remaps;
                 _remapsText.Text = s.ActiveRemaps > 0 ? S.TrayPanelActive(n: S.Num(s.ActiveRemaps), count: s.ActiveRemaps) : "";
+                _teclado.IsOn = s.Teclado;
+                _tecladoText.Text = s.TecladoGames > 0 ? S.TrayPanelTecladoGames(n: S.Num(s.TecladoGames), count: s.TecladoGames) : "";
                 _clickerText.Text = s.Clicker ? S.TrayPanelClickerOpen : S.TrayPanelClicker;
             }
             finally { _refreshing = false; }

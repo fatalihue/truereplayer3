@@ -95,6 +95,12 @@ export default {
 
   // A nota sob a tabela: a chave dos atalhos também pausa os remaps. key = a hotkey dos atalhos, como o
   // keycap a escreve ("Ctrl+Alt+Shift+R").
+  // O caminho para o Teclado (branch teclado): as teclas de um jogo ficam lá.
+  tecladoNote: {
+    text: 'To change keys only with a game in front, and run macros from its keys, use the Keyboard.',
+    open: 'Open the Keyboard',
+  },
+
   shortcutsNote: {
     key: 'The Shortcuts key ({{key}}) also pauses remaps, so one key silences everything the app does with the keyboard. The status bar shows when that happens.',
     noKey: 'Turning Shortcuts off also pauses remaps, so one switch silences everything the app does with the keyboard. The status bar shows when that happens.',
