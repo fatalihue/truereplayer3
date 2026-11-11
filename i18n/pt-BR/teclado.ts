@@ -214,7 +214,8 @@ export default {
     gameOff: 'Teclado · {{game}} desativado',
     front: 'Teclado · {{game}} na frente',
     frontLayer: 'Teclado · {{game}} · Camada',
-    idle: 'Teclado ativado · nenhum jogo na frente',
+    // Como as irmãs ("Atalhos ativados"): com um jogo na frente, a chave diz o nome dele.
+    idle: 'Teclado ativado',
     locked: 'Teclado · {{game}} travado',
     offTip: 'Desativado: nenhuma tecla muda, em jogo nenhum.',
     pausedTip: 'Ativado, mas pausado enquanto os atalhos estão desativados.',

@@ -224,7 +224,7 @@ export default {
     gameOff: 'Keyboard · {{game}} off',
     front: 'Keyboard · {{game}} in front',
     frontLayer: 'Keyboard · {{game}} · Layer',
-    idle: 'Keyboard On · no game in front',
+    idle: 'Keyboard On',                              // como "Shortcuts On"; com um jogo na frente, o nome dele
     locked: 'Keyboard · locked to {{game}}',
     offTip: 'Off: no key changes, in any game.',
     pausedTip: 'On, but paused while the shortcuts are off.',

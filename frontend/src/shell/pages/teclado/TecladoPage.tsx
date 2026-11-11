@@ -18,9 +18,10 @@ import {
   codesOfTr, currentKeys, FAMILIES, FNS, fnInfo, legendOf, MODES, modeLabel, MOUSE_CODES, type FnKind, type Game, type KeyCap, type KeyFn,
 } from '../../mk/mkModel';
 import {
-  addExe, addGame, exportGame, familyOf, fnFor, gameOf, layerKeyOf, lockGame, openGame, overwriteUnreadable, pickKey, removeExe,
-  removeGame, renameGame, setGameFn, setGameOn, setLayoutPref, useMk, type Source,
-} from '../../mk/mkStore';
+  addExe, addGame, exportGame, fnFor, gameOf, layerKeyOf, lockGame, openGame, overwriteUnreadable, pickKey, removeExe,
+  removeGame, renameGame, setGameFn, setGameOn, setLayoutPref, type Source,
+} from '../../mk/mkEdit';
+import { familyOf, useMk } from '../../mk/mkStore';
 import { Popover } from '../../Popover';
 import { whenOpen } from '../../recordNew';
 import { useApp, useShell } from '../../store';

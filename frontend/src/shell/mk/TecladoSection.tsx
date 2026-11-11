@@ -4,7 +4,8 @@ import { Keyboard } from 'lucide-react';
 import { t } from '../../i18n';
 import { openPage } from '../ui';
 import { currentKeys, legendOf, modeLabel } from './mkModel';
-import { layerKeyOf, useMk } from './mkStore';
+import { layerKeyOf } from './mkEdit';
+import { useMk } from './mkStore';
 
 export function TecladoSection({ name }: { name: string }) {
   const games = useMk(s => s.games);

@@ -3,7 +3,8 @@
 import { APP_NAME } from '../../appIdentity';
 import { t } from '../../i18n';
 import { useApp } from '../store';
-import { setEnabled, useMk } from './mkStore';
+import { setEnabled } from './mkEdit';
+import { useMk } from './mkStore';
 
 export function MkSwitch() {
   const enabled = useMk(s => s.enabled);
