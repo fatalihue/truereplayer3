@@ -357,6 +357,9 @@ namespace TrueReplayer.Services
 
         private static void Raise()
         {
+            // The hook's tables, compiled here (off the hook thread) and swapped whole.
+            try { InputHookManager.PublishTeclado(Current); }
+            catch (Exception ex) { DiagnosticLog.Error("Teclado: compiling the tables failed", ex); }
             try { Changed?.Invoke(); }
             catch (Exception ex) { DiagnosticLog.Warn($"Teclado: a Changed handler failed: {ex.GetType().Name}: {ex.Message}"); }
         }

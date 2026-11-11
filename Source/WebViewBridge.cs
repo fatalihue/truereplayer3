@@ -2621,11 +2621,11 @@ namespace TrueReplayer
 
         private void PushTecladoState() => SendMessage("teclado:state", TecladoService.StatePayload());
 
-        // The process in front and its game (phase 2); the layer key held comes with the hook (phase 3).
+        // The process in front and its game (phase 2), and the layer key held (phase 3).
         private void PushTecladoLive()
         {
             var s = TecladoFront.Current;
-            SendMessage("teclado:live", new { front = s.GameId, process = s.Process, layer = false });
+            SendMessage("teclado:live", new { front = s.GameId, process = s.Process, layer = s.Layer });
         }
 
         // Settings-blob projection for the remap layer (rides settings:loaded + state:init). The

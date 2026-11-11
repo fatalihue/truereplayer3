@@ -11,7 +11,8 @@ using TrueReplayer.Models;
 
 namespace TrueReplayer
 {
-    public static class InputHookManager
+    // Partial: the Teclado's part of the keyboard hook lives in InputHookManager.Teclado.cs.
+    public static partial class InputHookManager
     {
         // (button, x, y, isDown, scrollDelta, ticks). Both recording events end with the event's
         // Environment.TickCount64, stamped here on the hook thread: the subscriber records on the UI
@@ -1214,6 +1215,8 @@ namespace TrueReplayer
             ClearActiveHold();
             ClearPendingHoldFire();
             ReleaseActiveRemapDowns();
+            // Teclado: what the game's keyboard holds is let go too (and its layer).
+            TecladoReleaseAll();
             // Paired with _vkCodesCurrentlyDown below: a key held across Stop()/Start() must not
             // stay marked as "the app is holding this one raw", or the remap layer would refuse
             // to ever pair it again in the new session.
@@ -1562,6 +1565,8 @@ namespace TrueReplayer
         /// <summary>The keyboard's share of <see cref="Stop"/>'s reset, resolving instead of dropping.</summary>
         private static void ResetKeyboardSession()
         {
+            // Teclado: a dead keyboard hook or a session that went away leaves no slot open.
+            TecladoReleaseAll();
             ResolveTriggerPairs(mouse: false);
             CloseRemapPairings(mouse: false);
             _remapBypassedDowns.Clear();
@@ -3037,6 +3042,10 @@ namespace TrueReplayer
         {
             if (nCode >= 0)
             {
+                // Teclado (branch teclado): a key the game's keyboard took at its press is let go by
+                // it, before every gate, for the same reason as the remap pairing's release below.
+                if (_tecladoHeld > 0 && TecladoKeyUp(wParam, lParam)) return (IntPtr)1;
+
                 // Remap pairing release runs BEFORE every other gate (capture mode swallows
                 // all keys, SuppressAllHotkeys passes them through raw) — if the FROM key's
                 // up is eaten by either path while a pairing is open, the injected TO key
@@ -3123,6 +3132,11 @@ namespace TrueReplayer
                 // verdict for this event.
                 bool profileKeysOn = UserProfile.Current.ProfileKeyEnabled;
                 var remaps = _remapMap;
+
+                // Teclado (branch teclado): with a game in front, its keys go first — ahead of the Key
+                // Remaps, so the game's function wins. An open slot's repeats pass whatever gate is up;
+                // a new slot obeys the same verdict as the remap layer (the three reads above).
+                if (TecladoKeyDown(wParam, lParam, suppressAll || ignoreProfileKeys, profileKeysOn)) return (IntPtr)1;
 
                 // ── Remap pairing: the DOWN half, brought up to meet the UP half ──
                 // The remap DOWN branch lives far below, UNDER these gates, while the pairing

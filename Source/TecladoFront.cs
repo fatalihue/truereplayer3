@@ -18,10 +18,10 @@ namespace TrueReplayer.Services
     /// </summary>
     public static class TecladoFront
     {
-        /// <summary>The process in front, and the game it is (null when it is none).</summary>
-        public sealed record State(string? Process, string? GameId, string? GameName, bool GameOn);
+        /// <summary>The process in front, the game it is (null when it is none), and the layer key held (phase 3).</summary>
+        public sealed record State(string? Process, string? GameId, string? GameName, bool GameOn, bool Layer);
 
-        private static volatile State _state = new(null, null, null, false);
+        private static volatile State _state = new(null, null, null, false, false);
 
         /// <summary>The latest state. Written on the hook thread only; any thread may read it.</summary>
         public static State Current => _state;
@@ -50,6 +50,7 @@ namespace TrueReplayer.Services
         private static WinEventProc? _proc;
         private static IntPtr _hook;
         private static string? _process;
+        private static bool _layer;
         private static uint _cachedPid;
         private static string? _cachedName;
         private static readonly StringBuilder _path = new(1024);
@@ -75,6 +76,14 @@ namespace TrueReplayer.Services
         /// <summary>The Teclado's config changed (a game added, an .exe, a game turned off): match again.</summary>
         public static void ConfigChanged() => InputHookManager.QueueOnHookThread(Match);
 
+        /// <summary>The layer key went down or up (the hook, on this thread).</summary>
+        internal static void SetLayer(bool held)
+        {
+            if (_layer == held) return;
+            _layer = held;
+            Publish(_state with { Layer = held });
+        }
+
         private static void OnEvent(IntPtr hook, uint ev, IntPtr hwnd, int idObject, int idChild, uint thread, uint time)
         {
             if (ev != EVENT_SYSTEM_FOREGROUND) return;
@@ -99,7 +108,13 @@ namespace TrueReplayer.Services
                     if (g.Exes.Any(e => RemapService.NormalizeProcess(e) == key)) { game = g; break; }
                 }
             }
-            var next = new State(_process, game?.Id, game?.Name, game?.On ?? false);
+            // The hook first: another game (or none) lets go of what the old one held, its layer too.
+            InputHookManager.SetTecladoFront(game?.Id);
+            Publish(new State(_process, game?.Id, game?.Name, game?.On ?? false, _layer));
+        }
+
+        private static void Publish(State next)
+        {
             if (next == _state) return;
             _state = next;
             try { Changed?.Invoke(next); }
