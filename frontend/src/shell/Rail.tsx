@@ -8,13 +8,13 @@ import { useApp } from './store';
 import { openPage, PAGE_CHUNKS, setLibraryPeek, useUi } from './ui';
 import { useShellBand } from './useShellBand';
 
-// ② The rail: the five destinations. PROTÓTIPO MK: mais o Teclado, ao lado dos Key Remaps (variante
-// A) ou no lugar deles (variante B).
+// ② The rail: the five destinations, and the Keyboard (branch teclado) beside the Key Remaps (variant A)
+// or in their place (variant B).
 const DESTINATIONS = [
   { id: 'macros', label: t('common.pages.macros'), Icon: ListChecks },
   { id: 'clicker', label: t('common.pages.clicker'), Icon: MousePointerClick },
   { id: 'automations', label: t('common.pages.automations'), Icon: Zap },
-  { id: 'teclado', label: 'Teclado', Icon: Keyboard },
+  { id: 'teclado', label: t('teclado.page'), Icon: Keyboard },
   { id: 'remaps', label: t('common.pages.remaps'), Icon: ArrowRightLeft },
   { id: 'settings', label: t('common.pages.settings'), Icon: Settings },
 ] as const;
@@ -72,7 +72,7 @@ export function Rail() {
             data-library-toggle={id === 'macros' && peeks ? '' : undefined}
             data-tip={id === 'macros' && clicker ? t('rail.backToMacros')
               : badge ? t('rail.automationsArmed', { count: armed })
-              : playing ? `Teclado · ${front} na frente`
+              : playing ? t('teclado.railPlaying', { game: front })
               : label}
             data-tip-pos="right"
             onPointerEnter={() => warm(id)}

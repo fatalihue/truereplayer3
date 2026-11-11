@@ -1,5 +1,6 @@
-/* PROTÓTIPO MK. O que vem com a casca (não com a página): o ponto do Teclado no rail, a cor da
-   camada na barra de status e o cartão tracejado do protótipo, que não faz parte do desenho. */
+/* Teclado (branch teclado). What comes with the shell, not with the page: the Keyboard's dot on the
+   rail, the layer's colour in the status bar, and the prototype's dashed card, which is not part of
+   the design and goes in phase 5. */
 
 /* O rail: um ponto verde no Teclado enquanto um jogo está na frente (como o número das Automações). */
 .shell-rail-dot {
@@ -15,8 +16,8 @@
 /* A barra de status: a camada segura no verde-água da Camada. */
 .sb-switch[data-layer] .sb-dot { background: var(--color-action-if-fg); }
 
-/* O cartão do protótipo: tracejado, como o "NotBuilt" da casca, para não ser lido como desenho. Fica
-   no canto da barra de título, onde o app de verdade tem os botões da janela (no navegador, vazio). */
+/* The prototype's card: dashed, as the shell's NotBuilt, so it is not read as design. In the title
+   bar's corner, where the real app has the window's buttons (empty in a browser). */
 .mk-proto {
   position: fixed;
   top: calc(var(--spacing-titlebar) + 0.375rem);

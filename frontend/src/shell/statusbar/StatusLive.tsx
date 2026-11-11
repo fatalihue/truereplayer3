@@ -27,7 +27,7 @@ export function Switches() {
   const remaps = useRemaps();
   // The remaps pause with the Shortcuts off (and while recording): on, but not in effect.
   const remapsPaused = remapsOn && !shortcuts;
-  // PROTÓTIPO MK: na variante B os Key Remaps viraram o Teclado, e a chave dele fica no lugar.
+  // Teclado (branch teclado): in variant B the Key Remaps became the Keyboard, whose switch takes their place.
   const merged = useMk(s => s.variant === 'merged');
   return (
     <div className="sb-switches" role="group" aria-label={t('statusbar.switches')}>

@@ -1,10 +1,12 @@
-// PROTÓTIPO MK (ver mkModel.ts): o cartão tracejado que NÃO faz parte do desenho. Deixa o dono
-// trocar a variante dos Key Remaps e simular o que só o motor saberia: o jogo na frente e a camada.
+// Teclado (branch teclado): the dashed card that is NOT part of the design, until phase 5. It switches
+// the Key Remaps variant, which waits for the owner (A or B), and simulates what phase 2 brings from
+// the engine: the game in front and the layer key held.
 import { FlaskConical, Minus } from 'lucide-react';
+import { t } from '../../i18n';
 import { Segmented } from '../inspector/fields';
 import { openPage, useUi } from '../ui';
-import { EVERYWHERE } from './mkModel';
-import { openGame, useMk, type Variant } from './mkStore';
+import { EVERYWHERE, legendOf } from './mkModel';
+import { layerKeyOf, listedGames, openGame, useMk, type Variant } from './mkStore';
 import '../inspector/editors.css';
 import './prototype.css';
 
@@ -13,16 +15,20 @@ if (import.meta.env.DEV) (window as unknown as { __mk: typeof useMk }).__mk = us
 export function Prototype() {
   const folded = useMk(s => s.protoFolded);
   const variant = useMk(s => s.variant);
+  const games = useMk(s => s.games);
   const front = useMk(s => s.front);
   const holding = useMk(s => s.holding);
-  const hasLayer = useMk(s => s.games.some(g => g.id === s.front && Object.values(g.base).some(f => f.kind === 'layer')));
   if (folded) {
     return (
       <button type="button" className="mk-proto-pill" onClick={() => useMk.setState({ protoFolded: false })}>
-        <FlaskConical aria-hidden="true" />Protótipo
+        <FlaskConical aria-hidden="true" />
+        {t('teclado.proto.pill')}
       </button>
     );
   }
+  const listed = listedGames({ games, variant }).slice(0, 5);
+  const frontGame = listed.find(g => g.id === front) ?? null;
+  const layerKey = layerKeyOf(frontGame);
   const setVariant = (v: Variant) => {
     const s = useMk.getState();
     useMk.setState({ variant: v, key: null });
@@ -30,41 +36,45 @@ export function Prototype() {
       openPage('teclado');
       openGame(EVERYWHERE);
     }
-    if (v === 'beside' && (s.open === EVERYWHERE || s.games.find(g => g.id === s.open)?.app)) openGame('roblox');
-    if (v === 'beside' && s.games.find(g => g.id === s.front)?.app) useMk.setState({ front: null, holding: false });
+    if (v === 'beside') {
+      const firstGame = s.games.find(g => !g.app)?.id ?? '';
+      if (s.open === EVERYWHERE || s.games.find(g => g.id === s.open)?.app) openGame(firstGame);
+      if (s.games.find(g => g.id === s.front)?.app) useMk.setState({ front: null, holding: false });
+    }
   };
   return (
-    <aside className="mk-proto" aria-label="Controles do protótipo">
+    <aside className="mk-proto" aria-label={t('teclado.proto.label')}>
       <div className="mk-proto-head">
         <FlaskConical aria-hidden="true" />
-        <span className="mk-proto-title">Protótipo · não faz parte do desenho</span>
-        <button type="button" className="mk-proto-fold" aria-label="Recolher o protótipo" onClick={() => useMk.setState({ protoFolded: true })}>
+        <span className="mk-proto-title">{t('teclado.proto.title')}</span>
+        <button type="button" className="mk-proto-fold" aria-label={t('teclado.proto.fold')} onClick={() => useMk.setState({ protoFolded: true })}>
           <Minus aria-hidden="true" />
         </button>
       </div>
       <div className="mk-proto-row">
-        <span className="mk-proto-label">Key Remaps</span>
-        <Segmented<Variant> label="Key Remaps" value={variant} onChange={setVariant}
-          options={[{ value: 'beside', label: 'A · ao lado' }, { value: 'merged', label: 'B · viram o teclado' }]} />
+        <span className="mk-proto-label">{t('teclado.proto.remaps')}</span>
+        <Segmented<Variant> label={t('teclado.proto.remaps')} value={variant} onChange={setVariant}
+          options={[{ value: 'beside', label: t('teclado.proto.beside') }, { value: 'merged', label: t('teclado.proto.merged') }]} />
       </div>
       <div className="mk-proto-row">
-        <span className="mk-proto-label">Jogo na frente (simulado)</span>
-        <Segmented<string> label="Jogo na frente" value={front ?? 'none'} wrap
+        <span className="mk-proto-label">{t('teclado.proto.front')}</span>
+        <Segmented<string> label={t('teclado.proto.front')} value={front ?? 'none'} wrap
           onChange={(v) => useMk.setState({ front: v === 'none' ? null : v, holding: false })}
           options={[
-            { value: 'none', label: 'Nenhum' },
-            { value: 'roblox', label: 'Roblox' },
-            { value: 'minecraft', label: 'Minecraft' },
-            { value: 'terraria', label: 'Terraria (desl.)' },
+            { value: 'none', label: t('teclado.proto.none') },
+            ...listed.map(g => ({ value: g.id, label: g.on ? g.name : t('teclado.proto.gameOff', { game: g.name }) })),
           ]} />
       </div>
       <div className="mk-proto-row">
-        <span className="mk-proto-label">Tecla de camada (simulado)</span>
-        <Segmented<string> label="Tecla de camada" value={holding ? 'held' : 'free'} disabled={!hasLayer}
+        <span className="mk-proto-label">{t('teclado.proto.holding')}</span>
+        <Segmented<string> label={t('teclado.proto.holding')} value={holding ? 'held' : 'free'} disabled={!layerKey}
           onChange={(v) => useMk.setState({ holding: v === 'held' })}
-          options={[{ value: 'free', label: 'Solta' }, { value: 'held', label: 'Segurando Caps' }]} />
+          options={[
+            { value: 'free', label: t('teclado.proto.free') },
+            { value: 'held', label: t('teclado.proto.held', { key: legendOf(layerKey ?? 'CapsLock') }) },
+          ]} />
       </div>
-      <p className="mk-proto-foot">Dados de exemplo, sem motor: nada é gravado.</p>
+      <p className="mk-proto-foot">{t('teclado.proto.foot')}</p>
     </aside>
   );
 }

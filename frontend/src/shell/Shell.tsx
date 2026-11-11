@@ -8,6 +8,7 @@ import { preload, useLoaded } from './lazyModule';
 import { Library } from './library/Library';
 import { MacroHeader } from './header/MacroHeader';
 import { Prototype } from './mk/Prototype';
+import { TecladoSync } from './mk/TecladoSync';
 import { Overlays } from './Overlays';
 import { Rail } from './Rail';
 import { ShellKeys } from './ShellKeys';
@@ -65,7 +66,9 @@ export function Shell() {
         {page !== 'macros' && <Chunk load={PAGE_CHUNKS[page]} wait={<section className="shell-page" />} />}
       </div>
       <StatusBar />
-      {/* PROTÓTIPO MK: o cartão que troca a variante e simula o jogo na frente. */}
+      {/* Teclado (branch teclado): the engine's games into the page's store, and the prototype's card
+          (the Key Remaps variant, the game in front simulated until phase 2). */}
+      <TecladoSync />
       <Prototype />
       <ShellKeys />
       <Overlays />

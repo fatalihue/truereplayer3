@@ -1,7 +1,9 @@
-// PROTÓTIPO MK (ver mkModel.ts). No Vite, sem o WebView2, um motor falso faz o papel do C#: responde
-// às mensagens que a casca já manda (ui:ready, profile:click, settings:change, remap:save) com dados
-// de exemplo. Nenhuma mensagem nova: é a mesma ponte, com um outro lado de mentira.
-import type { ActionItem, ProfileEntry, ProfileFolder } from '../../bridge/messageTypes';
+// Teclado (branch teclado). In Vite, without WebView2, a fake engine plays the C# side with sample
+// data: it answers what the shell sends (ui:ready, profile:click, settings:change, remap:save,
+// process:list) and the Keyboard's own messages (teclado:save, as TecladoService answers it). The
+// sample games and macros are content, in Portuguese.
+import type { ActionItem, ProfileEntry, ProfileFolder, TecladoConfig, TecladoGame } from '../../bridge/messageTypes';
+import { FOLDER_COLORS } from '../../themes';
 
 type Listener = (event: { data: unknown }) => void;
 type Outgoing = { type: string; payload?: Record<string, unknown> };
@@ -19,7 +21,7 @@ const step = (actionType: string, extra: Partial<ActionItem> = {}): ActionItem =
 const tap = (key: string, hold = 60, before = 0) => [step('KeyDown', { key, delay: before }), step('KeyUp', { key, delay: hold })];
 const click = (x: number, y: number, delay = 80) => step('LeftClick', { x, y, delay });
 
-/** Os passos de cada macro de exemplo. As de jogo são as que o Teclado usa. */
+/** The steps of each sample macro. The game ones are those the Keyboard uses. */
 const STEPS: Record<string, ActionItem[]> = {
   'Coletar': [...tap('E', 450), click(960, 540, 120)],
   'Pulo duplo': [...tap('Space', 60), ...tap('Space', 60, 180)],
@@ -58,18 +60,66 @@ const folder = (name: string, color: string, items: string[]): ProfileFolder => 
 const ORDER = {
   pinned: [],
   folders: [
-    folder('Roblox', '#a78bfa', ['Coletar', 'Pulo duplo', 'Combo 1-2-3', 'Farm automático', 'Trocar arma']),
-    folder('Minecraft', '#8be597', ['Ponte rápida']),
+    folder('Roblox', FOLDER_COLORS[6], ['Coletar', 'Pulo duplo', 'Combo 1-2-3', 'Farm automático', 'Trocar arma']),
+    folder('Minecraft', FOLDER_COLORS[3], ['Ponte rápida']),
   ],
   ungroupedOrder: ['Relatório diário', 'Preencher planilha', 'Responder e-mail'],
 };
 
-/** Instala o motor falso, só no Vite e só sem o WebView2. */
+// The Keyboard's sample games, as TecladoService keeps them (the "Excel" entry is an "only in one
+// app" Key Remap turned into an entry, which only variant B lists).
+const GAMES: TecladoGame[] = [
+  {
+    id: 'roblox', name: 'Roblox', exes: ['RobloxPlayerBeta.exe'], on: true,
+    base: {
+      CapsLock: { kind: 'layer' },
+      KeyE: { kind: 'macro', macro: 'Coletar', mode: 'hold', interval: 120 },
+      KeyR: { kind: 'macro', macro: 'Combo 1-2-3', mode: 'once' },
+      KeyQ: { kind: 'key', combo: 'Space' },
+      KeyF: { kind: 'mouse', mouse: 'RightClick' },
+      KeyV: { kind: 'mouse', mouse: 'XButton1' },
+      F1: { kind: 'text', text: 'gg! boa partida', enter: true },
+      F2: { kind: 'text', text: '/e dance', enter: true },
+      MetaLeft: { kind: 'off' },
+      ContextMenu: { kind: 'off' },
+    },
+    layer: {
+      KeyE: { kind: 'macro', macro: 'Farm automático', mode: 'toggle', interval: 200 },
+      KeyQ: { kind: 'macro', macro: 'Trocar arma', mode: 'once' },
+      Digit1: { kind: 'key', combo: 'Shift+1' },
+      Digit2: { kind: 'key', combo: 'Shift+2' },
+      KeyF: { kind: 'off' },
+    },
+  },
+  {
+    id: 'minecraft', name: 'Minecraft', exes: ['javaw.exe', 'Minecraft.Windows.exe'], on: true,
+    base: {
+      CapsLock: { kind: 'key', combo: 'Ctrl' },
+      KeyQ: { kind: 'off' },
+      KeyV: { kind: 'macro', macro: 'Ponte rápida', mode: 'hold', interval: 90 },
+      F1: { kind: 'text', text: '/home', enter: true },
+    },
+    layer: {},
+  },
+  { id: 'terraria', name: 'Terraria', exes: ['Terraria.exe'], on: false, base: { KeyZ: { kind: 'macro', macro: 'Pulo duplo', mode: 'once', keepOriginal: true } }, layer: {} },
+  { id: 'excel', name: 'Excel', exes: ['EXCEL.EXE'], on: true, app: true, base: { F1: { kind: 'off' } }, layer: {} },
+];
+
+const PROCESSES = [
+  { name: 'RobloxPlayerBeta.exe', title: 'Roblox' },
+  { name: 'javaw.exe', title: 'Minecraft 1.21.4' },
+  { name: 'chrome.exe', title: 'Nova guia - Google Chrome' },
+  { name: 'Discord.exe', title: 'Discord' },
+  { name: 'EXCEL.EXE', title: 'Planilha1 - Excel' },
+  { name: 'GenshinImpact.exe', title: 'Genshin Impact' },
+];
+
+/** Installs the fake engine: in Vite only, and only without WebView2. */
 export function installDemoEngine() {
   const listeners = new Set<Listener>();
   const emit = (message: unknown) => { setTimeout(() => listeners.forEach(l => l({ data: message })), 0); };
   let active: string | null = null;
-  // O eco das mudanças acumula: settings:loaded junta sobre os padrões, não sobre o estado atual.
+  // The echo of the changes accumulates: settings:loaded merges over the defaults, not over the current state.
   const settings: Record<string, unknown> = {
     profileKeyEnabled: true,
     remaps: {
@@ -80,6 +130,8 @@ export function installDemoEngine() {
       ],
     },
   };
+  let teclado: TecladoConfig = { version: 1, enabled: true, games: GAMES };
+  const tecladoState = () => ({ type: 'teclado:state', payload: { config: teclado, loadFailed: false, loadedFromBackup: false, pendingFile: 'teclado.pending.json' } });
   const stepsOf = (name: string | null) => (name ? STEPS[name] ?? [] : []).map((a, i) => ({ ...a, rowNumber: i + 1 }));
   const open = (name: string | null) => {
     active = name;
@@ -102,6 +154,15 @@ export function installDemoEngine() {
             profileLoop: { count: '1', enabled: false, interval: '200', intervalEnabled: false, dirty: false, scoped: true },
           },
         });
+        emit(tecladoState());
+        break;
+      case 'teclado:save':
+        // TecladoService normalises what it gets; the fake engine keeps it as it came.
+        teclado = p.config as TecladoConfig;
+        emit(tecladoState());
+        break;
+      case 'process:list':
+        emit({ type: 'process:list', payload: { processes: PROCESSES } });
         break;
       case 'profile:click':
         open(active === p.name ? null : String(p.name));
@@ -127,5 +188,5 @@ export function installDemoEngine() {
     addEventListener: (type: string, l: Listener) => { if (type === 'message') listeners.add(l); },
     removeEventListener: (_type: string, l: Listener) => { listeners.delete(l); },
   };
-  console.info('[Protótipo MK] motor falso no lugar do C#: dados de exemplo.');
+  console.info('[Teclado] fake engine in place of the C# side: sample data.');
 }

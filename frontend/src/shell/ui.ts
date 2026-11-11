@@ -64,7 +64,7 @@ interface ShellUi {
 
 export type SettingsSection = 'hotkey' | 'hotstring' | 'target' | 'info';
 export type MacroTab = 'steps' | 'data';
-/** The rail's destinations. ('teclado' é o PROTÓTIPO MK: o TrueReplayerMK como modo do TR3.) */
+/** The rail's destinations ('teclado': TrueReplayerMK as a mode of TR3, branch teclado). */
 export type Page = 'macros' | 'clicker' | 'automations' | 'teclado' | 'remaps' | 'settings';
 export type SettingsCategory = 'general' | 'hotkeys' | 'appearance' | 'recording' | 'screen' | 'browser' | 'diagnostics';
 

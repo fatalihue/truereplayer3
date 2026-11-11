@@ -1168,6 +1168,8 @@ namespace TrueReplayer
                     case "automation:testFire": HandleAutomationTestFire(payload); break;
                     case "remap:save": HandleRemapSave(payload); break;
                     case "remap:overwriteUnreadable": HandleRemapOverwriteUnreadable(); break;
+                    case "teclado:save": HandleTecladoSave(payload); break;
+                    case "teclado:overwriteUnreadable": HandleTecladoOverwriteUnreadable(); break;
                     case "actions:reorder": HandleActionsReorder(payload); break;
                     case "actions:convertMode": HandleConvertActionMode(payload); break;
                     case "actions:bulkUpdateType": HandleBulkUpdateType(payload); break;
@@ -2587,6 +2589,27 @@ namespace TrueReplayer
             RemapService.Save(RemapService.Current, overwriteUnreadableFile: true);
             PushSettingsLoaded();
         }
+
+        // Teclado (branch teclado): the per-game keyboard's whole config, as the Key Remaps' list —
+        // TecladoService checks it, keeps it in teclado.json and the page gets it back as it was kept.
+        private void HandleTecladoSave(JsonElement payload)
+        {
+            if (payload.TryGetProperty("config", out var cEl) && cEl.ValueKind == JsonValueKind.Object
+                && TecladoService.FromJson(cEl) is { } config)
+            {
+                TecladoService.Save(config);
+            }
+            PushTecladoState();
+        }
+
+        // The explicit "replace the unreadable teclado.json" the quarantine waits for (the page's notice).
+        private void HandleTecladoOverwriteUnreadable()
+        {
+            TecladoService.Save(TecladoService.Current, overwriteUnreadableFile: true);
+            PushTecladoState();
+        }
+
+        private void PushTecladoState() => SendMessage("teclado:state", TecladoService.StatePayload());
 
         // Settings-blob projection for the remap layer (rides settings:loaded + state:init). The
         // load-failure trio lets the panel say WHY a list is empty or possibly stale, and offer the
@@ -4513,6 +4536,9 @@ namespace TrueReplayer
             // "Always on top" is not applied: the new interface has no switch for it (Compact view takes
             // its place, nativo-029 and settings-120), and a value carried over from TrueReplayer 2 would
             // pin the window with no way to unpin it.
+
+            // Teclado: the games, in a store of their own on the page (state:init does not carry them).
+            PushTecladoState();
 
             // Seed the extension's connection state. browser:status is otherwise pushed only on
             // CHANGE (BrowserBridgeService raises ConnectionChanged when the pipe opens or ends),

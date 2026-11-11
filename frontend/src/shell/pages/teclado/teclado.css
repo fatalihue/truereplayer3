@@ -1,6 +1,6 @@
-/* PROTÓTIPO MK: ② Teclado, o TrueReplayerMK como modo do TR3. Os jogos à esquerda (como a
-   biblioteca), o teclado no meio, a tecla à direita (como "Remap settings"). Só tokens do tema; as
-   cores das funções são as dos passos do TR3 que fazem o mesmo (--color-action-*). */
+/* ② Teclado (branch teclado): TrueReplayerMK as a mode of TR3. The games on the left (as the
+   library), the keyboard in the middle, the key on the right (as "Remap settings"). Theme tokens only;
+   the functions' colours are those of TR3's steps that do the same (--color-action-*). */
 
 .tk {
   position: relative;
@@ -14,7 +14,7 @@
 .tk .insp-icon-button svg { width: 1rem; height: 1rem; }
 .tk .insp-icon-button { border-color: transparent; background: transparent; }
 
-/* ── Os jogos ── */
+/* ── The games ── */
 .tk-games {
   display: flex;
   flex-direction: column;
@@ -73,8 +73,13 @@
 .tk-game-exe { font-family: var(--font-mono); font-size: var(--text-caption); line-height: 1rem; color: var(--color-text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tk-front-dot { width: 0.4375rem; height: 0.4375rem; flex: none; border-radius: 50%; background: var(--color-replay); }
 .tk-games-foot { margin: 0; padding: 0.625rem 1rem 0.75rem; border-top: 1px solid var(--color-border-subtle); font-size: var(--text-minor); line-height: 1rem; color: var(--color-text-tertiary); }
+.tk-games-none { padding: 0.25rem 0.5rem; font-size: var(--text-minor); color: var(--color-text-tertiary); }
+/* Add a game: the open programs (the Key Remaps' picker), then the .exe typed. */
+.tk-add { width: 20rem; }
+.tk-add-label { margin-top: 0.5rem; font-size: var(--text-minor); font-weight: 600; color: var(--color-text-secondary); }
+.tk-add .insp-line { margin-top: 0.25rem; }
 
-/* ── A cabeça: o jogo, Usar, Exportar ── */
+/* ── The head: the game, Use, Export ── */
 .tk-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .tk-head {
   display: flex;
@@ -88,8 +93,31 @@
 }
 .tk-titles { display: flex; flex-direction: column; gap: 0.125rem; flex: 1 1 16rem; min-width: 0; }
 .tk-title { display: flex; align-items: center; gap: 0.5rem; margin: 0; font-size: var(--text-subtitle); line-height: var(--text-subtitle--line-height); font-weight: 600; color: var(--color-text-primary); }
-.tk-sub { margin: 0; font-size: var(--text-minor); line-height: 1rem; color: var(--color-text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tk-sub { display: flex; align-items: center; gap: 0.375rem; min-width: 0; margin: 0; font-size: var(--text-minor); line-height: 1rem; color: var(--color-text-tertiary); white-space: nowrap; overflow: hidden; }
 .tk-sub code { font-family: var(--font-mono); font-size: var(--text-caption); }
+.tk-sub-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tk-sub-text::before { content: '·'; margin-right: 0.375rem; }
+/* Each .exe of the game; the × shows when there is more than one. */
+.tk-exe { display: inline-flex; align-items: center; gap: 0.125rem; flex: none; }
+.tk-exe-x { display: grid; place-items: center; width: 1rem; height: 1rem; padding: 0; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--color-text-tertiary); cursor: pointer; }
+.tk-exe-x svg { width: 0.625rem; height: 0.625rem; }
+.tk-exe-x:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+.tk-exe-x:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; }
+/* The name, typed in its place (Rename). */
+.tk-rename {
+  min-width: 0;
+  width: 14rem;
+  height: 1.75rem;
+  padding: 0 0.5rem;
+  box-sizing: border-box;
+  border: 1px solid var(--color-accent-solid);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-weight: 600;
+  outline: none;
+}
 .tk-pill {
   display: inline-flex;
   align-items: center;
@@ -109,7 +137,7 @@
 .tk-use { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--color-text-secondary); }
 .tk .tk-file { height: 1.875rem; padding: 0 0.625rem; gap: 0.375rem; border-color: var(--color-border-default); background: transparent; font-size: var(--text-minor); }
 
-/* ── A barra: Teclado | Mouse, Base | Camada ── */
+/* ── The bar: Keyboard | Mouse, Base | Layer ── */
 .tk-bar {
   display: flex;
   flex-wrap: wrap;
@@ -134,7 +162,7 @@
   color: var(--color-text-tertiary);
 }
 
-/* ── O desenho ── */
+/* ── The drawing ── */
 .tk-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .tk-board { container-type: inline-size; padding: 1.25rem 1.25rem 0.75rem; }
 .tk-grid {
@@ -173,8 +201,8 @@
 .tk-key:hover { --edge: var(--color-border-strong); }
 .tk-key:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; z-index: 1; }
 .tk-leg { font-family: var(--font-mono); font-size: var(--text-caption); line-height: 1; color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* O rótulo da função: até duas linhas, quebrando só entre palavras ("Combo / 1-2-3"); numa janela
-   estreita, uma linha com reticências. A dica e o painel têm o nome inteiro. */
+/* The function's label: up to two lines, broken between words only ("Combo / 1-2-3"); in a narrow
+   window, one line with an ellipsis. The tip and the panel have the whole name. */
 .tk-fn {
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -187,7 +215,7 @@
   overflow: hidden;
   overflow-wrap: normal;
 }
-/* Uma palavra só ("Desligada") não quebra no meio: uma linha com reticências. */
+/* A single word ("Off") is not broken in the middle: one line with an ellipsis. */
 .tk-fn[data-one] { display: block; white-space: nowrap; text-overflow: ellipsis; }
 @container (max-width: 60rem) {
   .tk-fn { display: block; white-space: nowrap; text-overflow: ellipsis; }
@@ -196,7 +224,7 @@
 .tk-inh { position: absolute; top: calc(var(--u) * 0.06); right: calc(var(--u) * 0.08); display: grid; place-items: center; font-size: var(--text-caption); line-height: 1; color: var(--color-text-tertiary); }
 .tk-inh svg { width: 0.6875rem; height: 0.6875rem; }
 
-/* As funções, na cor do passo do TR3 que faz o mesmo: tingidas a 12% com a borda a 40% (a regra de "ligado"). */
+/* The functions, in the colour of TR3's step that does the same: tinted at 12% with the border at 40% (the "on" rule). */
 .tk-key[data-fn] { --face: linear-gradient(var(--fn-bg) 0 0), var(--color-bg-elevated); --edge: color-mix(in srgb, var(--fn-fg) 40%, transparent); --ink: var(--fn-fg); }
 .tk-key[data-fn]:hover { --edge: color-mix(in srgb, var(--fn-fg) 65%, transparent); }
 .tk-key[data-fn='key'] { --fn-fg: var(--color-action-key-fg); --fn-bg: var(--color-action-key-bg); }
@@ -204,19 +232,19 @@
 .tk-key[data-fn='macro'] { --fn-fg: var(--color-action-runprofile-fg); --fn-bg: var(--color-action-runprofile-bg); }
 .tk-key[data-fn='text'] { --fn-fg: var(--color-action-sendtext-fg); --fn-bg: var(--color-action-sendtext-bg); }
 .tk-key[data-fn='layer'] { --fn-fg: var(--color-action-if-fg); --fn-bg: var(--color-action-if-bg); }
-/* Desligar: a forma muda (tracejado), não só a cor. */
+/* Off: the shape changes (dashed), not only the colour. */
 .tk-key[data-fn='off'] { --face: transparent; --edge: var(--color-border-strong); --ink: var(--color-text-tertiary); border-style: dashed; border-bottom-width: 1px; }
 .tk-key[data-fn='off']:hover { --edge: var(--color-text-tertiary); }
-/* Herdada (da base, na Camada; ou dos remaps gerais): sem tinta, o rótulo na Tinta 3 e a marca no canto. */
+/* Inherited (from the base, on the layer; or from the general remaps): no tint, the label in the third ink and the mark in the corner. */
 .tk-key[data-source] { --face: var(--color-bg-elevated); --edge: var(--color-border-default); --ink: var(--color-text-tertiary); border-style: solid; border-bottom-width: 2px; }
 .tk-key[data-source] .tk-fn { font-weight: 400; }
 .tk-key[data-source]:hover { --edge: var(--color-border-strong); }
-/* A tecla de camada, segura, na vista da Camada. */
+/* The layer key, held, in the layer's view. */
 .tk-key[data-held] { border-bottom-width: 1px; --face: linear-gradient(color-mix(in srgb, var(--color-action-if-fg) 22%, transparent) 0 0), var(--color-bg-elevated); }
-/* A escolhida: o anel no destaque. */
+/* The chosen one: the ring in the accent. */
 .tk-key[aria-pressed='true'] { outline: 2px solid var(--color-accent); outline-offset: 1px; z-index: 1; }
 
-/* O Enter em L do ISO: uma peça só, recortada; a borda é uma camada de baixo. */
+/* ISO's L-shaped Enter: one piece, clipped; the border is a layer underneath. */
 .tk-slot[data-iso] .tk-key {
   --q: calc(var(--u) * 0.25);
   border: 0;
@@ -240,7 +268,7 @@
 .tk-slot[data-iso] .tk-key[aria-pressed='true']::before { inset: 2px 2px 3px; }
 .tk-slot[data-iso] .tk-fn, .tk-slot[data-iso] .tk-leg { align-self: flex-end; }
 
-/* O × que limpa, ao passar o mouse (como no iCUE). */
+/* The × that clears, on hover. */
 .tk-x {
   position: absolute;
   top: calc(var(--u) * 0.045 - 0.375rem);
@@ -262,13 +290,13 @@
 .tk-slot:hover .tk-x, .tk-x:focus-visible { opacity: 1; }
 .tk-x:hover { color: var(--color-text-primary); border-color: var(--color-text-tertiary); }
 
-/* ── O mouse ── */
+/* ── The mouse ── */
 .tk-mouse { display: grid; grid-template-columns: repeat(4, 7.5rem); gap: 0.5rem; justify-content: center; padding: 1.5rem 1.25rem 0.75rem; --u: 3.75rem; }
 .tk-mouse .tk-slot { height: 3.75rem; }
 .tk-mouse .tk-key[disabled] { cursor: default; opacity: 0.5; border-style: dashed; }
 .tk-mouse-note { grid-column: 1 / -1; margin: 0.25rem 0 0; text-align: center; font-size: var(--text-minor); color: var(--color-text-tertiary); }
 
-/* ── A legenda e as notas sob o desenho ── */
+/* ── The legend and the notes under the drawing ── */
 .tk-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.375rem 1rem; padding: 0.25rem 1.25rem 0.75rem; font-size: var(--text-minor); color: var(--color-text-secondary); }
 .tk-legend-item { display: inline-flex; align-items: center; gap: 0.375rem; }
 .tk-swatch { width: 0.875rem; height: 0.875rem; box-sizing: border-box; border: 1px solid var(--edge); border-radius: 0.1875rem; background: var(--face); }
@@ -292,7 +320,7 @@
 .tk-note svg { width: 0.875rem; height: 0.875rem; margin-top: 0.125rem; color: var(--color-text-tertiary); }
 .tk-note b { font-weight: 600; color: var(--color-text-primary); }
 
-/* ── A tecla (o painel, nas classes de "Remap settings") ── */
+/* ── The key (the panel, in the classes of "Remap settings") ── */
 .tk-panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-left: 1px solid var(--color-border-subtle); background: var(--color-bg-surface); }
 .tk-panel .rm-panel-icon { font-family: var(--font-mono); font-size: var(--text-minor); font-weight: 600; }
 .tk-fns { display: flex; flex-direction: column; gap: 0.125rem; padding: 0.25rem; border: 1px solid var(--color-border-subtle); border-radius: 0.375rem; background: var(--color-bg-elevated); }
@@ -312,7 +340,7 @@
 .tk-where { font-size: var(--text-minor); line-height: 1rem; color: var(--color-text-tertiary); }
 .tk-where b { font-weight: 600; color: var(--color-text-secondary); }
 .tk-rec { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--color-recording); }
-/* A macro escolhida, como um cartão: o nome, onde ela mora na biblioteca, e Trocar. */
+/* The macro chosen, as a card: its name, where it lives in the library, and Change. */
 .tk-macro {
   display: flex;
   align-items: center;
@@ -331,7 +359,7 @@
 .tk-empty-title { font-weight: 600; color: var(--color-text-primary); }
 .tk-empty-text { max-width: 16rem; font-size: var(--text-minor); line-height: 1rem; color: var(--color-text-secondary); }
 
-/* 1024–1279: os jogos dobram em avatares, como a biblioteca. */
+/* 1024–1279: the games fold into avatars, as the library does. */
 @container shell (max-width: 79.99rem) {
   .tk { grid-template-columns: 3.5rem minmax(0, 1fr) 21rem; }
   .tk-game { justify-content: center; padding: 0.25rem; }
@@ -339,7 +367,7 @@
   .tk-games .lib-header { justify-content: center; padding: 0; }
   .tk-front-dot { position: absolute; top: 0.25rem; right: 0.25rem; }
 }
-/* 760–1023: o painel da tecla fica sobre o desenho. */
+/* 760–1023: the key's panel lies over the drawing. */
 @container shell (max-width: 63.99rem) {
   .tk { grid-template-columns: 3.5rem minmax(0, 1fr); }
   .tk-panel { position: absolute; inset: 0 0 0 auto; width: min(22.5rem, 85%); box-shadow: var(--shadow-overlay); z-index: 4; }

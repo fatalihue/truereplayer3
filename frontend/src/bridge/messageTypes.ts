@@ -576,6 +576,52 @@ export interface RemapEntryDto {
   process?: string;
 }
 
+// ── Teclado (branch teclado): TrueReplayerMK as a mode of TrueReplayer 3 ──
+
+/** A key's function (TecladoService.KeyFunction). A key absent from its layer's map does what it always does. */
+export interface TecladoKeyFunction {
+  kind: 'key' | 'mouse' | 'macro' | 'text' | 'off' | 'layer';
+  /** key: the key or combo that goes out, in the engine's key names ("Space", "Ctrl+Shift+1"). */
+  combo?: string;
+  /** mouse: one of the Key Remaps' mouse targets (LeftClick … ScrollDown). */
+  mouse?: string;
+  /** macro: the library macro, its mode, and the repetitions. */
+  macro?: string;
+  mode?: 'once' | 'times' | 'hold' | 'toggle';
+  times?: number;
+  interval?: number;
+  keepOriginal?: boolean;
+  /** text: what is typed, and whether Enter follows. */
+  text?: string;
+  enter?: boolean;
+}
+
+/** A game: matched by its .exe in the foreground. Keys by physical position (KeyboardEvent.code). */
+export interface TecladoGame {
+  id: string;
+  name: string;
+  exes: string[];
+  on: boolean;
+  /** Not a game: an app (an "only in one app" Key Remap, in variant B). */
+  app?: boolean;
+  base: Record<string, TecladoKeyFunction>;
+  layer: Record<string, TecladoKeyFunction>;
+}
+
+export interface TecladoConfig {
+  version: number;
+  enabled: boolean;
+  games: TecladoGame[];
+}
+
+export interface TecladoState {
+  config: TecladoConfig;
+  loadFailed: boolean;
+  loadedFromBackup: boolean;
+  loadFailureDetail?: string | null;
+  pendingFile: string;
+}
+
 // ── Automation (trigger daemon) ──
 
 /** One executed action in the last run's report. Mirrors ActionReplayer.RunStepRecord. */
@@ -1014,6 +1060,9 @@ export type IncomingMessage =
   // alert:show — and the dialog just lifts its in-flight lock, keeping the hint.
   | { type: 'windowTarget:applyConvertCompleted'; payload: { ok: boolean } }
   | { type: 'process:list'; payload: { processes: { name: string; title: string }[] } }
+  // Teclado (branch teclado): the per-game keyboard's whole config after every load and save, with the
+  // quarantine's state (TecladoService, the remaps.json protections).
+  | { type: 'teclado:state'; payload: TecladoState }
   | { type: 'clipboard:content'; payload: { text: string } }
   | { type: 'replay:chain'; payload: { stack: string[] } }
   // Row position inside the sub-profile currently running (~4 Hz, engine-throttled). Handled by
@@ -1179,6 +1228,10 @@ export type OutgoingMessage =
   // "Replace the unreadable remaps.json with the list in memory" — the explicit choice the
   // sidecar quarantine waits for (RemapService.Save's overwriteUnreadableFile).
   | { type: 'remap:overwriteUnreadable'; payload: Record<string, never> }
+  // Teclado: whole-config save (TecladoService.Save), and the explicit "replace the unreadable
+  // teclado.json" the quarantine waits for.
+  | { type: 'teclado:save'; payload: { config: TecladoConfig } }
+  | { type: 'teclado:overwriteUnreadable'; payload: Record<string, never> }
   | { type: 'recording:toggle'; payload: { insertIndex?: number } }
   // No payload: the loop settings used to ride here, straight out of the React `settings`
   // slice, which no profile-activation path refreshes — so after switching from a 3x profile

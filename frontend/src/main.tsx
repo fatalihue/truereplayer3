@@ -11,7 +11,7 @@ import { ToastProvider } from './state/ToastContext'
 import { applyThemeConfig, loadCustomPresets, loadThemeConfig, resolveThemeColors } from './themes'
 import { installDemoEngine } from './shell/mk/demoEngine'
 
-// PROTÓTIPO MK: no Vite, sem o WebView2, um motor falso responde com dados de exemplo.
+// Teclado (branch teclado): in Vite, without WebView2, a fake engine answers with sample data.
 if (import.meta.env.DEV && !window.chrome?.webview) installDemoEngine()
 
 // The theme's TOKENS go on <html> before the first render; data-animations stays off until

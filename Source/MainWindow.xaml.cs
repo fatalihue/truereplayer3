@@ -309,6 +309,8 @@ namespace TrueReplayer
             // first keystroke, independent of WebView2 (which may never come up in
             // tray-daemon usage). The bridge only edits + republishes.
             RemapService.Load();
+            // Teclado (branch teclado): the per-game keyboard, loaded with the remaps for the same reason.
+            TecladoService.Load();
 
             // Run cursors (data-loop row position, SetVariable cycle position) — loaded here for
             // the same reason as the remaps: an automation or a hotkey can fire a replay long

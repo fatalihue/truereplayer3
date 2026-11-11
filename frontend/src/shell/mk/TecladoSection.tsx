@@ -1,6 +1,7 @@
-// PROTÓTIPO MK (ver mkModel.ts): o que só o caminho unificado dá. A macro aberta no editor do TR3 diz
-// em que teclas de jogo ela está, ao lado do Gatilho e da Automação, e leva até a tecla no Teclado.
+// Teclado (branch teclado): what only the unified path gives. The macro open in TR3's editor says
+// which game keys use it, beside its Trigger and its Automation, and leads to the key on the Keyboard.
 import { Keyboard } from 'lucide-react';
+import { t } from '../../i18n';
 import { openPage } from '../ui';
 import { legendOf, MODES } from './mkModel';
 import { listedGames, useMk } from './mkStore';
@@ -17,28 +18,30 @@ export function TecladoSection({ name }: { name: string }) {
     }
   }
   const go = (u?: (typeof uses)[number]) => {
-    if (u) useMk.setState({ open: u.id, view: u.layer ? 'layer' : 'base', key: u.code, device: 'keyboard' });
+    if (u) useMk.setState({ open: u.id, view: u.layer ? 'layer' : 'base', key: u.code, device: u.code.startsWith('Mouse') || u.code.startsWith('Wheel') ? 'mouse' : 'keyboard' });
     openPage('teclado');
   };
   return (
     <div className="mset-group">
-      <span className="mset-title">Teclado</span>
+      <span className="mset-title">{t('teclado.section.title')}</span>
       {uses.length === 0 ? (
         <div className="mset-target" data-none="">
           <span className="mset-target-text">
-            <span className="mset-target-name">Em nenhuma tecla de jogo</span>
-            <span className="mset-target-sub">Dê esta macro a uma tecla no Teclado</span>
+            <span className="mset-target-name">{t('teclado.section.none')}</span>
+            <span className="mset-target-sub">{t('teclado.section.noneSub')}</span>
           </span>
-          <button type="button" className="insp-link" onClick={() => go()}>Abrir</button>
+          <button type="button" className="insp-link" onClick={() => go()}>{t('common.actions.open')}</button>
         </div>
       ) : uses.map(u => (
         <div key={`${u.id}-${u.layer}-${u.code}`} className="mset-target mset-auto">
           <span className="mset-auto-icon" data-tone="ok" aria-hidden="true"><Keyboard /></span>
           <span className="mset-target-text">
-            <span className="mset-auto-name">{u.game} · {legendOf(u.code)}{u.layer ? ' na Camada' : ''}</span>
-            <span className="mset-target-sub">{MODES.find(m => m.value === u.mode)?.label ?? 'Uma vez'} · começa no apertar</span>
+            <span className="mset-auto-name">
+              {u.layer ? t('teclado.section.useLayer', { game: u.game, key: legendOf(u.code) }) : t('teclado.section.use', { game: u.game, key: legendOf(u.code) })}
+            </span>
+            <span className="mset-target-sub">{t('teclado.section.sub', { mode: MODES.find(m => m.value === u.mode)?.label ?? MODES[0].label })}</span>
           </span>
-          <button type="button" className="insp-link" onClick={() => go(u)}>Abrir</button>
+          <button type="button" className="insp-link" onClick={() => go(u)}>{t('common.actions.open')}</button>
         </div>
       ))}
     </div>

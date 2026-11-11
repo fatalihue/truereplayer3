@@ -43,7 +43,7 @@ export default function MacroSettings({ name: opened, locked }: { name: string; 
       <div className="insp-rule" />
       <AutomationSection name={name} />
       <div className="insp-rule" />
-      {/* PROTÓTIPO MK: as teclas de jogo que usam esta macro. */}
+      {/* Teclado (branch teclado): the game keys that use this macro. */}
       <TecladoSection name={name} />
       <div className="insp-rule" />
       <InfoSection facts={facts} locked={locked} focus={want?.section === 'info' ? want : null} />

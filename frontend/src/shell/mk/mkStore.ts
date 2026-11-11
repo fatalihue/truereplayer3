@@ -1,119 +1,123 @@
-// PROTÓTIPO MK (ver mkModel.ts). O estado do modo, com dados falsos: os jogos, a tecla escolhida,
-// e o que o protótipo deixa simular (a variante dos Key Remaps, o jogo na frente, a camada segura).
+// Teclado (branch teclado; plan .claude/planos/teclado-no-tr3-2026-11-10.md). The mode's state on the
+// page: the games and the master switch mirror the engine (teclado:state, TecladoService), and every
+// edit goes back whole (teclado:save), as the Key Remaps do. The rest is the page's own: the game and
+// key open, the view. Still simulated until phase 2: the game in the foreground and the held layer
+// (the prototype card), and the Key Remaps variant (A beside, B merged), which waits for the owner.
+import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { RemapEntryDto } from '../../bridge/messageTypes';
+import { useBridge } from '../../bridge/BridgeContext';
+import type { OutgoingMessage, RemapEntryDto, TecladoConfig, TecladoGame, TecladoState } from '../../bridge/messageTypes';
 import { mouseTarget } from '../pages/remaps/remapModel';
 import { codeOfTr, EVERYWHERE, trKeyName, type Game, type KeyFn } from './mkModel';
 
-/** Os dois caminhos para os Key Remaps: ficam ao lado (A) ou viram o teclado (B). */
+/** The two ways for the Key Remaps: they stay beside (A) or become the keyboard (B). */
 export type Variant = 'beside' | 'merged';
 
 interface MkState {
   variant: Variant;
+  /** The engine's games (teclado:state). */
   games: Game[];
-  /** O jogo aberto na página (ou EVERYWHERE, na variante B). */
+  /** The engine's master switch (the status bar's "Teclado"). */
+  enabled: boolean;
+  /** The first teclado:state is in. */
+  loaded: boolean;
+  /** teclado.json could not be read (TecladoService.LoadFailed): what is shown, and where edits go. */
+  loadFailed: boolean;
+  loadedFromBackup: boolean;
+  loadFailureDetail: string | null;
+  pendingFile: string;
+  /** The game open on the page (or EVERYWHERE, in variant B). */
   open: string;
   view: 'base' | 'layer';
   device: 'keyboard' | 'mouse';
   numpad: boolean;
-  /** A tecla escolhida (posição física), ou null com o painel fechado. */
+  /** The key chosen (physical position), or null with the panel closed. */
   key: string | null;
-  /** A chave geral do modo, na barra de status. */
-  enabled: boolean;
-  /** Simulação: o jogo na frente agora (o evento de primeiro plano do Windows), e a camada segura. */
+  /** Simulated until phase 2: the game in the foreground, and the layer key held. */
   front: string | null;
   holding: boolean;
-  /** O cartão do protótipo, recolhido. */
+  /** The prototype card, folded. */
   protoFolded: boolean;
 }
 
-const roblox: Game = {
-  id: 'roblox',
-  name: 'Roblox',
-  exes: ['RobloxPlayerBeta.exe'],
-  on: true,
-  base: {
-    CapsLock: { kind: 'layer' },
-    KeyE: { kind: 'macro', macro: 'Coletar', mode: 'hold', interval: 120, keepOriginal: false },
-    KeyR: { kind: 'macro', macro: 'Combo 1-2-3', mode: 'once', keepOriginal: false },
-    KeyQ: { kind: 'key', combo: 'Space' },
-    KeyF: { kind: 'mouse', mouse: 'RightClick' },
-    KeyV: { kind: 'mouse', mouse: 'XButton1' },
-    F1: { kind: 'text', text: 'gg! boa partida', enter: true },
-    F2: { kind: 'text', text: '/e dance', enter: true },
-    MetaLeft: { kind: 'off' },
-    ContextMenu: { kind: 'off' },
-  },
-  layer: {
-    KeyE: { kind: 'macro', macro: 'Farm automático', mode: 'toggle', interval: 200, keepOriginal: false },
-    KeyQ: { kind: 'macro', macro: 'Trocar arma', mode: 'once', keepOriginal: false },
-    Digit1: { kind: 'key', combo: 'Shift+1' },
-    Digit2: { kind: 'key', combo: 'Shift+2' },
-    KeyF: { kind: 'off' },
-  },
-};
-
-const minecraft: Game = {
-  id: 'minecraft',
-  name: 'Minecraft',
-  exes: ['javaw.exe', 'Minecraft.Windows.exe'],
-  on: true,
-  base: {
-    CapsLock: { kind: 'key', combo: 'Ctrl' },
-    KeyQ: { kind: 'off' },
-    KeyV: { kind: 'macro', macro: 'Ponte rápida', mode: 'hold', interval: 90, keepOriginal: false },
-    F1: { kind: 'text', text: '/home', enter: true },
-  },
-  layer: {},
-};
-
-const terraria: Game = {
-  id: 'terraria',
-  name: 'Terraria',
-  exes: ['Terraria.exe'],
-  on: false,
-  base: {
-    KeyZ: { kind: 'macro', macro: 'Pulo duplo', mode: 'once', keepOriginal: true },
-  },
-  layer: {},
-};
-
-// Variante B: a regra "só no EXCEL.EXE" dos Key Remaps vira uma entrada da mesma lista que os jogos.
-const excel: Game = {
-  id: 'excel',
-  name: 'Excel',
-  exes: ['EXCEL.EXE'],
-  on: true,
-  app: true,
-  base: { F1: { kind: 'off' } },
-  layer: {},
-};
-
 export const useMk = create<MkState>(() => ({
   variant: 'beside',
-  games: [roblox, minecraft, terraria, excel],
-  open: 'roblox',
+  games: [],
+  enabled: true,
+  loaded: false,
+  loadFailed: false,
+  loadedFromBackup: false,
+  loadFailureDetail: null,
+  pendingFile: 'teclado.pending.json',
+  open: '',
   view: 'base',
   device: 'keyboard',
   numpad: false,
-  key: 'KeyE',
-  enabled: true,
+  key: null,
   front: null,
   holding: false,
   protoFolded: true,
 }));
 
-/** Os jogos que a lista mostra: o Excel só existe nela na variante B (na A ele é regra dos Key Remaps). */
+// ── The engine's side ──
+
+let send: ((message: OutgoingMessage) => void) | null = null;
+
+/**
+ * Mounted once, in the shell: takes teclado:state into the store, and keeps the bridge's send for the
+ * edits. The first state opens the first game.
+ */
+export function useTecladoSync() {
+  const bridge = useBridge();
+  useEffect(() => {
+    send = bridge.send;
+    const off = bridge.subscribe((message) => {
+      if (message.type === 'teclado:state') receive(message.payload);
+    });
+    return () => { off(); send = null; };
+  }, [bridge]);
+}
+
+function receive(state: TecladoState) {
+  const games = (state.config?.games ?? []) as Game[];
+  const s = useMk.getState();
+  const stillThere = s.open === EVERYWHERE || games.some(g => g.id === s.open);
+  useMk.setState({
+    games,
+    enabled: state.config?.enabled ?? true,
+    loaded: true,
+    loadFailed: !!state.loadFailed,
+    loadedFromBackup: !!state.loadedFromBackup,
+    loadFailureDetail: state.loadFailureDetail ?? null,
+    pendingFile: state.pendingFile || s.pendingFile,
+    open: stillThere && s.open ? s.open : games.find(g => !g.app)?.id ?? games[0]?.id ?? '',
+    key: stillThere ? s.key : null,
+  });
+}
+
+/** An edit: on the page at once, and whole to the engine, whose teclado:state then settles it. */
+function commit(games: Game[], enabled = useMk.getState().enabled) {
+  useMk.setState({ games, enabled });
+  const config: TecladoConfig = { version: 1, enabled, games: games as TecladoGame[] };
+  send?.({ type: 'teclado:save', payload: { config } });
+}
+
+export const setEnabled = (enabled: boolean) => commit(useMk.getState().games, enabled);
+export const overwriteUnreadable = () => send?.({ type: 'teclado:overwriteUnreadable', payload: {} });
+
+// ── Reading ──
+
+/** The games the list shows: the apps only in variant B (in A they are Key Remaps rules). */
 export const listedGames = (s: { games: Game[]; variant: Variant }) => s.games.filter(g => !g.app || s.variant === 'merged');
 export const gameOf = (s: MkState) => (s.open === EVERYWHERE ? null : listedGames(s).find(g => g.id === s.open) ?? null);
 
-/** Onde a função de uma tecla mostrada vem: dela mesma, da base (na Camada) ou dos remaps gerais. */
+/** Where a shown key's function comes from: its own, the base (on the layer), or the general remaps. */
 export type Source = 'own' | 'base' | 'global';
 
 /**
- * Os Key Remaps como teclas: os de "em qualquer lugar" e, para um jogo, os "só no app" do .exe dele.
- * Na variante A eles continuam na página Key Remaps e só aparecem aqui como herança; na B são o
- * teclado "Em qualquer lugar".
+ * The Key Remaps as keys: the "everywhere" ones and, for a game, the "only in one app" ones of its .exe.
+ * In variant A they stay on the Key Remaps page and only show here as what is underneath; in B they
+ * are the "Em qualquer lugar" keyboard.
  */
 export function globalsOf(remaps: { enabled: boolean; entries: RemapEntryDto[] }, exes: string[] | null): Record<string, KeyFn> {
   const out: Record<string, KeyFn> = {};
@@ -130,7 +134,7 @@ export function globalsOf(remaps: { enabled: boolean; entries: RemapEntryDto[] }
   return out;
 }
 
-/** O teclado "Em qualquer lugar" escrito de volta como a lista dos Key Remaps (as regras "só no app" ficam). */
+/** The "Em qualquer lugar" keyboard written back as the Key Remaps list (the "only in one app" rules stay). */
 export function remapsWith(entries: RemapEntryDto[], code: string, fn: KeyFn): RemapEntryDto[] {
   const from = trKeyName(code);
   const rest = entries.filter(e => e.process || e.from.toLowerCase() !== from.toLowerCase());
@@ -139,7 +143,7 @@ export function remapsWith(entries: RemapEntryDto[], code: string, fn: KeyFn): R
   return [...rest, { from, to, enabled: true }];
 }
 
-/** A função de uma tecla na vista mostrada. */
+/** A key's function in the view shown. */
 export function fnAt(s: MkState, code: string, globals: Record<string, KeyFn>): { fn: KeyFn; source: Source } {
   if (s.open === EVERYWHERE) return { fn: globals[code] ?? { kind: 'default' }, source: 'own' };
   const game = gameOf(s);
@@ -154,29 +158,73 @@ export function fnAt(s: MkState, code: string, globals: Record<string, KeyFn>): 
   return { fn: { kind: 'default' }, source: 'own' };
 }
 
-/** A tecla de camada do jogo (a que tem a função Camada na base), ou null. */
+/** The game's layer key (the one with the Camada function on the base), or null. */
 export const layerKeyOf = (game: Game | null) =>
   game ? Object.keys(game.base).find(code => game.base[code].kind === 'layer') ?? null : null;
 
-/** Grava a função de uma tecla do jogo aberto, na vista mostrada. */
+// ── Editing ──
+
+/** Writes a key's function in the open game, in the view shown. */
 export function setGameFn(code: string, fn: KeyFn) {
   const s = useMk.getState();
   const clean = fn.kind === 'default' ? null : fn;
-  useMk.setState({
-    games: s.games.map(g => {
-      if (g.id !== s.open) return g;
-      const side = s.view === 'layer' ? 'layer' : 'base';
-      const next = { ...g[side] };
-      if (clean) next[code] = clean; else delete next[code];
-      // Uma camada só por jogo: a tecla nova de Camada tira a função da antiga.
-      if (side === 'base' && clean?.kind === 'layer') {
-        for (const other of Object.keys(next)) if (other !== code && next[other].kind === 'layer') delete next[other];
-      }
-      return { ...g, [side]: next };
-    }),
-  });
+  commit(s.games.map(g => {
+    if (g.id !== s.open) return g;
+    const side = s.view === 'layer' ? 'layer' : 'base';
+    const next = { ...g[side] };
+    if (clean) next[code] = clean; else delete next[code];
+    // One layer key per game: a new Camada key takes the function from the old one.
+    if (side === 'base' && clean?.kind === 'layer') {
+      for (const other of Object.keys(next)) if (other !== code && next[other].kind === 'layer') delete next[other];
+    }
+    return { ...g, [side]: next };
+  }));
+}
+
+export const setGameOn = (id: string, on: boolean) => commit(useMk.getState().games.map(g => (g.id === id ? { ...g, on } : g)));
+
+/** A new game for a program (its .exe), opened; or the one that already has that .exe. */
+export function addGame(process: string) {
+  const exe = /\.exe$/i.test(process.trim()) ? process.trim() : `${process.trim()}.exe`;
+  const s = useMk.getState();
+  const known = s.games.find(g => g.exes.some(e => e.toLowerCase() === exe.toLowerCase()));
+  if (known) { useMk.setState({ open: known.id, key: null, view: 'base' }); return; }
+  const name = exe.replace(/\.exe$/i, '');
+  const id = `g-${crypto.randomUUID().slice(0, 10)}`;
+  commit([...s.games, { id, name, exes: [exe], on: true, base: {}, layer: {} }]);
+  useMk.setState({ open: id, key: null, view: 'base' });
+}
+
+/** Removes a game; the returned function puts it back where it was (the toast's Undo). */
+export function removeGame(id: string): () => void {
+  const s = useMk.getState();
+  const at = s.games.findIndex(g => g.id === id);
+  if (at < 0) return () => undefined;
+  const game = s.games[at];
+  const rest = s.games.filter(g => g.id !== id);
+  commit(rest);
+  if (s.open === id) useMk.setState({ open: rest.find(g => !g.app)?.id ?? rest[0]?.id ?? '', key: null });
+  return () => {
+    const now = useMk.getState().games;
+    if (now.some(g => g.id === id)) return;
+    commit([...now.slice(0, at), game, ...now.slice(at)]);
+  };
+}
+
+export function renameGame(id: string, name: string) {
+  const clean = name.trim();
+  if (!clean) return;
+  commit(useMk.getState().games.map(g => (g.id === id ? { ...g, name: clean.slice(0, 60) } : g)));
+}
+
+export function addExe(id: string, process: string) {
+  const exe = /\.exe$/i.test(process.trim()) ? process.trim() : `${process.trim()}.exe`;
+  commit(useMk.getState().games.map(g => (g.id === id && !g.exes.some(e => e.toLowerCase() === exe.toLowerCase()) ? { ...g, exes: [...g.exes, exe] } : g)));
+}
+
+export function removeExe(id: string, exe: string) {
+  commit(useMk.getState().games.map(g => (g.id === id && g.exes.length > 1 ? { ...g, exes: g.exes.filter(e => e !== exe) } : g)));
 }
 
 export const openGame = (id: string) => useMk.setState(s => ({ open: id, view: id === EVERYWHERE ? 'base' : s.view, key: null }));
 export const pickKey = (code: string | null) => useMk.setState({ key: code });
-export const setGameOn = (id: string, on: boolean) => useMk.setState(s => ({ games: s.games.map(g => (g.id === id ? { ...g, on } : g)) }));
