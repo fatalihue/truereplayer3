@@ -1618,6 +1618,8 @@ namespace TrueReplayer
             }
 
             InputHookManager.Start();
+            // Teclado (branch teclado): the game in front, from the foreground event, on the hook thread.
+            TecladoFront.Start();
         }
 
         /// <summary>

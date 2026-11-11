@@ -1,20 +1,16 @@
 // Teclado (branch teclado; plan .claude/planos/teclado-no-tr3-2026-11-10.md). The mode's state on the
-// page: the games and the master switch mirror the engine (teclado:state, TecladoService), and every
-// edit goes back whole (teclado:save), as the Key Remaps do. The rest is the page's own: the game and
-// key open, the view. Still simulated until phase 2: the game in the foreground and the held layer
-// (the prototype card), and the Key Remaps variant (A beside, B merged), which waits for the owner.
+// page: the games and the master switch mirror the engine (teclado:state, TecladoService), every edit
+// goes back whole (teclado:save) as the Key Remaps do, and the game in front comes from the
+// foreground event (teclado:live, TecladoFront). The rest is the page's own: the game and key open,
+// the view. The Key Remaps stay on their page (decision 1): here they only show under a game's keys.
 import { useEffect } from 'react';
 import { create } from 'zustand';
 import { useBridge } from '../../bridge/BridgeContext';
-import type { OutgoingMessage, RemapEntryDto, TecladoConfig, TecladoGame, TecladoState } from '../../bridge/messageTypes';
+import type { OutgoingMessage, RemapEntryDto, TecladoConfig, TecladoGame, TecladoLive, TecladoState } from '../../bridge/messageTypes';
 import { mouseTarget } from '../pages/remaps/remapModel';
-import { codeOfTr, EVERYWHERE, trKeyName, type Game, type KeyFn } from './mkModel';
-
-/** The two ways for the Key Remaps: they stay beside (A) or become the keyboard (B). */
-export type Variant = 'beside' | 'merged';
+import { codeOfTr, type Game, type KeyFn } from './mkModel';
 
 interface MkState {
-  variant: Variant;
   /** The engine's games (teclado:state). */
   games: Game[];
   /** The engine's master switch (the status bar's "Teclado"). */
@@ -26,22 +22,20 @@ interface MkState {
   loadedFromBackup: boolean;
   loadFailureDetail: string | null;
   pendingFile: string;
-  /** The game open on the page (or EVERYWHERE, in variant B). */
+  /** The game open on the page. */
   open: string;
   view: 'base' | 'layer';
   device: 'keyboard' | 'mouse';
   numpad: boolean;
   /** The key chosen (physical position), or null with the panel closed. */
   key: string | null;
-  /** Simulated until phase 2: the game in the foreground, and the layer key held. */
+  /** The engine's teclado:live: the game in front (its id), the process, and the layer key held. */
   front: string | null;
+  frontProcess: string | null;
   holding: boolean;
-  /** The prototype card, folded. */
-  protoFolded: boolean;
 }
 
 export const useMk = create<MkState>(() => ({
-  variant: 'beside',
   games: [],
   enabled: true,
   loaded: false,
@@ -55,8 +49,8 @@ export const useMk = create<MkState>(() => ({
   numpad: false,
   key: null,
   front: null,
+  frontProcess: null,
   holding: false,
-  protoFolded: true,
 }));
 
 // ── The engine's side ──
@@ -64,8 +58,8 @@ export const useMk = create<MkState>(() => ({
 let send: ((message: OutgoingMessage) => void) | null = null;
 
 /**
- * Mounted once, in the shell: takes teclado:state into the store, and keeps the bridge's send for the
- * edits. The first state opens the first game.
+ * Mounted once, in the shell: takes teclado:state and teclado:live into the store, and keeps the
+ * bridge's send for the edits. The first state opens the first game.
  */
 export function useTecladoSync() {
   const bridge = useBridge();
@@ -73,6 +67,7 @@ export function useTecladoSync() {
     send = bridge.send;
     const off = bridge.subscribe((message) => {
       if (message.type === 'teclado:state') receive(message.payload);
+      else if (message.type === 'teclado:live') receiveLive(message.payload);
     });
     return () => { off(); send = null; };
   }, [bridge]);
@@ -81,7 +76,7 @@ export function useTecladoSync() {
 function receive(state: TecladoState) {
   const games = (state.config?.games ?? []) as Game[];
   const s = useMk.getState();
-  const stillThere = s.open === EVERYWHERE || games.some(g => g.id === s.open);
+  const stillThere = games.some(g => g.id === s.open);
   useMk.setState({
     games,
     enabled: state.config?.enabled ?? true,
@@ -90,9 +85,13 @@ function receive(state: TecladoState) {
     loadedFromBackup: !!state.loadedFromBackup,
     loadFailureDetail: state.loadFailureDetail ?? null,
     pendingFile: state.pendingFile || s.pendingFile,
-    open: stillThere && s.open ? s.open : games.find(g => !g.app)?.id ?? games[0]?.id ?? '',
+    open: stillThere ? s.open : games[0]?.id ?? '',
     key: stillThere ? s.key : null,
   });
+}
+
+function receiveLive(live: TecladoLive) {
+  useMk.setState({ front: live.front ?? null, frontProcess: live.process ?? null, holding: !!live.layer });
 }
 
 /** An edit: on the page at once, and whole to the engine, whose teclado:state then settles it. */
@@ -107,22 +106,19 @@ export const overwriteUnreadable = () => send?.({ type: 'teclado:overwriteUnread
 
 // ── Reading ──
 
-/** The games the list shows: the apps only in variant B (in A they are Key Remaps rules). */
-export const listedGames = (s: { games: Game[]; variant: Variant }) => s.games.filter(g => !g.app || s.variant === 'merged');
-export const gameOf = (s: MkState) => (s.open === EVERYWHERE ? null : listedGames(s).find(g => g.id === s.open) ?? null);
+export const gameOf = (s: MkState) => s.games.find(g => g.id === s.open) ?? null;
 
-/** Where a shown key's function comes from: its own, the base (on the layer), or the general remaps. */
+/** Where a shown key's function comes from: its own, the base (on the layer), or the Key Remaps. */
 export type Source = 'own' | 'base' | 'global';
 
 /**
- * The Key Remaps as keys: the "everywhere" ones and, for a game, the "only in one app" ones of its .exe.
- * In variant A they stay on the Key Remaps page and only show here as what is underneath; in B they
- * are the "Em qualquer lugar" keyboard.
+ * The Key Remaps under a game's keys: the "everywhere" ones and the "only in one app" ones of its
+ * .exe. They stay on the Key Remaps page; here they only show as what a key without a function does.
  */
-export function globalsOf(remaps: { enabled: boolean; entries: RemapEntryDto[] }, exes: string[] | null): Record<string, KeyFn> {
+export function globalsOf(remaps: { enabled: boolean; entries: RemapEntryDto[] }, exes: string[]): Record<string, KeyFn> {
   const out: Record<string, KeyFn> = {};
   if (!remaps.enabled) return out;
-  const lower = (exes ?? []).map(e => e.toLowerCase().replace(/\.exe$/, ''));
+  const lower = exes.map(e => e.toLowerCase().replace(/\.exe$/, ''));
   for (const r of remaps.entries) {
     if (!r.enabled) continue;
     const scope = (r.process ?? '').toLowerCase().replace(/\.exe$/, '');
@@ -134,18 +130,8 @@ export function globalsOf(remaps: { enabled: boolean; entries: RemapEntryDto[] }
   return out;
 }
 
-/** The "Em qualquer lugar" keyboard written back as the Key Remaps list (the "only in one app" rules stay). */
-export function remapsWith(entries: RemapEntryDto[], code: string, fn: KeyFn): RemapEntryDto[] {
-  const from = trKeyName(code);
-  const rest = entries.filter(e => e.process || e.from.toLowerCase() !== from.toLowerCase());
-  if (fn.kind === 'default') return rest;
-  const to = fn.kind === 'off' ? '' : fn.kind === 'mouse' ? fn.mouse ?? '' : fn.combo ?? '';
-  return [...rest, { from, to, enabled: true }];
-}
-
 /** A key's function in the view shown. */
 export function fnAt(s: MkState, code: string, globals: Record<string, KeyFn>): { fn: KeyFn; source: Source } {
-  if (s.open === EVERYWHERE) return { fn: globals[code] ?? { kind: 'default' }, source: 'own' };
   const game = gameOf(s);
   if (!game) return { fn: { kind: 'default' }, source: 'own' };
   const base = game.base[code];
@@ -158,7 +144,7 @@ export function fnAt(s: MkState, code: string, globals: Record<string, KeyFn>): 
   return { fn: { kind: 'default' }, source: 'own' };
 }
 
-/** The game's layer key (the one with the Camada function on the base), or null. */
+/** The game's layer key (the one with the Layer function on the base), or null. */
 export const layerKeyOf = (game: Game | null) =>
   game ? Object.keys(game.base).find(code => game.base[code].kind === 'layer') ?? null : null;
 
@@ -173,7 +159,7 @@ export function setGameFn(code: string, fn: KeyFn) {
     const side = s.view === 'layer' ? 'layer' : 'base';
     const next = { ...g[side] };
     if (clean) next[code] = clean; else delete next[code];
-    // One layer key per game: a new Camada key takes the function from the old one.
+    // One layer key per game: a new layer key takes the function from the old one.
     if (side === 'base' && clean?.kind === 'layer') {
       for (const other of Object.keys(next)) if (other !== code && next[other].kind === 'layer') delete next[other];
     }
@@ -183,15 +169,16 @@ export function setGameFn(code: string, fn: KeyFn) {
 
 export const setGameOn = (id: string, on: boolean) => commit(useMk.getState().games.map(g => (g.id === id ? { ...g, on } : g)));
 
+const exeOf = (process: string) => (/\.exe$/i.test(process.trim()) ? process.trim() : `${process.trim()}.exe`);
+
 /** A new game for a program (its .exe), opened; or the one that already has that .exe. */
 export function addGame(process: string) {
-  const exe = /\.exe$/i.test(process.trim()) ? process.trim() : `${process.trim()}.exe`;
+  const exe = exeOf(process);
   const s = useMk.getState();
   const known = s.games.find(g => g.exes.some(e => e.toLowerCase() === exe.toLowerCase()));
   if (known) { useMk.setState({ open: known.id, key: null, view: 'base' }); return; }
-  const name = exe.replace(/\.exe$/i, '');
   const id = `g-${crypto.randomUUID().slice(0, 10)}`;
-  commit([...s.games, { id, name, exes: [exe], on: true, base: {}, layer: {} }]);
+  commit([...s.games, { id, name: exe.replace(/\.exe$/i, ''), exes: [exe], on: true, base: {}, layer: {} }]);
   useMk.setState({ open: id, key: null, view: 'base' });
 }
 
@@ -203,7 +190,7 @@ export function removeGame(id: string): () => void {
   const game = s.games[at];
   const rest = s.games.filter(g => g.id !== id);
   commit(rest);
-  if (s.open === id) useMk.setState({ open: rest.find(g => !g.app)?.id ?? rest[0]?.id ?? '', key: null });
+  if (s.open === id) useMk.setState({ open: rest[0]?.id ?? '', key: null });
   return () => {
     const now = useMk.getState().games;
     if (now.some(g => g.id === id)) return;
@@ -218,7 +205,7 @@ export function renameGame(id: string, name: string) {
 }
 
 export function addExe(id: string, process: string) {
-  const exe = /\.exe$/i.test(process.trim()) ? process.trim() : `${process.trim()}.exe`;
+  const exe = exeOf(process);
   commit(useMk.getState().games.map(g => (g.id === id && !g.exes.some(e => e.toLowerCase() === exe.toLowerCase()) ? { ...g, exes: [...g.exes, exe] } : g)));
 }
 
@@ -226,5 +213,5 @@ export function removeExe(id: string, exe: string) {
   commit(useMk.getState().games.map(g => (g.id === id && g.exes.length > 1 ? { ...g, exes: g.exes.filter(e => e !== exe) } : g)));
 }
 
-export const openGame = (id: string) => useMk.setState(s => ({ open: id, view: id === EVERYWHERE ? 'base' : s.view, key: null }));
+export const openGame = (id: string) => useMk.setState({ open: id, key: null });
 export const pickKey = (code: string | null) => useMk.setState({ key: code });

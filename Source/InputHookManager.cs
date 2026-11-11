@@ -1122,6 +1122,12 @@ namespace TrueReplayer
         }
 
         /// <summary>
+        /// Teclado (branch teclado): the foreground event's hook and its state live on this thread, in
+        /// order with the key callbacks (TecladoFront). The same queue as <see cref="PostToHookThread"/>.
+        /// </summary>
+        internal static void QueueOnHookThread(Action work) => PostToHookThread(work);
+
+        /// <summary>
         /// <see cref="PostToHookThread"/>, waiting up to <paramref name="timeoutMs"/> for it to finish.
         /// A timeout is logged and returns false; the work still runs when the thread reaches it.
         /// Only for callers that need the work DONE before they go on — the rest post.

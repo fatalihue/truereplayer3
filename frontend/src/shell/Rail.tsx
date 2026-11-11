@@ -8,8 +8,7 @@ import { useApp } from './store';
 import { openPage, PAGE_CHUNKS, setLibraryPeek, useUi } from './ui';
 import { useShellBand } from './useShellBand';
 
-// ② The rail: the five destinations, and the Keyboard (branch teclado) beside the Key Remaps (variant A)
-// or in their place (variant B).
+// ② The rail: the five destinations, and the Keyboard (branch teclado) beside the Key Remaps.
 const DESTINATIONS = [
   { id: 'macros', label: t('common.pages.macros'), Icon: ListChecks },
   { id: 'clicker', label: t('common.pages.clicker'), Icon: MousePointerClick },
@@ -35,7 +34,6 @@ export function Rail() {
   const clicker = useApp(a => a.settings.useCursorClick);
   const armed = useApp(a => (a.automation.enabled ? a.automation.entries.filter(e => e.trigger.armed && !e.isDisabled).length : 0));
   const { send } = useBridge();
-  const merged = useMk(s => s.variant === 'merged');
   const front = useMk(s => (s.enabled ? s.games.find(g => g.id === s.front && g.on)?.name ?? null : null));
   const peeks = band !== 'wide' && page === 'macros';
   const openMacros = () => {
@@ -59,7 +57,7 @@ export function Rail() {
   };
   return (
     <nav className="shell-rail" aria-label={t('rail.nav')}>
-      {DESTINATIONS.filter(d => !(merged && d.id === 'remaps')).map(({ id, label, Icon }) => {
+      {DESTINATIONS.map(({ id, label, Icon }) => {
         const badge = id === 'automations' && armed > 0;
         const playing = id === 'teclado' && front;
         return (

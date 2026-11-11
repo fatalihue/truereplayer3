@@ -195,6 +195,17 @@ html[data-animations='true'] .shell-state[data-done]::after { border-color: var(
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
+/* Teclado (branch teclado): a green dot on the Keyboard while a game is in front. */
+.shell-rail-dot {
+  position: absolute;
+  top: 0.3125rem;
+  right: 0.3125rem;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: 50%;
+  background: var(--color-replay);
+  box-shadow: 0 0 0 2px var(--color-bg-base);
+}
 .shell-rail-label {
   position: absolute;
   width: 1px;
@@ -320,6 +331,8 @@ html[data-animations='true'] .shell-state[data-done]::after { border-color: var(
 .sb-switch[data-off] { color: var(--color-warning-ink); }
 .sb-switch[data-off] .sb-dot { background: var(--color-warning); }
 .sb-switch[data-paused] .sb-dot { background: var(--color-warning); }
+/* Teclado (branch teclado): the layer held, in the Layer's teal (the IF step's colour). */
+.sb-switch[data-layer] .sb-dot { background: var(--color-action-if-fg); }
 .sb-extension { color: var(--color-text-tertiary); }
 .sb-extension[data-state='connected'] .sb-dot { background: var(--color-replay); }
 .sb-extension[data-state='reload'] { color: var(--color-warning-ink); }

@@ -602,8 +602,6 @@ export interface TecladoGame {
   name: string;
   exes: string[];
   on: boolean;
-  /** Not a game: an app (an "only in one app" Key Remap, in variant B). */
-  app?: boolean;
   base: Record<string, TecladoKeyFunction>;
   layer: Record<string, TecladoKeyFunction>;
 }
@@ -620,6 +618,13 @@ export interface TecladoState {
   loadedFromBackup: boolean;
   loadFailureDetail?: string | null;
   pendingFile: string;
+}
+
+/** What is in front now (TecladoFront): the game's id, or null; the process; the layer key held (phase 3). */
+export interface TecladoLive {
+  front: string | null;
+  process: string | null;
+  layer: boolean;
 }
 
 // ── Automation (trigger daemon) ──
@@ -1063,6 +1068,8 @@ export type IncomingMessage =
   // Teclado (branch teclado): the per-game keyboard's whole config after every load and save, with the
   // quarantine's state (TecladoService, the remaps.json protections).
   | { type: 'teclado:state'; payload: TecladoState }
+  // The process in front and its game (TecladoFront, from the foreground event), on every change.
+  | { type: 'teclado:live'; payload: TecladoLive }
   | { type: 'clipboard:content'; payload: { text: string } }
   | { type: 'replay:chain'; payload: { stack: string[] } }
   // Row position inside the sub-profile currently running (~4 Hz, engine-throttled). Handled by

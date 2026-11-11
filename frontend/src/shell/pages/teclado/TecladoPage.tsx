@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { ArrowRightLeft, Download, Ellipsis, Gamepad2, Globe, Info, Keyboard, ListChecks, Lock, Plus, X } from 'lucide-react';
+import { ArrowRightLeft, Download, Ellipsis, Gamepad2, Keyboard, ListChecks, Lock, Plus, X } from 'lucide-react';
 import { useBridge } from '../../../bridge/BridgeContext';
 import { t, tn } from '../../../i18n';
 import { useEditorTools } from '../../../logic/useEditorTools';
-import { useRemaps } from '../../../logic/useRemaps';
 import { useToast } from '../../../state/ToastContext';
 import { DraftField, Keys, Segmented, Switch } from '../../inspector/fields';
 import { MacroPicker } from '../../inspector/MacroPicker';
@@ -11,11 +10,11 @@ import { keycaps } from '../../library/model';
 import { Menu } from '../../Menu';
 import { anchorBelow, type MenuAnchor } from '../../menuAnchor';
 import {
-  EVERYWHERE, FNS, fnInfo, KEYS, legendOf, MODES, MOUSE_CODES, trKeyName, type FnKind, type Game, type KeyCap, type KeyFn,
+  FNS, fnInfo, KEYS, legendOf, MODES, MOUSE_CODES, trKeyName, type FnKind, type Game, type KeyCap, type KeyFn,
 } from '../../mk/mkModel';
 import {
-  addExe, addGame, fnAt, gameOf, globalsOf, layerKeyOf, listedGames, openGame, overwriteUnreadable, pickKey, remapsWith, removeExe,
-  removeGame, renameGame, setGameFn, setGameOn, useMk, type Source, type Variant,
+  addExe, addGame, fnAt, gameOf, globalsOf, layerKeyOf, openGame, overwriteUnreadable, pickKey, removeExe,
+  removeGame, renameGame, setGameFn, setGameOn, useMk, type Source,
 } from '../../mk/mkStore';
 import { Popover } from '../../Popover';
 import { useApp } from '../../store';
@@ -31,12 +30,12 @@ import './teclado.css';
  * mode of TR3. The games on the left, in the library's place and form; the keyboard in the middle,
  * each key's function in the colour of TR3's step that does the same; the key on the right, in the
  * classes of "Remap settings". The games are the engine's (TecladoService, teclado.json) and every
- * edit goes back whole; a key's macro is a macro of TR3's library, opened in TR3's editor. Phase 1:
- * nothing happens in the games yet — the foreground event and the hook are phases 2 and 3.
+ * edit goes back whole; a key's macro is a macro of TR3's library, opened in TR3's editor. The game
+ * in front comes from the foreground event (phase 2); the keys change in the game with the hook
+ * (phase 3). The Key Remaps stay on their page and only show under a game's keys (decision 1).
  */
 export default function TecladoPage() {
   const key = useMk(s => s.key);
-  const open = useMk(s => s.open);
   const hasGames = useMk(s => s.games.length > 0);
   // Esc closes the key, as the Key Remaps' panel does.
   useEffect(() => {
@@ -49,7 +48,7 @@ export default function TecladoPage() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
-  const empty = !hasGames && open !== EVERYWHERE;
+  const empty = !hasGames;
   return (
     <section className="shell-page tk" aria-label={t('teclado.page')}>
       <Games />
@@ -76,15 +75,15 @@ export default function TecladoPage() {
 
 const SHORT = tn('teclado.short');
 
-/** The Key Remaps under the open game (variant A), or everywhere (B). */
+/** The Key Remaps under the open game's keys. */
 function useGlobals(): Record<string, KeyFn> {
   const remaps = useApp(a => a.settings.remaps);
-  const variant = useMk(s => s.variant);
   const game = useMk(gameOf);
-  return globalsOf(remaps, variant === 'beside' && game ? game.exes : null);
+  return globalsOf(remaps, game ? game.exes : []);
 }
 
-const globalName = (variant: Variant) => (variant === 'beside' ? t('common.pages.remaps') : t('teclado.games.everywhere'));
+/** Where a key's function comes from when the game does not change it. */
+const globalName = () => t('common.pages.remaps');
 
 /** What the key shows under its name: one word, or the start of it. */
 function labelOf(fn: KeyFn): string {
@@ -118,18 +117,11 @@ function sentenceOf(fn: KeyFn): string {
 // ── The games (as the library) ──
 
 function Games() {
-  const variant = useMk(s => s.variant);
-  // The selector returns the state's own array; the list filtered is made in the render (a new array
-  // per read would make useSyncExternalStore render without end).
-  const all = useMk(s => s.games);
-  const games = listedGames({ games: all, variant });
+  const games = useMk(s => s.games);
   const open = useMk(s => s.open);
   const front = useMk(s => s.front);
-  const remaps = useApp(a => a.settings.remaps);
   const [adding, setAdding] = useState<{ anchor: MenuAnchor; button: HTMLButtonElement } | null>(null);
-  const merged = variant === 'merged';
-  const everywhereCount = remaps.entries.filter(e => !e.process).length;
-  const title = merged ? t('teclado.games.titleMerged') : t('teclado.games.title');
+  const title = t('teclado.games.title');
   const row = (g: Game) => (
     <button key={g.id} type="button" className="tk-game" aria-current={open === g.id || undefined} data-off={!g.on || undefined}
       onClick={() => openGame(g.id)}>
@@ -141,7 +133,6 @@ function Games() {
       {front === g.id && <span className="tk-front-dot" role="img" aria-label={t('teclado.games.inFront')} data-tip={t('teclado.games.inFront')} data-tip-pos="end" />}
     </button>
   );
-  const plainGames = games.filter(g => !g.app);
   return (
     <aside className="tk-games" aria-label={title}>
       <div className="lib-header">
@@ -157,30 +148,11 @@ function Games() {
           onPick={(exe) => { addGame(exe); setAdding(null); }} onClose={() => setAdding(null)} />
       )}
       <div className="tk-games-list">
-        {merged && (
-          <>
-            <span className="lib-heading">{t('teclado.games.always')}</span>
-            <button type="button" className="tk-game" aria-current={open === EVERYWHERE || undefined} data-off={!remaps.enabled || undefined}
-              onClick={() => openGame(EVERYWHERE)}>
-              <span className="tk-avatar" aria-hidden="true"><Globe /></span>
-              <span className="tk-game-text">
-                <span className="tk-game-name">{t('teclado.games.everywhere')}</span>
-                <span className="tk-game-exe">{t('teclado.games.everywhereSub', { count: everywhereCount })}</span>
-              </span>
-            </button>
-          </>
-        )}
-        <span className="lib-heading" data-after={merged || undefined}>{t('teclado.games.heading')}</span>
-        {plainGames.map(row)}
-        {plainGames.length === 0 && <span className="tk-games-none">{t('teclado.games.none')}</span>}
-        {merged && games.some(g => g.app) && (
-          <>
-            <span className="lib-heading" data-after>{t('teclado.games.otherApps')}</span>
-            {games.filter(g => g.app).map(row)}
-          </>
-        )}
+        <span className="lib-heading">{t('teclado.games.heading')}</span>
+        {games.map(row)}
+        {games.length === 0 && <span className="tk-games-none">{t('teclado.games.none')}</span>}
       </div>
-      <p className="tk-games-foot">{merged ? t('teclado.games.footMerged') : t('teclado.games.foot')}</p>
+      <p className="tk-games-foot">{t('teclado.games.foot')}</p>
     </aside>
   );
 }
@@ -237,28 +209,12 @@ function AddPopover({ anchor, toggle, label, onPick, onClose }: {
 
 function Head() {
   const game = useMk(gameOf);
-  const open = useMk(s => s.open);
   const front = useMk(s => s.front);
   const holding = useMk(s => s.holding);
-  const remaps = useApp(a => a.settings.remaps);
-  const { setEnabled } = useRemaps();
   const { showToast } = useToast();
   const [menu, setMenu] = useState<{ anchor: MenuAnchor; button: HTMLButtonElement } | null>(null);
   const [adding, setAdding] = useState<{ anchor: MenuAnchor; button: HTMLButtonElement } | null>(null);
   const [renaming, setRenaming] = useState(false);
-  if (open === EVERYWHERE) {
-    return (
-      <header className="tk-head">
-        <div className="tk-titles">
-          <h1 className="tk-title">{t('teclado.games.everywhere')}</h1>
-          <p className="tk-sub">{t('teclado.head.everywhereSub')}</p>
-        </div>
-        <div className="tk-head-end">
-          <span className="tk-use">{t('teclado.head.use')}<Switch label={t('teclado.head.useEverywhere')} checked={remaps.enabled} onChange={setEnabled} /></span>
-        </div>
-      </header>
-    );
-  }
   if (!game) return <header className="tk-head" />;
   const isFront = front === game.id;
   const soon = () => showToast(t('teclado.head.soon'), { type: 'info' });
@@ -291,7 +247,7 @@ function Head() {
               )}
             </span>
           ))}
-          <span className="tk-sub-text">{game.app ? t('teclado.head.subApp') : t('teclado.head.sub')}</span>
+          <span className="tk-sub-text">{t('teclado.head.sub')}</span>
         </p>
       </div>
       <div className="tk-head-end">
@@ -380,13 +336,9 @@ function Bar() {
   const device = useMk(s => s.device);
   const view = useMk(s => s.view);
   const numpad = useMk(s => s.numpad);
-  const open = useMk(s => s.open);
   const game = useMk(gameOf);
-  const globals = useGlobals();
   const layerKey = layerKeyOf(game);
-  const everywhere = open === EVERYWHERE;
-  const count = everywhere ? Object.keys(globals).length
-    : game ? Object.keys(view === 'layer' ? game.layer : game.base).length : 0;
+  const count = game ? Object.keys(view === 'layer' ? game.layer : game.base).length : 0;
   return (
     <div className="tk-bar">
       <div className="tk-seg-device">
@@ -395,21 +347,21 @@ function Bar() {
           onChange={(d) => useMk.setState({ device: d, key: null })} />
       </div>
       <div className="tk-seg-layer">
-        <Segmented<'base' | 'layer'> label={t('teclado.bar.layerGroup')} value={everywhere ? 'base' : view}
+        <Segmented<'base' | 'layer'> label={t('teclado.bar.layerGroup')} value={view}
           options={[
             { value: 'base', label: t('teclado.bar.base') },
             {
               value: 'layer',
               label: layerKey ? t('teclado.bar.layerHold', { key: legendOf(layerKey) }) : t('teclado.bar.layer'),
-              disabled: everywhere || !layerKey,
-              tip: everywhere ? t('teclado.bar.noLayerEverywhere') : !layerKey ? t('teclado.bar.noLayer') : undefined,
+              disabled: !layerKey,
+              tip: !layerKey ? t('teclado.bar.noLayer') : undefined,
             },
           ]}
           onChange={(v) => useMk.setState({ view: v })} />
       </div>
       <span className="rm-spacer" />
       <span className="tk-count">
-        {view === 'layer' && !everywhere ? t('teclado.bar.changedLayer', { count }) : t('teclado.bar.changed', { count })}
+        {view === 'layer' ? t('teclado.bar.changedLayer', { count }) : t('teclado.bar.changed', { count })}
       </span>
       <button type="button" className="rm-chip" aria-pressed={numpad} onClick={() => useMk.setState({ numpad: !numpad })}>{t('teclado.bar.numpad')}</button>
       <span className="tk-layout" data-tip={t('teclado.bar.layoutTip')}>{t('teclado.bar.layout')}</span>
@@ -472,7 +424,7 @@ function Key({ cap }: { cap: KeyCap }) {
   const rule = sentenceOf(fn);
   const words = fn.kind === 'default' ? cap.legend
     : `${cap.legend}: ${source === 'base' ? t('teclado.board.fromBase', { rule })
-      : source === 'global' ? t('teclado.board.fromGlobal', { rule, source: globalName(state.variant) })
+      : source === 'global' ? t('teclado.board.fromGlobal', { rule, source: globalName() })
       : rule}`;
   return (
     <div className="tk-slot" data-iso={cap.isoEnter || undefined}
@@ -493,10 +445,10 @@ function Key({ cap }: { cap: KeyCap }) {
         <span className="tk-leg">{cap.legend}</span>
         {Icon && <Icon className="tk-ico" aria-hidden="true" />}
         {source === 'base' && <span className="tk-inh" aria-hidden="true">↧</span>}
-        {source === 'global' && <span className="tk-inh" aria-hidden="true">{state.variant === 'beside' ? <ArrowRightLeft /> : <Globe />}</span>}
+        {source === 'global' && <span className="tk-inh" aria-hidden="true"><ArrowRightLeft /></span>}
         {label && <span className="tk-fn" data-one={!label.includes(' ') || undefined}>{label}</span>}
       </button>
-      {source === 'own' && fn.kind !== 'default' && state.open !== EVERYWHERE && (
+      {source === 'own' && fn.kind !== 'default' && (
         <button type="button" className="tk-x" aria-label={t('teclado.board.clear', { key: cap.legend })} data-tip={t('common.actions.clear')} tabIndex={-1}
           onClick={() => setGameFn(cap.code, { kind: 'default' })}>
           <X aria-hidden="true" />
@@ -544,8 +496,6 @@ function MouseBoard() {
 
 function Legend() {
   const view = useMk(s => s.view);
-  const variant = useMk(s => s.variant);
-  const open = useMk(s => s.open);
   return (
     <div className="tk-legend" aria-label={t('teclado.legend.label')}>
       {FNS.filter(f => f.kind !== 'default').map(f => (
@@ -555,40 +505,26 @@ function Legend() {
           {f.kind === 'off' ? t('teclado.legend.off') : f.label}
         </span>
       ))}
-      {view === 'layer' && open !== EVERYWHERE && (
+      {view === 'layer' && (
         <span className="tk-legend-item" data-inh>
           <span className="tk-swatch" data-inh aria-hidden="true" />
           {t('teclado.legend.fromBase')}
         </span>
       )}
-      {open !== EVERYWHERE && (
-        <span className="tk-legend-item" data-inh>
-          <span className="tk-swatch" data-inh aria-hidden="true" />
-          {variant === 'beside' ? <ArrowRightLeft aria-hidden="true" /> : <Globe aria-hidden="true" />}
-          {variant === 'beside' ? t('teclado.legend.fromRemaps') : t('teclado.legend.fromEverywhere')}
-        </span>
-      )}
+      <span className="tk-legend-item" data-inh>
+        <span className="tk-swatch" data-inh aria-hidden="true" />
+        <ArrowRightLeft aria-hidden="true" />
+        {t('teclado.legend.fromRemaps')}
+      </span>
     </div>
   );
 }
 
 function Notes() {
-  const variant = useMk(s => s.variant);
-  const open = useMk(s => s.open);
-  const app = useMk(s => !!gameOf(s)?.app);
-  if (open === EVERYWHERE) {
-    return (
-      <div className="tk-notes">
-        <p className="tk-note"><Info aria-hidden="true" /><span>{t('teclado.notes.everywhere')}</span></p>
-      </div>
-    );
-  }
   return (
     <div className="tk-notes">
-      <p className="tk-note"><Gamepad2 aria-hidden="true" /><span>{app ? t('teclado.notes.frontApp') : t('teclado.notes.front')}</span></p>
-      {variant === 'beside'
-        ? <p className="tk-note"><ArrowRightLeft aria-hidden="true" /><span>{t('teclado.notes.beside')}</span></p>
-        : <p className="tk-note"><Globe aria-hidden="true" /><span>{t('teclado.notes.merged')}</span></p>}
+      <p className="tk-note"><Gamepad2 aria-hidden="true" /><span>{t('teclado.notes.front')}</span></p>
+      <p className="tk-note"><ArrowRightLeft aria-hidden="true" /><span>{t('teclado.notes.beside')}</span></p>
     </div>
   );
 }
@@ -610,23 +546,16 @@ function EmptyPanel() {
 function KeyPanel({ code }: { code: string }) {
   const state = useMk();
   const globals = useGlobals();
-  const remaps = useApp(a => a.settings.remaps);
-  const { save } = useRemaps();
   const game = gameOf(state);
-  const everywhere = state.open === EVERYWHERE;
-  const layer = state.view === 'layer' && !everywhere;
+  const layer = state.view === 'layer';
   const layerKey = layerKeyOf(game);
   const { fn, source } = fnAt(state, code, globals);
   const legend = legendOf(code);
-  const where = everywhere ? t('teclado.games.everywhere')
-    : layer ? t('teclado.panel.whereLayer', { game: game?.name ?? '', key: legendOf(layerKey ?? '') })
+  const where = layer ? t('teclado.panel.whereLayer', { game: game?.name ?? '', key: legendOf(layerKey ?? '') })
     : t('teclado.panel.whereBase', { game: game?.name ?? '' });
   // The function chosen in the list: its own, or Default when the key only inherits.
   const kind: FnKind = source === 'own' ? fn.kind : 'default';
-  const set = (next: KeyFn) => {
-    if (everywhere) save(remapsWith(remaps.entries, code, next));
-    else setGameFn(code, next);
-  };
+  const set = (next: KeyFn) => setGameFn(code, next);
   const choose = (k: FnKind) => {
     if (k === kind) return;
     if (k === 'macro') set({ kind: 'macro', mode: 'once', interval: 100, keepOriginal: false });
@@ -637,13 +566,12 @@ function KeyPanel({ code }: { code: string }) {
   };
   const patch = (p: Partial<KeyFn>) => set({ ...fn, ...p });
   const whyOff = (k: FnKind): string | null => {
-    if (everywhere && (k === 'macro' || k === 'text' || k === 'layer')) return t('teclado.panel.whyEverywhere');
     if (layer && k === 'layer') return t('teclado.panel.whyLayerKey');
     if (layer && code === layerKey) return t('teclado.panel.whyHolding');
     if (code.startsWith('Wheel') && k === 'layer') return t('teclado.panel.whyWheel');
     return null;
   };
-  const global = !everywhere ? globals[code] : undefined;
+  const global = globals[code];
   const title = t('teclado.panel.title', { key: legend });
   return (
     <aside className="tk-panel" aria-label={title}>
@@ -664,7 +592,7 @@ function KeyPanel({ code }: { code: string }) {
             {FNS.map(f => {
               const off = whyOff(f.kind);
               const name = f.kind === 'default' && layer ? t('teclado.panel.sameAsBase')
-                : f.kind === 'default' && global ? t('teclado.panel.follows', { source: globalName(state.variant) })
+                : f.kind === 'default' && global ? t('teclado.panel.follows', { source: globalName() })
                 : f.label;
               const aside = f.kind === 'default' && source !== 'own' ? sentenceOf(fn) : null;
               return (
@@ -681,15 +609,11 @@ function KeyPanel({ code }: { code: string }) {
         <Options code={code} legend={legend} fn={fn} kind={kind} source={source} patch={patch} />
         {global && source === 'own' && fn.kind !== 'default' && game && (
           <p className="rm-msg" data-tone="warn">
-            {state.variant === 'beside'
-              ? t('teclado.panel.conflictBeside', { key: legend, rule: sentenceOf(global), game: game.name })
-              : t('teclado.panel.conflictMerged', { key: legend, rule: sentenceOf(global), game: game.name })}
+            {t('teclado.panel.conflictBeside', { key: legend, rule: sentenceOf(global), game: game.name })}
           </p>
         )}
       </div>
-      <div className="rm-panel-foot">
-        {everywhere ? t('teclado.panel.footEverywhere') : t('teclado.panel.foot', { game: game?.name ?? '' })}
-      </div>
+      <div className="rm-panel-foot">{t('teclado.panel.foot', { game: game?.name ?? '' })}</div>
     </aside>
   );
 }
@@ -699,15 +623,14 @@ function Options({ code, legend, fn, kind, source, patch }: {
 }) {
   const state = useMk();
   const game = gameOf(state);
-  const everywhere = state.open === EVERYWHERE;
-  const isLayerKey = state.view === 'base' && !everywhere && fn.kind === 'layer';
+  const isLayerKey = state.view === 'base' && fn.kind === 'layer';
   switch (kind) {
     case 'default': {
       const rule = sentenceOf(fn);
       return (
         <p className="rm-hint">
           {source === 'base' ? t('teclado.panel.defaultFromBase', { key: legend, rule })
-            : source === 'global' ? t('teclado.panel.defaultFromGlobal', { key: legend, source: globalName(state.variant), rule })
+            : source === 'global' ? t('teclado.panel.defaultFromGlobal', { key: legend, source: globalName(), rule })
             : /^Key[A-Z]$/.test(code) ? t('teclado.panel.defaultTypes', { key: legend, typed: legend.toLowerCase() })
             : t('teclado.panel.defaultNormal', { key: legend })}
         </p>
@@ -753,7 +676,7 @@ function Options({ code, legend, fn, kind, source, patch }: {
     case 'off':
       return (
         <p className="rm-hint">
-          {everywhere ? t('teclado.panel.offEverywhere', { key: legend }) : t('teclado.panel.offGame', { key: legend, game: game?.name ?? '' })}
+          {t('teclado.panel.offGame', { key: legend, game: game?.name ?? '' })}
         </p>
       );
     case 'layer':

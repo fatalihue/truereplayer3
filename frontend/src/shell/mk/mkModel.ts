@@ -32,16 +32,11 @@ export interface Game {
   name: string;
   exes: string[];
   on: boolean;
-  /** An app that is not a game (variant B only: an "only in one app" Key Remap). */
-  app?: boolean;
   /** The bottom layer, in effect whenever the game is in front. */
   base: Record<string, KeyFn>;
   /** The hold layer: a key with no function here inherits from the base. */
   layer: Record<string, KeyFn>;
 }
-
-/** "Everywhere": today's Key Remaps, when they become the keyboard (variant B). */
-export const EVERYWHERE = 'everywhere';
 
 // ── The drawing: ABNT2, the owner's Windows layout. The grid moves in quarters of a key. ──
 

@@ -53,8 +53,6 @@ namespace TrueReplayer.Services
             /// <summary>The executables that bring it in: a launcher and the game, or two editions.</summary>
             public List<string> Exes { get; set; } = new();
             public bool On { get; set; } = true;
-            /// <summary>Not a game: an app whose keys changed (a "only in one app" Key Remap, in variant B).</summary>
-            public bool App { get; set; }
             public Dictionary<string, KeyFunction> Base { get; set; } = new();
             public Dictionary<string, KeyFunction> Layer { get; set; } = new();
         }
@@ -289,7 +287,7 @@ namespace TrueReplayer.Services
                 var layerKeys = NormalizeLayer(g.Layer, isBase: false);
                 if (layerKey != null) layerKeys.Remove(layerKey);
 
-                config.Games.Add(new Game { Id = id, Name = name, Exes = exes, On = g.On, App = g.App, Base = baseKeys, Layer = layerKeys });
+                config.Games.Add(new Game { Id = id, Name = name, Exes = exes, On = g.On, Base = baseKeys, Layer = layerKeys });
             }
             return config;
         }

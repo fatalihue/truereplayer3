@@ -7,7 +7,6 @@ import { InsertRow } from './insert/InsertRow';
 import { preload, useLoaded } from './lazyModule';
 import { Library } from './library/Library';
 import { MacroHeader } from './header/MacroHeader';
-import { Prototype } from './mk/Prototype';
 import { TecladoSync } from './mk/TecladoSync';
 import { Overlays } from './Overlays';
 import { Rail } from './Rail';
@@ -66,10 +65,8 @@ export function Shell() {
         {page !== 'macros' && <Chunk load={PAGE_CHUNKS[page]} wait={<section className="shell-page" />} />}
       </div>
       <StatusBar />
-      {/* Teclado (branch teclado): the engine's games into the page's store, and the prototype's card
-          (the Key Remaps variant, the game in front simulated until phase 2). */}
+      {/* Teclado (branch teclado): the engine's games and the game in front, into the page's store. */}
       <TecladoSync />
-      <Prototype />
       <ShellKeys />
       <Overlays />
       <Toast />

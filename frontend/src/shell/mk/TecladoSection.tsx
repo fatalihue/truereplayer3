@@ -4,13 +4,12 @@ import { Keyboard } from 'lucide-react';
 import { t } from '../../i18n';
 import { openPage } from '../ui';
 import { legendOf, MODES } from './mkModel';
-import { listedGames, useMk } from './mkStore';
+import { useMk } from './mkStore';
 
 export function TecladoSection({ name }: { name: string }) {
   const games = useMk(s => s.games);
-  const variant = useMk(s => s.variant);
   const uses: { game: string; id: string; code: string; layer: boolean; mode?: string }[] = [];
-  for (const g of listedGames({ games, variant })) {
+  for (const g of games) {
     for (const [side, keys] of [['base', g.base], ['layer', g.layer]] as const) {
       for (const [code, fn] of Object.entries(keys)) {
         if (fn.kind === 'macro' && fn.macro === name) uses.push({ game: g.name, id: g.id, code, layer: side === 'layer', mode: fn.mode });

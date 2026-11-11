@@ -1,6 +1,6 @@
 // O Teclado (branch teclado): o TrueReplayerMK como modo do TR3. A página (shell/pages/teclado), a
-// chave da barra de status (shell/mk/MkStatus.tsx), a seção dos ajustes da macro
-// (shell/mk/TecladoSection.tsx) e o cartão do protótipo (shell/mk/Prototype.tsx), que sai na Fase 5.
+// chave da barra de status (shell/mk/MkStatus.tsx) e a seção dos ajustes da macro
+// (shell/mk/TecladoSection.tsx).
 export default {
   page: 'Keyboard',                                    // o destino do trilho e o nome da página
   railPlaying: 'Keyboard · {{game}} in front',         // dica do trilho com um jogo na frente
@@ -8,16 +8,10 @@ export default {
   // A lista à esquerda, no lugar da biblioteca.
   games: {
     title: 'Games',
-    titleMerged: 'Keyboards',                          // variante B: Em qualquer lugar, jogos e apps
-    always: 'Always',
     heading: 'Games',
-    otherApps: 'Other apps',
-    everywhere: 'Everywhere',
-    everywhereSub: { one: '{{count}} key · every app', other: '{{count}} keys · every app' },
     inFront: 'In front now',
     none: 'No game yet',
     foot: 'A game turns on by itself with its .exe in front. Outside games nothing changes: the macros and the Key Remaps apply.',
-    footMerged: 'A game or app in front decides its own keys; the rest follows Everywhere.',
   },
   // Adicionar um jogo: os programas abertos, ou o .exe digitado.
   add: {
@@ -34,14 +28,11 @@ export default {
     text: 'Add a game by its .exe: its keys change only while it is in front.',
   },
   head: {
-    everywhereSub: 'Applies in every app, as the Key Remaps do today. A game in front decides its own keys.',
     inFront: 'In front',
     inFrontLayer: 'In front · Layer',
     sub: 'turns on by itself when the game is in front',
-    subApp: 'applies while the app is in front',
     use: 'Use',
     useIn: 'Use in {{game}}',
-    useEverywhere: 'Use everywhere',
     exportTip: 'The game and the macros it uses, in one file',
     more: 'More game actions',
     renameLabel: 'Game name',
@@ -64,7 +55,6 @@ export default {
     base: 'Base',
     layer: 'Layer',
     layerHold: 'Layer · hold {{key}}',
-    noLayerEverywhere: 'Everywhere has no layer',
     noLayer: 'Give a key the Layer function to have a layer',
     changed: { zero: 'No key changed', one: '{{count}} key changed', other: '{{count}} keys changed' },
     changedLayer: { zero: 'No key changed on the layer', one: '{{count}} key changed on the layer', other: '{{count}} keys changed on the layer' },
@@ -119,14 +109,10 @@ export default {
     off: 'Off',
     fromBase: '↧ From Base',
     fromRemaps: 'From the Key Remaps',
-    fromEverywhere: 'From Everywhere',
   },
   notes: {
     front: 'With the game in front, the key does what is set here; a macro starts on the press. Outside it, the key goes back to normal by itself, and whatever was held is released.',
-    frontApp: 'With the app in front, the key does what is set here. Outside it, the key goes back to normal by itself, and whatever was held is released.',
     beside: 'The Key Remaps stay on their page. A key with no function here follows its remap (the ⇄ mark); a key with a function here wins over the remap while the game is in front.',
-    merged: 'There is no Key Remaps page anymore: its rules became Everywhere, and the "only in one app" ones became entries of the list.',
-    everywhere: 'These are the rules the Key Remaps page kept (remaps.json), now drawn. Macro, Text and Layer are for games; outside them, a macro fires by its hotkey.',
   },
   // O painel da tecla, nas classes de "Remap settings".
   panel: {
@@ -137,14 +123,11 @@ export default {
     function: 'Function',
     sameAsBase: 'Same as Base',
     follows: 'Follows {{source}}',
-    whyEverywhere: 'Outside games, a macro fires by its hotkey',
     whyLayerKey: 'The layer key stays on Base',
     whyHolding: 'This is the key that holds the layer',
     whyWheel: 'The wheel only takes one-touch functions',
     conflictBeside: 'The Key Remaps also change {{key}} ({{rule}}). With {{game}} in front, the function here wins.',
-    conflictMerged: 'Everywhere, {{key}} is: {{rule}}. With {{game}} in front, the function here wins.',
     foot: 'Saved as you go. Applies with {{game}} in front.',
-    footEverywhere: 'Saved as you go. Applies in every app, with no game in front.',
     emptyTitle: 'Choose a key',
     emptyText: 'Click a key in the drawing to give it a function. The arrows move across the keyboard.',
     defaultFromBase: 'On the layer, {{key}} inherits from Base: {{rule}}. Choose another function to change it only on the layer.',
@@ -163,7 +146,6 @@ export default {
     textPlaceholder: 'gg! good game',
     enter: 'Enter at the end',
     textHint: 'For the game chat or a command, like /e dance. It goes out as the Send Text step sends it.',
-    offEverywhere: '{{key}} does nothing, in any app. A game in front can give it another function.',
     offGame: '{{key}} does nothing with {{game}} in front. Outside it, it stays normal.',
     layerHint: 'Holding {{key}} brings the layer; releasing it goes back to Base. While it is the layer key, {{key}} loses its own function. A key with no function on the layer inherits from Base.',
     seeLayer: 'See the layer →',
@@ -199,7 +181,6 @@ export default {
     front: 'Keyboard · {{game}} in front',
     frontLayer: 'Keyboard · {{game}} · Layer',
     idle: 'Keyboard on · no game in front',
-    idleMerged: 'Keyboard on · everywhere',
     offTip: 'Off: no key changes, in any game.',
     pausedTip: 'On, but paused while the shortcuts are off.',
     onTip: 'With a game in front, its keys change as set on the Keyboard. Turning it off brings every key back at once and releases whatever was held.',
@@ -212,22 +193,5 @@ export default {
     use: '{{game}} · {{key}}',
     useLayer: '{{game}} · {{key}} on the layer',
     sub: '{{mode}} · starts on the press',
-  },
-  // O cartão tracejado do protótipo (sai na Fase 5).
-  proto: {
-    label: 'Prototype controls',
-    title: 'Prototype · not part of the design',
-    fold: 'Fold the prototype',
-    pill: 'Prototype',
-    remaps: 'Key Remaps',
-    beside: 'A · beside',
-    merged: 'B · become the keyboard',
-    front: 'Game in front (simulated)',
-    none: 'None',
-    gameOff: '{{game}} (off)',
-    holding: 'Layer key (simulated)',
-    free: 'Released',
-    held: 'Holding {{key}}',
-    foot: 'Until phase 2, the game in front and the layer key are simulated.',
   },
 } as const;

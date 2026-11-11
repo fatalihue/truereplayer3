@@ -436,6 +436,8 @@ namespace TrueReplayer
         // every WebViewBridge instance through the static-ish event references. These are
         // initialised once in the constructor if browserBridge is non-null.
         private Action<bool>? _onBrowserConnectionChanged;
+        // Teclado (branch teclado): the game in front changed (TecladoFront, raised on the hook thread).
+        private Action<TecladoFront.State>? _onTecladoFront;
         private Action<string, string>? _onBrowserExtensionVersionMismatch;
         private Action<string, string, string?, string?, string?, bool, IReadOnlyList<Services.BrowserBridgeService.SelectorAlternative>>? _onBrowserElementClicked;
         private Action<string, string, bool, IReadOnlyList<Services.BrowserBridgeService.SelectorAlternative>>? _onBrowserTypingCaptured;
@@ -701,6 +703,11 @@ namespace TrueReplayer
                 if (_disposed) return;
                 HandleExternalProfileRename(oldName, newName, newPath);
             };
+
+            // Teclado: the game in front, as Windows says the foreground window changes. SendMessage
+            // queues onto the dispatcher, so the hook thread never waits on the page.
+            _onTecladoFront = _ => { if (!_disposed) PushTecladoLive(); };
+            TecladoFront.Changed += _onTecladoFront;
 
             // Watch for browser extension events
             if (browserBridge != null)
@@ -2598,6 +2605,8 @@ namespace TrueReplayer
                 && TecladoService.FromJson(cEl) is { } config)
             {
                 TecladoService.Save(config);
+                // A game added, an .exe, a game turned off: the one in front is matched again.
+                TecladoFront.ConfigChanged();
             }
             PushTecladoState();
         }
@@ -2606,10 +2615,18 @@ namespace TrueReplayer
         private void HandleTecladoOverwriteUnreadable()
         {
             TecladoService.Save(TecladoService.Current, overwriteUnreadableFile: true);
+            TecladoFront.ConfigChanged();
             PushTecladoState();
         }
 
         private void PushTecladoState() => SendMessage("teclado:state", TecladoService.StatePayload());
+
+        // The process in front and its game (phase 2); the layer key held comes with the hook (phase 3).
+        private void PushTecladoLive()
+        {
+            var s = TecladoFront.Current;
+            SendMessage("teclado:live", new { front = s.GameId, process = s.Process, layer = false });
+        }
 
         // Settings-blob projection for the remap layer (rides settings:loaded + state:init). The
         // load-failure trio lets the panel say WHY a list is empty or possibly stale, and offer the
@@ -4537,8 +4554,10 @@ namespace TrueReplayer
             // its place, nativo-029 and settings-120), and a value carried over from TrueReplayer 2 would
             // pin the window with no way to unpin it.
 
-            // Teclado: the games, in a store of their own on the page (state:init does not carry them).
+            // Teclado: the games, in a store of their own on the page (state:init does not carry them),
+            // and the game in front now.
             PushTecladoState();
+            PushTecladoLive();
 
             // Seed the extension's connection state. browser:status is otherwise pushed only on
             // CHANGE (BrowserBridgeService raises ConnectionChanged when the pipe opens or ends),
@@ -15423,6 +15442,7 @@ namespace TrueReplayer
             if (browserBridge != null)
             {
                 if (_onBrowserConnectionChanged != null) browserBridge.ConnectionChanged -= _onBrowserConnectionChanged;
+                if (_onTecladoFront != null) TecladoFront.Changed -= _onTecladoFront;
                 if (_onBrowserExtensionVersionMismatch != null) browserBridge.ExtensionVersionMismatch -= _onBrowserExtensionVersionMismatch;
                 if (_onBrowserElementClicked != null) browserBridge.ElementClicked -= _onBrowserElementClicked;
                 if (_onBrowserTypingCaptured != null) browserBridge.TypingCaptured -= _onBrowserTypingCaptured;

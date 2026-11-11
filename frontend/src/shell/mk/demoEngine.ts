@@ -66,8 +66,7 @@ const ORDER = {
   ungroupedOrder: ['Relatório diário', 'Preencher planilha', 'Responder e-mail'],
 };
 
-// The Keyboard's sample games, as TecladoService keeps them (the "Excel" entry is an "only in one
-// app" Key Remap turned into an entry, which only variant B lists).
+// The Keyboard's sample games, as TecladoService keeps them.
 const GAMES: TecladoGame[] = [
   {
     id: 'roblox', name: 'Roblox', exes: ['RobloxPlayerBeta.exe'], on: true,
@@ -102,7 +101,6 @@ const GAMES: TecladoGame[] = [
     layer: {},
   },
   { id: 'terraria', name: 'Terraria', exes: ['Terraria.exe'], on: false, base: { KeyZ: { kind: 'macro', macro: 'Pulo duplo', mode: 'once', keepOriginal: true } }, layer: {} },
-  { id: 'excel', name: 'Excel', exes: ['EXCEL.EXE'], on: true, app: true, base: { F1: { kind: 'off' } }, layer: {} },
 ];
 
 const PROCESSES = [
@@ -127,11 +125,25 @@ export function installDemoEngine() {
       entries: [
         { from: 'Insert', to: '', enabled: true },
         { from: 'F1', to: '', enabled: true, process: 'EXCEL.EXE' },
+        { from: 'CapsLock', to: 'Escape', enabled: true, process: 'RobloxPlayerBeta.exe' },
       ],
     },
   };
   let teclado: TecladoConfig = { version: 1, enabled: true, games: GAMES };
   const tecladoState = () => ({ type: 'teclado:state', payload: { config: teclado, loadFailed: false, loadedFromBackup: false, pendingFile: 'teclado.pending.json' } });
+  // The window in front, as TecladoFront would say it. In Vite: window.__frente('RobloxPlayerBeta.exe', true).
+  let process: string | null = null;
+  let layer = false;
+  const tecladoLive = () => {
+    const key = (process ?? '').toLowerCase().replace(/\.exe$/, '');
+    const game = key ? teclado.games.find(g => g.exes.some(e => e.toLowerCase().replace(/\.exe$/, '') === key)) : undefined;
+    return { type: 'teclado:live', payload: { front: game?.id ?? null, process, layer: !!game && layer } };
+  };
+  (window as unknown as { __frente: (p: string | null, l?: boolean) => void }).__frente = (p, l = false) => {
+    process = p;
+    layer = l;
+    emit(tecladoLive());
+  };
   const stepsOf = (name: string | null) => (name ? STEPS[name] ?? [] : []).map((a, i) => ({ ...a, rowNumber: i + 1 }));
   const open = (name: string | null) => {
     active = name;
@@ -155,11 +167,14 @@ export function installDemoEngine() {
           },
         });
         emit(tecladoState());
+        emit(tecladoLive());
         break;
       case 'teclado:save':
-        // TecladoService normalises what it gets; the fake engine keeps it as it came.
+        // TecladoService normalises what it gets; the fake engine keeps it as it came. The game in
+        // front is matched again, as TecladoFront.ConfigChanged does.
         teclado = p.config as TecladoConfig;
         emit(tecladoState());
+        emit(tecladoLive());
         break;
       case 'process:list':
         emit({ type: 'process:list', payload: { processes: PROCESSES } });
