@@ -363,7 +363,8 @@
 @container shell (max-width: 79.99rem) {
   .tk { grid-template-columns: 3.5rem minmax(0, 1fr) 21rem; }
   .tk-game { justify-content: center; padding: 0.25rem; }
-  .tk-game-text, .tk-games-foot, .tk-games .lib-title, .tk-games .lib-new span, .tk-games .lib-heading { display: none; }
+  /* The list's own "no games yet" too: the main area says it, with the way to add one. */
+  .tk-game-text, .tk-games-foot, .tk-games-none, .tk-games .lib-title, .tk-games .lib-new span, .tk-games .lib-heading { display: none; }
   .tk-games .lib-header { justify-content: center; padding: 0; }
   .tk-front-dot { position: absolute; top: 0.25rem; right: 0.25rem; }
 }
