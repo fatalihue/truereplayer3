@@ -159,7 +159,12 @@ export default {
     swap: 'Change',
     openEditor: 'Open in the editor',
     recordNew: 'Record new',
-    recordSoon: 'Not yet: recording a new macro for {{key}} comes in phase 4.',
+    // O nome da macro que "Gravar nova" cria: o jogo e a tecla.
+    newName: '{{game}} {{key}}',
+    notFound: '{{macro}} is not in the library: the key works as usual.',
+    empty: '{{macro}} has no steps: the key works as usual.',
+    unsupported: 'A game key runs keys, clicks, the wheel and text. This macro has {{steps}}, so the key works as usual.',
+    tokens: 'tokens {…}',
     mode: 'Mode',
     times: 'Times',
     interval: 'Gap between repetitions',

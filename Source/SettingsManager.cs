@@ -250,6 +250,21 @@ namespace TrueReplayer.Services
             if (!File.Exists(filePath)) return null;  // Verifica se o arquivo existe
 
             var json = await File.ReadAllTextAsync(filePath);  // Lê o arquivo de perfil
+            return ParseProfileJson(json);
+        }
+
+        /// <summary>
+        /// The same read as <see cref="LoadProfileAsync"/>, synchronous, for a caller that is not on the
+        /// UI thread and must not await it there (the Teclado compiles its macros under its own lock).
+        /// </summary>
+        internal static UserProfile? LoadProfile(string filePath)
+        {
+            if (!File.Exists(filePath)) return null;
+            return ParseProfileJson(File.ReadAllText(filePath));
+        }
+
+        private static UserProfile? ParseProfileJson(string json)
+        {
             // Raw-JSON migrations (LockPosition rename + pre-split RestoreSize inference). Both
             // gate on a key being absent, which only the undeserialized text can tell us.
             //

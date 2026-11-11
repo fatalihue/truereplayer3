@@ -2,7 +2,7 @@
 // data: it answers what the shell sends (ui:ready, profile:click, settings:change, remap:save,
 // process:list) and the Keyboard's own messages (teclado:save, as TecladoService answers it). The
 // sample games and macros are content, in Portuguese.
-import type { ActionItem, ProfileEntry, ProfileFolder, TecladoConfig, TecladoGame } from '../../bridge/messageTypes';
+import type { ActionItem, ProfileEntry, ProfileFolder, TecladoConfig, TecladoGame, TecladoMacroReport } from '../../bridge/messageTypes';
 import { FOLDER_COLORS } from '../../themes';
 
 type Listener = (event: { data: unknown }) => void;
@@ -130,7 +130,23 @@ export function installDemoEngine() {
     },
   };
   let teclado: TecladoConfig = { version: 1, enabled: true, games: GAMES };
-  const tecladoState = () => ({ type: 'teclado:state', payload: { config: teclado, loadFailed: false, loadedFromBackup: false, pendingFile: 'teclado.pending.json' } });
+  // What the executor says of each macro a key points to (phase 4): the farm one has steps a game key does not run.
+  const macroReports = () => {
+    const reports: Record<string, TecladoMacroReport> = {};
+    for (const g of teclado.games) {
+      for (const fn of [...Object.values(g.base), ...Object.values(g.layer)]) {
+        if (fn.kind !== 'macro' || !fn.macro) continue;
+        reports[fn.macro] = fn.macro === 'Farm automático'
+          ? { found: true, empty: false, unsupported: ['WaitImage', 'If'] }
+          : { found: true, empty: false, unsupported: [] };
+      }
+    }
+    return reports;
+  };
+  const tecladoState = () => ({
+    type: 'teclado:state',
+    payload: { config: teclado, loadFailed: false, loadedFromBackup: false, pendingFile: 'teclado.pending.json', macros: macroReports() },
+  });
   // The window in front, as TecladoFront would say it. In Vite: window.__frente('RobloxPlayerBeta.exe', true).
   let process: string | null = null;
   let layer = false;

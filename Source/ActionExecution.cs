@@ -71,6 +71,9 @@ namespace TrueReplayer.Services
 
         private void StartRecording()
         {
+            // Teclado (branch teclado): a macro a game key started must not land in the recording
+            // (the mouse hook records injected clicks); new ones wait for the recording to end.
+            TecladoRunner.StopAll();
             IsRecording = true;
             RecordingStartedUtc = DateTime.UtcNow;
             onButtonStateChanged?.Invoke("Pause", true);

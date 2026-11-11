@@ -6,7 +6,7 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 import { useBridge } from '../../bridge/BridgeContext';
-import type { OutgoingMessage, RemapEntryDto, TecladoConfig, TecladoGame, TecladoLive, TecladoState } from '../../bridge/messageTypes';
+import type { OutgoingMessage, RemapEntryDto, TecladoConfig, TecladoGame, TecladoLive, TecladoMacroReport, TecladoState } from '../../bridge/messageTypes';
 import { mouseTarget } from '../pages/remaps/remapModel';
 import { codeOfTr, type Game, type KeyFn } from './mkModel';
 
@@ -33,6 +33,8 @@ interface MkState {
   front: string | null;
   frontProcess: string | null;
   holding: boolean;
+  /** What each macro a key points to is to the executor (phase 4); a name missing here is not known yet. */
+  macros: Record<string, TecladoMacroReport>;
 }
 
 export const useMk = create<MkState>(() => ({
@@ -51,6 +53,7 @@ export const useMk = create<MkState>(() => ({
   front: null,
   frontProcess: null,
   holding: false,
+  macros: {},
 }));
 
 // ── The engine's side ──
@@ -85,6 +88,7 @@ function receive(state: TecladoState) {
     loadedFromBackup: !!state.loadedFromBackup,
     loadFailureDetail: state.loadFailureDetail ?? null,
     pendingFile: state.pendingFile || s.pendingFile,
+    macros: state.macros ?? {},
     open: stillThere ? s.open : games[0]?.id ?? '',
     key: stillThere ? s.key : null,
   });

@@ -438,6 +438,7 @@ namespace TrueReplayer
         private Action<bool>? _onBrowserConnectionChanged;
         // Teclado (branch teclado): the game in front changed (TecladoFront, raised on the hook thread).
         private Action<TecladoFront.State>? _onTecladoFront;
+        private Action? _onTecladoMacros;
         private Action<string, string>? _onBrowserExtensionVersionMismatch;
         private Action<string, string, string?, string?, string?, bool, IReadOnlyList<Services.BrowserBridgeService.SelectorAlternative>>? _onBrowserElementClicked;
         private Action<string, string, bool, IReadOnlyList<Services.BrowserBridgeService.SelectorAlternative>>? _onBrowserTypingCaptured;
@@ -708,6 +709,9 @@ namespace TrueReplayer
             // queues onto the dispatcher, so the hook thread never waits on the page.
             _onTecladoFront = _ => { if (!_disposed) PushTecladoLive(); };
             TecladoFront.Changed += _onTecladoFront;
+            // Teclado, phase 4: the library changed, so what each key's macro is to the executor may have too.
+            _onTecladoMacros = () => { if (!_disposed) PushTecladoState(); };
+            TecladoService.MacrosChanged += _onTecladoMacros;
 
             // Watch for browser extension events
             if (browserBridge != null)
@@ -10914,6 +10918,8 @@ namespace TrueReplayer
                 // undo/redo history behind that list.
                 int refsUpdated = await ScanRunProfileReferencesAsync(oldName, actualNewName);
                 RewriteRunProfileRefsInHistory(oldName, actualNewName);
+                // Teclado (branch teclado): the game keys that run this macro follow the new name.
+                if (TecladoService.RenameMacro(oldName, actualNewName)) PushTecladoState();
 
                 // The scan rewrote RunProfile Keys ON DISK after the refresh above had already
                 // built ProfileEntries, so those entries — and the RunProfileTargets mirror the
@@ -10980,6 +10986,8 @@ namespace TrueReplayer
                 SendMessage("alert:show", new { message = ImagesLeftBehindMessage(newName), type = "info" });
             TriggerService.Instance?.RenameStats(oldName, newName);
             RunCursorService.RenameProfile(oldName, newName);
+            // Teclado (branch teclado): a game key keeps its macro under the new name.
+            if (TecladoService.RenameMacro(oldName, newName)) PushTecladoState();
             // The profile on screen: without this its next Save wrote the OLD file back next to the
             // renamed one, a duplicate profile under the name the user had just retired.
             if (CurrentProfileName == oldName)
@@ -15443,6 +15451,7 @@ namespace TrueReplayer
             {
                 if (_onBrowserConnectionChanged != null) browserBridge.ConnectionChanged -= _onBrowserConnectionChanged;
                 if (_onTecladoFront != null) TecladoFront.Changed -= _onTecladoFront;
+                if (_onTecladoMacros != null) TecladoService.MacrosChanged -= _onTecladoMacros;
                 if (_onBrowserExtensionVersionMismatch != null) browserBridge.ExtensionVersionMismatch -= _onBrowserExtensionVersionMismatch;
                 if (_onBrowserElementClicked != null) browserBridge.ElementClicked -= _onBrowserElementClicked;
                 if (_onBrowserTypingCaptured != null) browserBridge.TypingCaptured -= _onBrowserTypingCaptured;

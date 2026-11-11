@@ -125,6 +125,13 @@ namespace TrueReplayer.Services
 
         public static void Load()
         {
+            // Phase 4: a macro saved by the app (the editor, autosave, an import) is compiled again for
+            // the keys that run it. Not every save reloads the library list, so the list alone is late.
+            if (!_listening)
+            {
+                _listening = true;
+                SettingsManager.ProfileWritten += (_, _) => MacroWritten();
+            }
             lock (_lock)
             {
                 var path = GetPath();
@@ -227,6 +234,11 @@ namespace TrueReplayer.Services
         {
             lock (_lock)
             {
+                // Phase 4: what each macro a key points to is to the executor, so the panel can say why
+                // one does not run from its key. Only the macros the config names, as the last compile saw them.
+                var macros = new Dictionary<string, object>(StringComparer.Ordinal);
+                foreach (var (name, r) in InputHookManager.TecladoMacroReports)
+                    macros[name] = new { found = r.Found, empty = r.Empty, unsupported = r.Unsupported };
                 return new
                 {
                     config = JsonSerializer.SerializeToElement(Current, WriteOptions),
@@ -234,8 +246,71 @@ namespace TrueReplayer.Services
                     loadedFromBackup = LoadedFromBackup,
                     loadFailureDetail = LoadFailureDetail,
                     pendingFile = PendingFileName,
+                    macros,
                 };
             }
+        }
+
+        /// <summary>Raised after the library changed and the keys' macros were compiled again (the page's state is stale).</summary>
+        public static event Action? MacrosChanged;
+
+        private static bool _listening;
+
+        /// <summary>A macro file was written by the app: when a key runs a macro, compile again (only a changed file is read).</summary>
+        private static void MacroWritten()
+        {
+            lock (_lock)
+            {
+                bool anyMacro = Current.Games.Any(g => g.Base.Values.Any(f => f.Kind == "macro") || g.Layer.Values.Any(f => f.Kind == "macro"));
+                if (!anyMacro) return;
+                try { InputHookManager.PublishTeclado(Current); }
+                catch (Exception ex) { DiagnosticLog.Error("Teclado: compiling the macros failed", ex); return; }
+            }
+            try { MacrosChanged?.Invoke(); }
+            catch (Exception ex) { DiagnosticLog.Warn($"Teclado: a MacrosChanged handler failed: {ex.GetType().Name}: {ex.Message}"); }
+        }
+
+        /// <summary>
+        /// The macro library changed (ProfileController, after every list load: a save, an import, the
+        /// disk watcher). The keys' macros are compiled again — a file read only when it changed.
+        /// </summary>
+        public static void LibraryChanged(IReadOnlyDictionary<string, TecladoMacros.LibraryEntry> library)
+        {
+            TecladoMacros.SetLibrary(library);
+            lock (_lock)
+            {
+                try { InputHookManager.PublishTeclado(Current); }
+                catch (Exception ex) { DiagnosticLog.Error("Teclado: compiling the macros failed", ex); }
+            }
+            try { MacrosChanged?.Invoke(); }
+            catch (Exception ex) { DiagnosticLog.Warn($"Teclado: a MacrosChanged handler failed: {ex.GetType().Name}: {ex.Message}"); }
+        }
+
+        /// <summary>A macro renamed in the library: every key that points to it follows. True when the config changed (and was saved).</summary>
+        public static bool RenameMacro(string oldName, string newName)
+        {
+            if (string.IsNullOrEmpty(oldName) || string.IsNullOrEmpty(newName) || oldName == newName) return false;
+            Config next;
+            lock (_lock)
+            {
+                bool changed = false;
+                foreach (var game in Current.Games)
+                {
+                    foreach (var layer in new[] { game.Base, game.Layer })
+                    {
+                        foreach (var fn in layer.Values)
+                        {
+                            if (fn.Kind != "macro" || !string.Equals(fn.Macro, oldName, StringComparison.Ordinal)) continue;
+                            fn.Macro = newName;
+                            changed = true;
+                        }
+                    }
+                }
+                if (!changed) return false;
+                next = Current;
+            }
+            Save(next);
+            return true;
         }
 
         /// <summary>A config the page sent, read with the same names the file uses.</summary>

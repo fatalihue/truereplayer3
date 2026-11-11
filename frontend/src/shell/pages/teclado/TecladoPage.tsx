@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { ArrowRightLeft, Download, Ellipsis, Gamepad2, Keyboard, ListChecks, Lock, Plus, X } from 'lucide-react';
 import { useBridge } from '../../../bridge/BridgeContext';
-import { t, tn } from '../../../i18n';
+import type { TecladoMacroReport } from '../../../bridge/messageTypes';
+import { LANG, t, tn } from '../../../i18n';
 import { useEditorTools } from '../../../logic/useEditorTools';
 import { useToast } from '../../../state/ToastContext';
 import { DraftField, Keys, Segmented, Switch } from '../../inspector/fields';
 import { MacroPicker } from '../../inspector/MacroPicker';
-import { keycaps } from '../../library/model';
+import { freeName, keycaps } from '../../library/model';
+import { stepName } from '../../list/stepTypes';
 import { Menu } from '../../Menu';
 import { anchorBelow, type MenuAnchor } from '../../menuAnchor';
 import {
@@ -17,7 +19,8 @@ import {
   removeGame, renameGame, setGameFn, setGameOn, useMk, type Source,
 } from '../../mk/mkStore';
 import { Popover } from '../../Popover';
-import { useApp } from '../../store';
+import { whenOpen } from '../../recordNew';
+import { useApp, useShell } from '../../store';
 import { openPage } from '../../ui';
 import { MOUSE_TARGETS, mouseTarget } from '../remaps/remapModel';
 import '../../inspector/editors.css';
@@ -659,7 +662,7 @@ function Options({ code, legend, fn, kind, source, patch }: {
         </section>
       );
     case 'macro':
-      return <MacroOptions key={code} legend={legend} fn={fn} patch={patch} />;
+      return <MacroOptions key={code} legend={legend} gameName={game?.name ?? ''} fn={fn} patch={patch} />;
     case 'text':
       return (
         <section className="rm-sec" aria-label={t('teclado.panel.text')}>
@@ -692,20 +695,44 @@ function Options({ code, legend, fn, kind, source, patch }: {
 }
 
 /** Macro: a macro of TR3's library, its mode, the repetitions, and the way to TR3's editor. */
-function MacroOptions({ legend, fn, patch }: { legend: string; fn: KeyFn; patch: (p: Partial<KeyFn>) => void }) {
+/** Why a key's macro does not run from the key (the executor's report), or null when it does or is not known yet. */
+function macroProblem(name: string, report: TecladoMacroReport | undefined): string | null {
+  if (!report) return null;
+  if (!report.found) return t('teclado.macro.notFound', { macro: name });
+  if (report.empty) return t('teclado.macro.empty', { macro: name });
+  if (report.unsupported.length === 0) return null;
+  const steps = report.unsupported.map(s => s === 'tokens' ? t('teclado.macro.tokens') : stepName(s));
+  return t('teclado.macro.unsupported', { steps: new Intl.ListFormat(LANG, { type: 'conjunction' }).format(steps) });
+}
+
+function MacroOptions({ legend, gameName, fn, patch }: { legend: string; gameName: string; fn: KeyFn; patch: (p: Partial<KeyFn>) => void }) {
   const profiles = useApp(a => a.profiles);
   const order = useApp(a => a.profileOrder);
+  const report = useMk(s => (fn.macro ? s.macros[fn.macro] : undefined));
   const { send } = useBridge();
-  const { showToast } = useToast();
   const names = profiles.map(p => p.name);
   const chosen = profiles.find(p => p.name === fn.macro) ?? null;
   const folder = order.folders.find(f => f.items.includes(fn.macro ?? ''))?.name;
   const mode = fn.mode ?? 'once';
+  const problem = fn.macro ? macroProblem(fn.macro, report) : null;
   // The library's picker (the Run Macro step's) opens to change it; with a macro chosen, its card stays.
   const [picking, setPicking] = useState(false);
   const openInEditor = () => {
     if (!chosen) return;
     send({ type: 'profile:open', payload: { name: chosen.name } });
+    openPage('macros');
+  };
+  // A new macro for this key: created in the library, linked here, and open in the editor recording
+  // from its first step, as the tray's "Record a new macro" does. In Clicker mode the engine refuses
+  // a recording, so the macro only opens.
+  const recordNew = () => {
+    const app = useShell.getState().app;
+    const base = t('teclado.macro.newName', { game: gameName, key: legend }).replace(/[\\/:*?"<>|]/g, '').trim();
+    const name = freeName(base || legend, names);
+    if (app.status === 'ready' && !app.settings.useCursorClick)
+      whenOpen(name, true, () => send({ type: 'recording:toggle', payload: { insertIndex: 0 } }));
+    send({ type: 'profile:create', payload: { name } });
+    patch({ macro: name });
     openPage('macros');
   };
   const meta = chosen ? [
@@ -736,11 +763,12 @@ function MacroOptions({ legend, fn, patch }: { legend: string; fn: KeyFn; patch:
         )}
         <div className="insp-line">
           <button type="button" className="insp-button" disabled={!chosen} onClick={openInEditor}>{t('teclado.macro.openEditor')}</button>
-          <button type="button" className="insp-button" onClick={() => showToast(t('teclado.macro.recordSoon', { key: legend }), { type: 'info' })}>
+          <button type="button" className="insp-button" onClick={recordNew}>
             <span className="tk-rec" aria-hidden="true" />
             {t('teclado.macro.recordNew')}
           </button>
         </div>
+        {problem && <p className="rm-msg" data-tone="warn">{problem}</p>}
       </section>
       <section className="rm-sec" aria-label={t('teclado.macro.mode')}>
         <span className="rm-label">{t('teclado.macro.mode')}</span>

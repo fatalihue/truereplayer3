@@ -612,12 +612,24 @@ export interface TecladoConfig {
   games: TecladoGame[];
 }
 
+/**
+ * What a macro a key points to is to the Teclado's executor (phase 4): in the library, with steps,
+ * and the steps a game key does not run ("tokens" for a {token} in a key or a text).
+ */
+export interface TecladoMacroReport {
+  found: boolean;
+  empty: boolean;
+  unsupported: string[];
+}
+
 export interface TecladoState {
   config: TecladoConfig;
   loadFailed: boolean;
   loadedFromBackup: boolean;
   loadFailureDetail?: string | null;
   pendingFile: string;
+  /** Only the macros the config names, once the library is in (absent before). */
+  macros?: Record<string, TecladoMacroReport>;
 }
 
 /** What is in front now (TecladoFront): the game's id, or null; the process; the layer key held (phase 3). */

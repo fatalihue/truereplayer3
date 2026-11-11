@@ -3055,7 +3055,11 @@ export type Chaves = {
   'teclado.macro.swap': never;
   'teclado.macro.openEditor': never;
   'teclado.macro.recordNew': never;
-  'teclado.macro.recordSoon': { key: string | number };
+  'teclado.macro.newName': { game: string | number; key: string | number };
+  'teclado.macro.notFound': { macro: string | number };
+  'teclado.macro.empty': { macro: string | number };
+  'teclado.macro.unsupported': { steps: string | number };
+  'teclado.macro.tokens': never;
   'teclado.macro.mode': never;
   'teclado.macro.times': never;
   'teclado.macro.interval': never;

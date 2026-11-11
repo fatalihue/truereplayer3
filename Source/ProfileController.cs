@@ -931,6 +931,13 @@ namespace TrueReplayer.Controllers
             await LoadProfileOrderAsync();
             PopulateEffectiveTargets();
 
+            // Teclado (branch teclado): the game keys run library macros by name, so they learn every
+            // version of the list — name → file, with the effective (folder-inherited) coordinate space.
+            var tecladoLibrary = new Dictionary<string, TecladoMacros.LibraryEntry>(StringComparer.Ordinal);
+            foreach (var e in ProfileEntries)
+                tecladoLibrary.TryAdd(e.Name, new TecladoMacros.LibraryEntry(e.FilePath, e.EffectiveUseRelativeCoordinates));
+            TecladoService.LibraryChanged(tecladoLibrary);
+
             var map = GetProfileHotkeys();
             InputHookManager.RegisterProfileHotkeys(map);
             InputHookManager.RegisterProfileTriggerModes(GetProfileTriggerModes());

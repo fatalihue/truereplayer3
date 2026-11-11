@@ -40,6 +40,11 @@ namespace TrueReplayer
             /// <summary>text: what is typed, and whether Enter follows.</summary>
             public string Text = "";
             public bool Enter;
+            /// <summary>macro: the library macro and its mode, for the Teclado's executor (phase 4).</summary>
+            public TecladoRunner.Binding? Binding;
+            /// <summary>macro: the game also gets the key itself ("Manter a tecla original"), re-sent by scan code.</summary>
+            public bool KeepOriginal;
+            public TecladoStroke Original;
         }
 
         internal readonly record struct TecladoStroke(ushort Vk, ushort Scan, bool Extended);
@@ -63,12 +68,13 @@ namespace TrueReplayer
         // ── The hook thread's own state: no lock ──
         private static string? _tecladoFrontId;
         private static TecladoGameTable? _tecladoActive;
+        private static string? _tecladoActiveId;
         private static readonly TecladoAction?[] _tecladoSlots = new TecladoAction?[TecladoKeys.TableSize];
         private static int _tecladoHeld;
         private static bool _tecladoLayer;
 
-        // What the Teclado injects is marked, as the plan asks: "TEKD".
-        private static readonly IntPtr TecladoMark = (IntPtr)0x54454B44;
+        // What the Teclado injects is marked, as the plan asks: "TEKD". The executor marks its own too.
+        internal static readonly IntPtr TecladoMark = (IntPtr)0x54454B44;
 
         // Test houses only (the probe of teclado-f3-real.mjs): with TRUEREPLAYER3_TEST_TECLADO=1 in the
         // environment, an injected key marked "TEST" counts as physical for the Teclado's two entry
@@ -76,10 +82,19 @@ namespace TrueReplayer
         private static readonly IntPtr TecladoTestMark = (IntPtr)0x54455354;
         private static readonly bool TecladoTestPhysical = Environment.GetEnvironmentVariable("TRUEREPLAYER3_TEST_TECLADO") == "1";
 
-        /// <summary>Compiles and publishes the config (TecladoService, after every load and save).</summary>
+        /// <summary>What the last compile learned about each macro a key points to (the page shows it).</summary>
+        internal static IReadOnlyDictionary<string, TecladoMacros.Report> TecladoMacroReports => _tecladoMacroReports;
+        private static volatile IReadOnlyDictionary<string, TecladoMacros.Report> _tecladoMacroReports = new Dictionary<string, TecladoMacros.Report>();
+
+        /// <summary>Compiles and publishes the config (TecladoService, after every load and save, and when the library changes).</summary>
         internal static void PublishTeclado(TecladoService.Config config)
         {
-            _tecladoTables = CompileTeclado(config);
+            var reports = new Dictionary<string, TecladoMacros.Report>(StringComparer.Ordinal);
+            var tables = CompileTeclado(config, reports, out bool anyMacro);
+            _tecladoMacroReports = reports;
+            // The executor's thread is started here, off the hook thread, before a key can need it.
+            if (anyMacro) TecladoRunner.EnsureStarted();
+            _tecladoTables = tables;
             if (_hookThreadId != 0) PostToHookThread(TecladoRecompute);
         }
 
@@ -98,9 +113,14 @@ namespace TrueReplayer
                 && tables.Games.TryGetValue(_tecladoFrontId, out var game) && game.On)
                 next = game;
             if (ReferenceEquals(next, _tecladoActive)) return;
-            // Another game, another table, or none: what the old one holds is let go first.
-            TecladoReleaseAll();
+            string? nextId = next != null ? _tecladoFrontId : null;
+            // The same game compiled again (its keys saved, the library reloaded by a file changing on
+            // disk mid-game): what is held keeps the function frozen in its slot and is let go by its own
+            // release, and the macros run on. Another game, a game turned off, the Teclado off: what the
+            // old one holds is let go first.
+            if (next == null || _tecladoActive == null || nextId != _tecladoActiveId) TecladoReleaseAll();
             _tecladoActive = next;
+            _tecladoActiveId = nextId;
         }
 
         /// <summary>Lets go of everything the Teclado holds: the game left the front, the hook stopped, the session came back.</summary>
@@ -113,7 +133,7 @@ namespace TrueReplayer
                     var action = _tecladoSlots[i];
                     if (action == null) continue;
                     _tecladoSlots[i] = null;
-                    TecladoUp(action);
+                    TecladoUp(action, i);
                 }
                 _tecladoHeld = 0;
             }
@@ -122,6 +142,8 @@ namespace TrueReplayer
                 _tecladoLayer = false;
                 TecladoFront.SetLayer(false);
             }
+            // The macros the keys started stop too, whatever their mode, and let go of what they hold.
+            TecladoRunner.StopAll();
         }
 
         // ── The two entry points ──
@@ -135,7 +157,7 @@ namespace TrueReplayer
             if (action == null) return false;
             _tecladoSlots[index] = null;
             _tecladoHeld--;
-            TecladoUp(action);
+            TecladoUp(action, index);
             return true;
         }
 
@@ -170,7 +192,7 @@ namespace TrueReplayer
             _tecladoHeld++;
             // Swallowing the right Alt of an AltGr layout: take back the phantom Ctrl that went ahead of it.
             NeutraliseAltGrPhantomCtrl(vk);
-            TecladoDown(action);
+            TecladoDown(action, index);
             return true;
         }
 
@@ -213,7 +235,7 @@ namespace TrueReplayer
 
         // ── What a function does ──
 
-        private static void TecladoDown(TecladoAction a)
+        private static void TecladoDown(TecladoAction a, int index)
         {
             switch (a.Kind)
             {
@@ -236,6 +258,11 @@ namespace TrueReplayer
                     Task.Run(() => TecladoType(text, enter));
                     break;
                 }
+                case "macro":
+                    // The original first, so the game sees its key before what the macro sends.
+                    if (a.KeepOriginal) TecladoSend(a.Original, down: true);
+                    TecladoRunner.Press(index, a.Binding!);
+                    break;
                 // "off": the key does nothing.
             }
         }
@@ -244,9 +271,11 @@ namespace TrueReplayer
         {
             if (a.Kind == "key" && a.Keys.Length > 0) TecladoSend(a.Keys[^1], down: true);
             else if (a.Kind == "mouse" && a.Wheel != 0) InjectRemappedMouse(NativeMethods.MOUSEEVENTF_WHEEL, unchecked((uint)a.Wheel));
+            // A held macro key repeats only the original it keeps; the macro is already running.
+            else if (a.Kind == "macro" && a.KeepOriginal) TecladoSend(a.Original, down: true);
         }
 
-        private static void TecladoUp(TecladoAction a)
+        private static void TecladoUp(TecladoAction a, int index)
         {
             switch (a.Kind)
             {
@@ -260,11 +289,16 @@ namespace TrueReplayer
                     _tecladoLayer = false;
                     TecladoFront.SetLayer(false);
                     break;
+                case "macro":
+                    if (a.KeepOriginal) TecladoSend(a.Original, down: false);
+                    // Only a "hold" run stops at the release; the executor knows the mode.
+                    TecladoRunner.Release(index);
+                    break;
             }
         }
 
         /// <summary>One key, by scan code (the plan: "por scan code, com o bit de estendida"), marked as the Teclado's.</summary>
-        private static void TecladoSend(TecladoStroke s, bool down)
+        internal static void TecladoSend(TecladoStroke s, bool down)
         {
             uint flags = down ? 0u : NativeMethods.KEYEVENTF_KEYUP;
             ushort vk = 0;
@@ -306,7 +340,7 @@ namespace TrueReplayer
             }
         }
 
-        private static void TecladoSendChar(char c, bool down)
+        internal static void TecladoSendChar(char c, bool down)
         {
             var input = new NativeMethods.INPUT
             {
@@ -327,28 +361,37 @@ namespace TrueReplayer
 
         // ── Compiling, off the hook thread ──
 
-        internal static TecladoTables CompileTeclado(TecladoService.Config config)
+        internal static TecladoTables CompileTeclado(TecladoService.Config config, Dictionary<string, TecladoMacros.Report> reports, out bool anyMacro)
         {
+            anyMacro = false;
             var tables = new TecladoTables { Enabled = config.Enabled };
-            IntPtr layout = NativeMethods.GetKeyboardLayout(0);
+            // The layout of the window in front (the game's, with a game there), not the calling
+            // thread's: a compile runs on whichever thread saved, and a pool thread has its own.
+            var front = NativeMethods.GetForegroundWindow();
+            IntPtr layout = NativeMethods.GetKeyboardLayout(front == IntPtr.Zero ? 0 : NativeMethods.GetWindowThreadProcessId(front, out _));
             foreach (var game in config.Games)
             {
                 var table = new TecladoGameTable { On = game.On };
-                CompileLayer(table.Base, game.Base, layout);
-                CompileLayer(table.Layer, game.Layer, layout);
+                CompileLayer(table.Base, game.Base, layout, reports, ref anyMacro);
+                CompileLayer(table.Layer, game.Layer, layout, reports, ref anyMacro);
                 tables.Games[game.Id] = table;
             }
             return tables;
         }
 
-        private static void CompileLayer(TecladoAction?[] into, Dictionary<string, TecladoService.KeyFunction> keys, IntPtr layout)
+        private static void CompileLayer(TecladoAction?[] into, Dictionary<string, TecladoService.KeyFunction> keys, IntPtr layout,
+            Dictionary<string, TecladoMacros.Report> reports, ref bool anyMacro)
         {
             foreach (var (code, fn) in keys)
             {
                 // The mouse's own buttons as sources come in a later phase: only keyboard keys here.
                 if (!TecladoKeys.TryGetScan(code, out var scan, out var extended)) continue;
-                var action = CompileAction(fn, layout);
-                if (action != null) into[TecladoKeys.IndexOf(scan, extended)] = action;
+                var action = fn.Kind == "macro"
+                    ? MacroAction(fn, scan, extended, layout, reports)
+                    : CompileAction(fn, layout);
+                if (action == null) continue;
+                if (action.Kind == "macro") anyMacro = true;
+                into[TecladoKeys.IndexOf(scan, extended)] = action;
             }
         }
 
@@ -360,9 +403,36 @@ namespace TrueReplayer
                 : new TecladoAction { Kind = "text", Text = fn.Text ?? "", Enter = fn.Enter == true },
             "mouse" => MouseAction(fn.Mouse),
             "key" => KeyAction(fn.Combo, layout),
-            // "macro": phase 4. Until then the key does what it always did.
             _ => null,
         };
+
+        /// <summary>
+        /// A macro key: the library macro compiled for the executor. A macro that cannot run from a key
+        /// (missing, empty, or with steps the Teclado does not run) compiles to nothing, so the key does
+        /// what it always did, and the page says why.
+        /// </summary>
+        private static TecladoAction? MacroAction(TecladoService.KeyFunction fn, uint scan, bool extended, IntPtr layout,
+            Dictionary<string, TecladoMacros.Report> reports)
+        {
+            if (string.IsNullOrEmpty(fn.Macro)) return null;
+            var macro = TecladoMacros.Resolve(fn.Macro, layout, reports);
+            if (macro == null) return null;
+            // MAPVK_VSC_TO_VK_EX: the original key's VK (only Pause needs it to be re-sent).
+            ushort vk = (ushort)NativeMethods.MapVirtualKeyEx(extended ? 0xE000 | scan : scan, 3, layout);
+            return new TecladoAction
+            {
+                Kind = "macro",
+                Binding = new TecladoRunner.Binding
+                {
+                    Macro = macro,
+                    Mode = fn.Mode ?? "once",
+                    Times = fn.Times ?? 1,
+                    IntervalMs = fn.Interval ?? 0,
+                },
+                KeepOriginal = fn.KeepOriginal == true,
+                Original = new TecladoStroke(vk, (ushort)scan, extended),
+            };
+        }
 
         private static TecladoAction? KeyAction(string? combo, IntPtr layout)
         {
@@ -371,14 +441,23 @@ namespace TrueReplayer
             var strokes = new List<TecladoStroke>();
             foreach (var part in prefix.Append(key))
             {
-                // Mouse buttons are not keys to inject (0x01–0x06).
-                if (!KeyUtils.TryResolveVirtualKeyCode(part, out var vk) || vk <= 0x06) return null;
-                // MAPVK_VK_TO_VSC_EX: the scan code, with 0xE0 in the high byte for an extended key.
-                uint sc = NativeMethods.MapVirtualKeyEx(vk, 4, layout);
-                bool extended = (sc & 0xFF00) == 0xE000 || _extendedVkCodes.Contains(vk);
-                strokes.Add(new TecladoStroke(vk, (ushort)(sc & 0xFF), extended));
+                if (!TryTecladoStroke(part, layout, out var stroke)) return null;
+                strokes.Add(stroke);
             }
             return new TecladoAction { Kind = "key", Keys = strokes.ToArray() };
+        }
+
+        /// <summary>A key by its TR3 name, as the Teclado sends it: the VK, its scan code and the extended bit.</summary>
+        internal static bool TryTecladoStroke(string name, IntPtr layout, out TecladoStroke stroke)
+        {
+            stroke = default;
+            // Mouse buttons are not keys to inject (0x01–0x06).
+            if (!KeyUtils.TryResolveVirtualKeyCode(name, out var vk) || vk <= 0x06) return false;
+            // MAPVK_VK_TO_VSC_EX: the scan code, with 0xE0 in the high byte for an extended key.
+            uint sc = NativeMethods.MapVirtualKeyEx(vk, 4, layout);
+            bool extended = (sc & 0xFF00) == 0xE000 || _extendedVkCodes.Contains(vk);
+            stroke = new TecladoStroke(vk, (ushort)(sc & 0xFF), extended);
+            return true;
         }
 
         // The same targets as RemapService.MouseTargets, by the same names.
