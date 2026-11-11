@@ -184,12 +184,12 @@ export default {
   },
   // A chave do Teclado na barra de status.
   status: {
-    off: 'Keyboard off',
+    off: 'Keyboard Off',
     paused: 'Keyboard paused',
     gameOff: 'Keyboard · {{game}} off',
     front: 'Keyboard · {{game}} in front',
     frontLayer: 'Keyboard · {{game}} · Layer',
-    idle: 'Keyboard on · no game in front',
+    idle: 'Keyboard On · no game in front',
     offTip: 'Off: no key changes, in any game.',
     pausedTip: 'On, but paused while the shortcuts are off.',
     onTip: 'With a game in front, its keys change as set on the Keyboard. Turning it off brings every key back at once and releases whatever was held.',

@@ -9,9 +9,11 @@ import { useShell } from './shell/store'
 import { ThemeProvider } from './state/ThemeContext'
 import { ToastProvider } from './state/ToastContext'
 import { applyThemeConfig, loadCustomPresets, loadThemeConfig, resolveThemeColors } from './themes'
-// Teclado (branch teclado): in Vite, without WebView2, a fake engine answers with sample data. Imported
-// only in development, so none of it reaches the app's bundle (rule 6); the first render waits for it.
-const demo = import.meta.env.DEV && !window.chrome?.webview
+// Teclado (branch teclado): in Vite, without WebView2, a fake engine answers with sample data — only
+// when asked (VITE_TECLADO_DEMO=1, set by the vite-mk preview), so the e2e tests keep the bridge's own
+// postMessage fallback. Imported only in development, so none of it reaches the app's bundle (rule 6);
+// the first render waits for it.
+const demo = import.meta.env.DEV && import.meta.env.VITE_TECLADO_DEMO === '1' && !window.chrome?.webview
   ? import('./shell/mk/demoEngine').then(m => m.installDemoEngine())
   : null
 
