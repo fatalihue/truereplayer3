@@ -3,6 +3,8 @@ import { useRemaps } from '../../logic/useRemaps';
 import { useSettings } from '../../logic/useSettings';
 import { t } from '../../i18n';
 import { preload } from '../lazyModule';
+import { MkSwitch } from '../mk/MkStatus';
+import { useMk } from '../mk/mkStore';
 import { useApp } from '../store';
 import { loadSettingsPage, openSettings } from '../ui';
 import { useExtension } from './extensionState';
@@ -25,6 +27,8 @@ export function Switches() {
   const remaps = useRemaps();
   // The remaps pause with the Shortcuts off (and while recording): on, but not in effect.
   const remapsPaused = remapsOn && !shortcuts;
+  // PROTÓTIPO MK: na variante B os Key Remaps viraram o Teclado, e a chave dele fica no lugar.
+  const merged = useMk(s => s.variant === 'merged');
   return (
     <div className="sb-switches" role="group" aria-label={t('statusbar.switches')}>
       <button
@@ -49,17 +53,20 @@ export function Switches() {
         <span className="sb-dot" />
         {automationsOn ? t('statusbar.automationsOn', { count: armed }) : t('statusbar.automationsOff')}
       </button>
-      <button
-        type="button"
-        className="sb-switch"
-        aria-pressed={remapsOn}
-        data-paused={remapsPaused ? '' : undefined}
-        data-tip={remapsPaused ? t('statusbar.remapsPausedTip') : remapsOn ? t('statusbar.remapsOnTip') : t('statusbar.remapsOffTip')}
-        onClick={() => remaps.setEnabled(!remapsOn)}
-      >
-        <span className="sb-dot" />
-        {remapsPaused ? t('statusbar.remapsPaused') : remapsOn ? t('statusbar.remapsOn', { count: remapsActive }) : t('statusbar.remapsOff')}
-      </button>
+      {!merged && (
+        <button
+          type="button"
+          className="sb-switch"
+          aria-pressed={remapsOn}
+          data-paused={remapsPaused ? '' : undefined}
+          data-tip={remapsPaused ? t('statusbar.remapsPausedTip') : remapsOn ? t('statusbar.remapsOnTip') : t('statusbar.remapsOffTip')}
+          onClick={() => remaps.setEnabled(!remapsOn)}
+        >
+          <span className="sb-dot" />
+          {remapsPaused ? t('statusbar.remapsPaused') : remapsOn ? t('statusbar.remapsOn', { count: remapsActive }) : t('statusbar.remapsOff')}
+        </button>
+      )}
+      <MkSwitch />
     </div>
   );
 }

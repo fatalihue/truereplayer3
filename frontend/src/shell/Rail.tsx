@@ -1,17 +1,20 @@
 import { useEffect } from 'react';
-import { ArrowRightLeft, ListChecks, MousePointerClick, Settings, Zap } from 'lucide-react';
+import { ArrowRightLeft, Keyboard, ListChecks, MousePointerClick, Settings, Zap } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
 import { t } from '../i18n';
 import { preload } from './lazyModule';
+import { useMk } from './mk/mkStore';
 import { useApp } from './store';
 import { openPage, PAGE_CHUNKS, setLibraryPeek, useUi } from './ui';
 import { useShellBand } from './useShellBand';
 
-// ② The rail: the five destinations.
+// ② The rail: the five destinations. PROTÓTIPO MK: mais o Teclado, ao lado dos Key Remaps (variante
+// A) ou no lugar deles (variante B).
 const DESTINATIONS = [
   { id: 'macros', label: t('common.pages.macros'), Icon: ListChecks },
   { id: 'clicker', label: t('common.pages.clicker'), Icon: MousePointerClick },
   { id: 'automations', label: t('common.pages.automations'), Icon: Zap },
+  { id: 'teclado', label: 'Teclado', Icon: Keyboard },
   { id: 'remaps', label: t('common.pages.remaps'), Icon: ArrowRightLeft },
   { id: 'settings', label: t('common.pages.settings'), Icon: Settings },
 ] as const;
@@ -32,6 +35,8 @@ export function Rail() {
   const clicker = useApp(a => a.settings.useCursorClick);
   const armed = useApp(a => (a.automation.enabled ? a.automation.entries.filter(e => e.trigger.armed && !e.isDisabled).length : 0));
   const { send } = useBridge();
+  const merged = useMk(s => s.variant === 'merged');
+  const front = useMk(s => (s.enabled ? s.games.find(g => g.id === s.front && g.on)?.name ?? null : null));
   const peeks = band !== 'wide' && page === 'macros';
   const openMacros = () => {
     // The write useSettings().change makes, sent here so the settings hook stays out of the opening
@@ -54,8 +59,9 @@ export function Rail() {
   };
   return (
     <nav className="shell-rail" aria-label={t('rail.nav')}>
-      {DESTINATIONS.map(({ id, label, Icon }) => {
+      {DESTINATIONS.filter(d => !(merged && d.id === 'remaps')).map(({ id, label, Icon }) => {
         const badge = id === 'automations' && armed > 0;
+        const playing = id === 'teclado' && front;
         return (
           <button
             key={id}
@@ -66,6 +72,7 @@ export function Rail() {
             data-library-toggle={id === 'macros' && peeks ? '' : undefined}
             data-tip={id === 'macros' && clicker ? t('rail.backToMacros')
               : badge ? t('rail.automationsArmed', { count: armed })
+              : playing ? `Teclado · ${front} na frente`
               : label}
             data-tip-pos="right"
             onPointerEnter={() => warm(id)}
@@ -75,6 +82,7 @@ export function Rail() {
             <Icon aria-hidden="true" />
             <span className="shell-rail-label">{label}</span>
             {badge && <span className="shell-rail-badge" aria-hidden="true">{armed}</span>}
+            {playing && <span className="shell-rail-dot" aria-hidden="true" />}
           </button>
         );
       })}

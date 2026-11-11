@@ -7,6 +7,7 @@ import { InsertRow } from './insert/InsertRow';
 import { preload, useLoaded } from './lazyModule';
 import { Library } from './library/Library';
 import { MacroHeader } from './header/MacroHeader';
+import { Prototype } from './mk/Prototype';
 import { Overlays } from './Overlays';
 import { Rail } from './Rail';
 import { ShellKeys } from './ShellKeys';
@@ -64,6 +65,8 @@ export function Shell() {
         {page !== 'macros' && <Chunk load={PAGE_CHUNKS[page]} wait={<section className="shell-page" />} />}
       </div>
       <StatusBar />
+      {/* PROTÓTIPO MK: o cartão que troca a variante e simula o jogo na frente. */}
+      <Prototype />
       <ShellKeys />
       <Overlays />
       <Toast />

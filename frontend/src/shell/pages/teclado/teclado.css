@@ -1,0 +1,347 @@
+/* PROTÓTIPO MK: ② Teclado, o TrueReplayerMK como modo do TR3. Os jogos à esquerda (como a
+   biblioteca), o teclado no meio, a tecla à direita (como "Remap settings"). Só tokens do tema; as
+   cores das funções são as dos passos do TR3 que fazem o mesmo (--color-action-*). */
+
+.tk {
+  position: relative;
+  display: grid;
+  grid-template-columns: 15.5rem minmax(0, 1fr) 22.5rem;
+  min-height: 0;
+  background: var(--color-bg-base);
+}
+.tk svg { flex: none; }
+.tk .insp-button svg { width: 0.875rem; height: 0.875rem; }
+.tk .insp-icon-button svg { width: 1rem; height: 1rem; }
+.tk .insp-icon-button { border-color: transparent; background: transparent; }
+
+/* ── Os jogos ── */
+.tk-games {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-surface);
+}
+.tk-games-list { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 0.125rem; padding: 0.25rem 0.5rem 0.75rem; }
+.tk-game {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.25rem 0.5rem;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tk-game:hover { background: var(--color-bg-elevated); }
+.tk-game[aria-current='true'] { background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+.tk-game[aria-current='true']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.625rem;
+  bottom: 0.625rem;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--color-accent);
+}
+.tk-game:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: -2px; }
+.tk-avatar {
+  display: grid;
+  place-items: center;
+  width: 1.875rem;
+  height: 1.875rem;
+  flex: none;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border-default);
+  border-radius: 0.375rem;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-secondary);
+  font-weight: 600;
+}
+.tk-avatar svg { width: 0.9375rem; height: 0.9375rem; }
+.tk-game[data-off] .tk-avatar, .tk-game[data-off] .tk-game-text { opacity: 0.5; }
+.tk-game-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.tk-game-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tk-game[aria-current='true'] .tk-game-name { font-weight: 600; }
+.tk-game-exe { font-family: var(--font-mono); font-size: var(--text-caption); line-height: 1rem; color: var(--color-text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tk-front-dot { width: 0.4375rem; height: 0.4375rem; flex: none; border-radius: 50%; background: var(--color-replay); }
+.tk-games-foot { margin: 0; padding: 0.625rem 1rem 0.75rem; border-top: 1px solid var(--color-border-subtle); font-size: var(--text-minor); line-height: 1rem; color: var(--color-text-tertiary); }
+
+/* ── A cabeça: o jogo, Usar, Exportar ── */
+.tk-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.tk-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  min-height: 3.25rem;
+  padding: 0.375rem 0.75rem 0.375rem 1.25rem;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.tk-titles { display: flex; flex-direction: column; gap: 0.125rem; flex: 1 1 16rem; min-width: 0; }
+.tk-title { display: flex; align-items: center; gap: 0.5rem; margin: 0; font-size: var(--text-subtitle); line-height: var(--text-subtitle--line-height); font-weight: 600; color: var(--color-text-primary); }
+.tk-sub { margin: 0; font-size: var(--text-minor); line-height: 1rem; color: var(--color-text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tk-sub code { font-family: var(--font-mono); font-size: var(--text-caption); }
+.tk-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.0625rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--pill) 30%, transparent);
+  background: color-mix(in srgb, var(--pill) 12%, transparent);
+  color: var(--color-text-primary);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  --pill: var(--color-replay);
+}
+.tk-pill::before { content: ''; width: 0.375rem; height: 0.375rem; border-radius: 50%; background: var(--pill); }
+.tk-pill[data-tone='layer'] { --pill: var(--color-action-if-fg); }
+.tk-head-end { display: flex; align-items: center; gap: 0.625rem; flex: none; }
+.tk-use { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--color-text-secondary); }
+.tk .tk-file { height: 1.875rem; padding: 0 0.625rem; gap: 0.375rem; border-color: var(--color-border-default); background: transparent; font-size: var(--text-minor); }
+
+/* ── A barra: Teclado | Mouse, Base | Camada ── */
+.tk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  min-height: 2.9375rem;
+  padding: 0.5rem 0.75rem 0.5rem 1.25rem;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.tk-bar .insp-seg { flex: none; }
+.tk-seg-device { width: 11.5rem; }
+.tk-seg-layer { width: 17rem; }
+.tk-count { font-size: var(--text-minor); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+.tk-layout {
+  padding: 0 0.375rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: 0.1875rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  line-height: 1.125rem;
+  color: var(--color-text-tertiary);
+}
+
+/* ── O desenho ── */
+.tk-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.tk-board { container-type: inline-size; padding: 1.25rem 1.25rem 0.75rem; }
+.tk-grid {
+  --u: min(calc(100cqi / 18.25), 4.75rem);
+  display: grid;
+  grid-template-columns: repeat(73, calc(var(--u) / 4));
+  grid-template-rows: var(--u) calc(var(--u) * 0.3) repeat(5, var(--u));
+  width: max-content;
+  margin: 0 auto;
+}
+.tk-grid[data-numpad] { --u: min(calc(100cqi / 22.5), 4.75rem); grid-template-columns: repeat(90, calc(var(--u) / 4)); }
+.tk-slot { position: relative; min-width: 0; }
+.tk-key {
+  --edge: var(--color-border-default);
+  --face: var(--color-bg-elevated);
+  --ink: var(--color-text-secondary);
+  position: absolute;
+  inset: calc(var(--u) * 0.045);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.125rem;
+  min-width: 0;
+  padding: calc(var(--u) * 0.1) calc(var(--u) * 0.09) calc(var(--u) * 0.08);
+  box-sizing: border-box;
+  border: 1px solid var(--edge);
+  border-bottom-width: 2px;
+  border-radius: 0.3125rem;
+  background: var(--face);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+.tk-key:hover { --edge: var(--color-border-strong); }
+.tk-key:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; z-index: 1; }
+.tk-leg { font-family: var(--font-mono); font-size: var(--text-caption); line-height: 1; color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* O rótulo da função: até duas linhas, quebrando só entre palavras ("Combo / 1-2-3"); numa janela
+   estreita, uma linha com reticências. A dica e o painel têm o nome inteiro. */
+.tk-fn {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  min-width: 0;
+  font-size: var(--text-caption);
+  line-height: 1.15;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  overflow-wrap: normal;
+}
+/* Uma palavra só ("Desligada") não quebra no meio: uma linha com reticências. */
+.tk-fn[data-one] { display: block; white-space: nowrap; text-overflow: ellipsis; }
+@container (max-width: 60rem) {
+  .tk-fn { display: block; white-space: nowrap; text-overflow: ellipsis; }
+}
+.tk-ico { position: absolute; top: calc(var(--u) * 0.09); right: calc(var(--u) * 0.08); width: 0.6875rem; height: 0.6875rem; color: var(--ink); }
+.tk-inh { position: absolute; top: calc(var(--u) * 0.06); right: calc(var(--u) * 0.08); display: grid; place-items: center; font-size: var(--text-caption); line-height: 1; color: var(--color-text-tertiary); }
+.tk-inh svg { width: 0.6875rem; height: 0.6875rem; }
+
+/* As funções, na cor do passo do TR3 que faz o mesmo: tingidas a 12% com a borda a 40% (a regra de "ligado"). */
+.tk-key[data-fn] { --face: linear-gradient(var(--fn-bg) 0 0), var(--color-bg-elevated); --edge: color-mix(in srgb, var(--fn-fg) 40%, transparent); --ink: var(--fn-fg); }
+.tk-key[data-fn]:hover { --edge: color-mix(in srgb, var(--fn-fg) 65%, transparent); }
+.tk-key[data-fn='key'] { --fn-fg: var(--color-action-key-fg); --fn-bg: var(--color-action-key-bg); }
+.tk-key[data-fn='mouse'] { --fn-fg: var(--color-action-mouse-fg); --fn-bg: var(--color-action-mouse-bg); }
+.tk-key[data-fn='macro'] { --fn-fg: var(--color-action-runprofile-fg); --fn-bg: var(--color-action-runprofile-bg); }
+.tk-key[data-fn='text'] { --fn-fg: var(--color-action-sendtext-fg); --fn-bg: var(--color-action-sendtext-bg); }
+.tk-key[data-fn='layer'] { --fn-fg: var(--color-action-if-fg); --fn-bg: var(--color-action-if-bg); }
+/* Desligar: a forma muda (tracejado), não só a cor. */
+.tk-key[data-fn='off'] { --face: transparent; --edge: var(--color-border-strong); --ink: var(--color-text-tertiary); border-style: dashed; border-bottom-width: 1px; }
+.tk-key[data-fn='off']:hover { --edge: var(--color-text-tertiary); }
+/* Herdada (da base, na Camada; ou dos remaps gerais): sem tinta, o rótulo na Tinta 3 e a marca no canto. */
+.tk-key[data-source] { --face: var(--color-bg-elevated); --edge: var(--color-border-default); --ink: var(--color-text-tertiary); border-style: solid; border-bottom-width: 2px; }
+.tk-key[data-source] .tk-fn { font-weight: 400; }
+.tk-key[data-source]:hover { --edge: var(--color-border-strong); }
+/* A tecla de camada, segura, na vista da Camada. */
+.tk-key[data-held] { border-bottom-width: 1px; --face: linear-gradient(color-mix(in srgb, var(--color-action-if-fg) 22%, transparent) 0 0), var(--color-bg-elevated); }
+/* A escolhida: o anel no destaque. */
+.tk-key[aria-pressed='true'] { outline: 2px solid var(--color-accent); outline-offset: 1px; z-index: 1; }
+
+/* O Enter em L do ISO: uma peça só, recortada; a borda é uma camada de baixo. */
+.tk-slot[data-iso] .tk-key {
+  --q: calc(var(--u) * 0.25);
+  border: 0;
+  padding: calc(var(--u) * 0.1) calc(var(--u) * 0.09) calc(var(--u) * 0.08) calc(var(--q) + var(--u) * 0.09);
+  background: var(--edge);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, var(--q) 100%, var(--q) calc(50% - var(--u) * 0.045), 0 calc(50% - var(--u) * 0.045));
+  border-radius: 0.3125rem;
+  outline: 0;
+}
+.tk-slot[data-iso] .tk-key::before {
+  content: '';
+  position: absolute;
+  inset: 1px 1px 2px;
+  z-index: -1;
+  border-radius: 0.25rem;
+  background: var(--face);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, calc(var(--q) - 1px) 100%, calc(var(--q) - 1px) calc(50% - var(--u) * 0.045 - 1px), 0 calc(50% - var(--u) * 0.045 - 1px));
+}
+.tk-slot[data-iso] .tk-key { isolation: isolate; }
+.tk-slot[data-iso] .tk-key[aria-pressed='true'] { --edge: var(--color-accent); }
+.tk-slot[data-iso] .tk-key[aria-pressed='true']::before { inset: 2px 2px 3px; }
+.tk-slot[data-iso] .tk-fn, .tk-slot[data-iso] .tk-leg { align-self: flex-end; }
+
+/* O × que limpa, ao passar o mouse (como no iCUE). */
+.tk-x {
+  position: absolute;
+  top: calc(var(--u) * 0.045 - 0.375rem);
+  right: calc(var(--u) * 0.045 - 0.375rem);
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  padding: 0;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 50%;
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  opacity: 0;
+  cursor: pointer;
+}
+.tk-x svg { width: 0.625rem; height: 0.625rem; }
+.tk-slot:hover .tk-x, .tk-x:focus-visible { opacity: 1; }
+.tk-x:hover { color: var(--color-text-primary); border-color: var(--color-text-tertiary); }
+
+/* ── O mouse ── */
+.tk-mouse { display: grid; grid-template-columns: repeat(4, 7.5rem); gap: 0.5rem; justify-content: center; padding: 1.5rem 1.25rem 0.75rem; --u: 3.75rem; }
+.tk-mouse .tk-slot { height: 3.75rem; }
+.tk-mouse .tk-key[disabled] { cursor: default; opacity: 0.5; border-style: dashed; }
+.tk-mouse-note { grid-column: 1 / -1; margin: 0.25rem 0 0; text-align: center; font-size: var(--text-minor); color: var(--color-text-tertiary); }
+
+/* ── A legenda e as notas sob o desenho ── */
+.tk-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.375rem 1rem; padding: 0.25rem 1.25rem 0.75rem; font-size: var(--text-minor); color: var(--color-text-secondary); }
+.tk-legend-item { display: inline-flex; align-items: center; gap: 0.375rem; }
+.tk-swatch { width: 0.875rem; height: 0.875rem; box-sizing: border-box; border: 1px solid var(--edge); border-radius: 0.1875rem; background: var(--face); }
+.tk-swatch[data-fn] { --face: linear-gradient(var(--fn-bg) 0 0), var(--color-bg-elevated); --edge: color-mix(in srgb, var(--fn-fg) 40%, transparent); }
+.tk-swatch[data-fn='key'] { --fn-fg: var(--color-action-key-fg); --fn-bg: var(--color-action-key-bg); }
+.tk-swatch[data-fn='mouse'] { --fn-fg: var(--color-action-mouse-fg); --fn-bg: var(--color-action-mouse-bg); }
+.tk-swatch[data-fn='macro'] { --fn-fg: var(--color-action-runprofile-fg); --fn-bg: var(--color-action-runprofile-bg); }
+.tk-swatch[data-fn='text'] { --fn-fg: var(--color-action-sendtext-fg); --fn-bg: var(--color-action-sendtext-bg); }
+.tk-swatch[data-fn='layer'] { --fn-fg: var(--color-action-if-fg); --fn-bg: var(--color-action-if-bg); }
+.tk-swatch[data-fn='off'] { --face: transparent; --edge: var(--color-border-strong); border-style: dashed; }
+.tk-swatch[data-inh] { --face: var(--color-bg-elevated); --edge: var(--color-border-default); }
+.tk-legend-item svg { width: 0.75rem; height: 0.75rem; }
+.tk-legend-item[data-fn='key'] svg { color: var(--color-action-key-fg); }
+.tk-legend-item[data-fn='mouse'] svg { color: var(--color-action-mouse-fg); }
+.tk-legend-item[data-fn='macro'] svg { color: var(--color-action-runprofile-fg); }
+.tk-legend-item[data-fn='text'] svg { color: var(--color-action-sendtext-fg); }
+.tk-legend-item[data-fn='layer'] svg { color: var(--color-action-if-fg); }
+.tk-legend-item[data-fn='off'] svg, .tk-legend-item[data-inh] svg { color: var(--color-text-tertiary); }
+.tk-notes { display: flex; flex-direction: column; gap: 0.375rem; max-width: 46rem; margin: 0 auto; padding: 0.25rem 1.25rem 1.25rem; }
+.tk-note { display: flex; gap: 0.5rem; margin: 0; font-size: var(--text-minor); line-height: 1.125rem; color: var(--color-text-secondary); }
+.tk-note svg { width: 0.875rem; height: 0.875rem; margin-top: 0.125rem; color: var(--color-text-tertiary); }
+.tk-note b { font-weight: 600; color: var(--color-text-primary); }
+
+/* ── A tecla (o painel, nas classes de "Remap settings") ── */
+.tk-panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-left: 1px solid var(--color-border-subtle); background: var(--color-bg-surface); }
+.tk-panel .rm-panel-icon { font-family: var(--font-mono); font-size: var(--text-minor); font-weight: 600; }
+.tk-fns { display: flex; flex-direction: column; gap: 0.125rem; padding: 0.25rem; border: 1px solid var(--color-border-subtle); border-radius: 0.375rem; background: var(--color-bg-elevated); }
+.tk-fns .rm-radio { gap: 0.5rem; }
+.tk-fns .rm-radio svg { width: 0.875rem; height: 0.875rem; }
+.tk-fns .rm-radio:disabled { color: var(--color-text-disabled); cursor: default; }
+.tk-fns .rm-radio:disabled:hover { background: transparent; }
+.tk-fns .rm-radio[data-fn='key'] svg { color: var(--color-action-key-fg); }
+.tk-fns .rm-radio[data-fn='mouse'] svg { color: var(--color-action-mouse-fg); }
+.tk-fns .rm-radio[data-fn='macro'] svg { color: var(--color-action-runprofile-fg); }
+.tk-fns .rm-radio[data-fn='text'] svg { color: var(--color-action-sendtext-fg); }
+.tk-fns .rm-radio[data-fn='layer'] svg { color: var(--color-action-if-fg); }
+.tk-fns .rm-radio[data-fn='off'] svg { color: var(--color-text-tertiary); }
+.tk-fns .rm-radio:disabled svg { opacity: 0.5; }
+.tk-fn-none { width: 0.875rem; height: 0.875rem; flex: none; }
+.tk-fn-aside { margin-left: auto; font-size: var(--text-caption); font-weight: 400; color: var(--color-text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 9rem; }
+.tk-where { font-size: var(--text-minor); line-height: 1rem; color: var(--color-text-tertiary); }
+.tk-where b { font-weight: 600; color: var(--color-text-secondary); }
+.tk-rec { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--color-recording); }
+/* A macro escolhida, como um cartão: o nome, onde ela mora na biblioteca, e Trocar. */
+.tk-macro {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.5rem 0.5rem 0.625rem;
+  border: 1px solid color-mix(in srgb, var(--color-action-runprofile-fg) 40%, transparent);
+  border-radius: 0.375rem;
+  background: var(--color-action-runprofile-bg);
+}
+.tk-macro-icon { width: 1rem; height: 1rem; color: var(--color-action-runprofile-fg); }
+.tk-macro-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.tk-macro-name { font-weight: 600; color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tk .tk-macro-swap { height: 1.75rem; padding: 0 0.625rem; font-size: var(--text-minor); }
+.tk-where .kbd { height: 1rem; }
+.tk-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.375rem; padding: 1rem 2rem; text-align: center; }
+.tk-empty-title { font-weight: 600; color: var(--color-text-primary); }
+.tk-empty-text { max-width: 16rem; font-size: var(--text-minor); line-height: 1rem; color: var(--color-text-secondary); }
+
+/* 1024–1279: os jogos dobram em avatares, como a biblioteca. */
+@container shell (max-width: 79.99rem) {
+  .tk { grid-template-columns: 3.5rem minmax(0, 1fr) 21rem; }
+  .tk-game { justify-content: center; padding: 0.25rem; }
+  .tk-game-text, .tk-games-foot, .tk-games .lib-title, .tk-games .lib-new span, .tk-games .lib-heading { display: none; }
+  .tk-games .lib-header { justify-content: center; padding: 0; }
+  .tk-front-dot { position: absolute; top: 0.25rem; right: 0.25rem; }
+}
+/* 760–1023: o painel da tecla fica sobre o desenho. */
+@container shell (max-width: 63.99rem) {
+  .tk { grid-template-columns: 3.5rem minmax(0, 1fr); }
+  .tk-panel { position: absolute; inset: 0 0 0 auto; width: min(22.5rem, 85%); box-shadow: var(--shadow-overlay); z-index: 4; }
+  .tk-panel[data-empty] { display: none; }
+}
