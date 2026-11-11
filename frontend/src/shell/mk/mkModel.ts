@@ -71,7 +71,9 @@ const DIGITS: Item[] = [['Digit1', '1'], ['Digit2', '2'], ['Digit3', '3'], ['Dig
 const QP: Item[] = [['KeyQ', 'Q'], ['KeyW', 'W'], ['KeyE', 'E'], ['KeyR', 'R'], ['KeyT', 'T'], ['KeyY', 'Y'], ['KeyU', 'U'], ['KeyI', 'I'], ['KeyO', 'O'], ['KeyP', 'P']];
 const AL: Item[] = [['KeyA', 'A'], ['KeyS', 'S'], ['KeyD', 'D'], ['KeyF', 'F'], ['KeyG', 'G'], ['KeyH', 'H'], ['KeyJ', 'J'], ['KeyK', 'K'], ['KeyL', 'L']];
 const ZM: Item[] = [['KeyZ', 'Z'], ['KeyX', 'X'], ['KeyC', 'C'], ['KeyV', 'V'], ['KeyB', 'B'], ['KeyN', 'N'], ['KeyM', 'M']];
-const BOTTOM = (altRight: string): Item[] => [['ControlLeft', 'Ctrl', 1.25], ['MetaLeft', 'Win', 1.25], ['AltLeft', 'Alt', 1.25], ['Space', 'Space', 6.25], ['AltRight', altRight, 1.25], ['MetaRight', 'Win', 1.25], ['ContextMenu', 'Menu', 1.25], ['ControlRight', 'Ctrl', 1.25]];
+// AltGr and Menu are not in the glossary's key names (i18n/glossario.ts, TECLAS), so they come from the catalog.
+const CAPS = tn('teclado.caps');
+const BOTTOM = (altRight: string): Item[] => [['ControlLeft', 'Ctrl', 1.25], ['MetaLeft', 'Win', 1.25], ['AltLeft', 'Alt', 1.25], ['Space', 'Space', 6.25], ['AltRight', altRight, 1.25], ['MetaRight', 'Win', 1.25], ['ContextMenu', CAPS.Menu, 1.25], ['ControlRight', 'Ctrl', 1.25]];
 
 const MAIN: Record<Family, [row: number, items: Item[]][]> = {
   // ABNT2: the 107-key Brazilian board, the ISO Enter, and the extra key beside the right Shift.
@@ -81,7 +83,7 @@ const MAIN: Record<Family, [row: number, items: Item[]][]> = {
     [4, [['Tab', 'Tab', 1.5], ...QP, ['BracketLeft', '´'], ['BracketRight', '[']]],
     [5, [['CapsLock', 'Caps', 1.75], ...AL, ['Semicolon', 'Ç'], ['Quote', '~'], ['Backslash', ']']]],
     [6, [['ShiftLeft', 'Shift', 1.25], ['IntlBackslash', '\\'], ...ZM, ['Comma', ','], ['Period', '.'], ['Slash', ';'], ['IntlRo', '/'], ['ShiftRight', 'Shift', 1.75]]],
-    [7, BOTTOM('AltGr')],
+    [7, BOTTOM(CAPS.AltGr)],
   ],
   // ANSI: the long left Shift, the backslash above a one-row Enter.
   ansi: [
@@ -99,7 +101,7 @@ const MAIN: Record<Family, [row: number, items: Item[]][]> = {
     [4, [['Tab', 'Tab', 1.5], ...QP, ['BracketLeft', '['], ['BracketRight', ']']]],
     [5, [['CapsLock', 'Caps', 1.75], ...AL, ['Semicolon', ';'], ['Quote', "'"], ['Backslash', '#']]],
     [6, [['ShiftLeft', 'Shift', 1.25], ['IntlBackslash', '\\'], ...ZM, ['Comma', ','], ['Period', '.'], ['Slash', '/'], ['ShiftRight', 'Shift', 2.75]]],
-    [7, BOTTOM('AltGr')],
+    [7, BOTTOM(CAPS.AltGr)],
   ],
 };
 // The middle block starts at 15¼ keys; the numpad at 18½.

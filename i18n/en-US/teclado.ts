@@ -81,9 +81,11 @@ export default {
   // Os botões do mouse que aceitam função.
   buttons: { MouseMiddle: 'Middle', MouseX1: 'Side 1', MouseX2: 'Side 2', WheelUp: 'Wheel ↑', WheelDown: 'Wheel ↓' },
   // O rótulo na face da tecla: uma palavra (o nome inteiro fica no painel e na dica).
+  // Os nomes de tecla do desenho que o glossário de teclas não tem (os outros, como Ctrl e Esc, vêm de lá).
+  caps: { AltGr: 'AltGr', Menu: 'Menu' },
+  // O rótulo curto na tecla. A tecla desligada não tem: o ícone e a borda tracejada já dizem.
   short: {
     choose: 'Choose…',
-    off: 'Off',
     layer: 'Layer',
     LeftClick: 'Left',
     RightClick: 'Right',

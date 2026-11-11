@@ -117,7 +117,8 @@ function labelOf(fn: KeyFn): string {
     case 'mouse': return SHORT[fn.mouse as keyof typeof SHORT] ?? SHORT.choose;
     case 'macro': return fn.macro || SHORT.choose;
     case 'text': return fn.text || SHORT.choose;
-    case 'off': return SHORT.off;
+    // No word on an off key: its icon and its dashed border say it, and "Desligada" did not fit a key.
+    case 'off': return '';
     case 'layer': return SHORT.layer;
     default: return '';
   }

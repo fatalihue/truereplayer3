@@ -2986,8 +2986,9 @@ export type Chaves = {
   'teclado.buttons.MouseX2': never;
   'teclado.buttons.WheelUp': never;
   'teclado.buttons.WheelDown': never;
+  'teclado.caps.AltGr': never;
+  'teclado.caps.Menu': never;
   'teclado.short.choose': never;
-  'teclado.short.off': never;
   'teclado.short.layer': never;
   'teclado.short.LeftClick': never;
   'teclado.short.RightClick': never;
@@ -3529,7 +3530,8 @@ export type Tabelas = {
   'teclado.empty': 'title' | 'text';
   'teclado.bar.layouts': 'abnt2' | 'ansi' | 'iso';
   'teclado.buttons': 'MouseMiddle' | 'MouseX1' | 'MouseX2' | 'WheelUp' | 'WheelDown';
-  'teclado.short': 'choose' | 'off' | 'layer' | 'LeftClick' | 'RightClick' | 'MiddleClick' | 'XButton1' | 'XButton2' | 'ScrollUp' | 'ScrollDown';
+  'teclado.caps': 'AltGr' | 'Menu';
+  'teclado.short': 'choose' | 'layer' | 'LeftClick' | 'RightClick' | 'MiddleClick' | 'XButton1' | 'XButton2' | 'ScrollUp' | 'ScrollDown';
   'teclado.fns': 'default' | 'key' | 'mouse' | 'macro' | 'text' | 'off' | 'layer';
   'teclado.modes': 'once' | 'times' | 'hold' | 'toggle';
   'teclado.legend': 'label' | 'off' | 'fromBase' | 'fromRemaps';

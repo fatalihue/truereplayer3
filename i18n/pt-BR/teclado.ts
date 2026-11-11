@@ -76,9 +76,11 @@ export default {
     mouseNote: 'O esquerdo e o direito ficam de fora, para você nunca perder o clique. A roda só aceita funções de toque.',
   },
   buttons: { MouseMiddle: 'Meio', MouseX1: 'Lateral 1', MouseX2: 'Lateral 2', WheelUp: 'Roda ↑', WheelDown: 'Roda ↓' },
+  // Os nomes de tecla do desenho que o glossário de teclas não tem (os outros, como Ctrl e Esc, vêm de lá).
+  caps: { AltGr: 'AltGr', Menu: 'Menu' },
+  // O rótulo curto na tecla. A tecla desligada não tem: o ícone e a borda tracejada já dizem.
   short: {
     choose: 'Escolher…',
-    off: 'Desligada',
     layer: 'Camada',
     LeftClick: 'Esquerdo',
     RightClick: 'Direito',
