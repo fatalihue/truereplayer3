@@ -482,11 +482,12 @@ namespace TrueReplayer
         // and a side button remapped to the middle one (a Scimitar key sent as XButton1 by iCUE's
         // virtual mouse): every press and every release reached the app as the side button AND the
         // middle one, ~300 ms late, and even the physical release was read only after that wait.
-        // So a remap's mouse injection from in here waits until the callback has returned — queued
-        // on this thread, in order with everything queued before it, which keeps a down ahead of
-        // its up (measured: the middle one alone, ~3 ms after the press). A keyboard injection from
-        // the mouse callback does not do it (XButton2 → F8 arrived alone, in ~3 ms, before and
-        // after), nor does the keyboard callback (Teclado branch): those still go out at once.
+        // So a mouse injection from in here (a remap's, or the function of a mouse button the Teclado
+        // took) waits until the callback has returned — queued on this thread, in order with
+        // everything queued before it, which keeps a down ahead of its up (measured: the middle one
+        // alone, ~3 ms after the press). A keyboard injection from the mouse callback does not do it
+        // (XButton2 → F8 arrived alone, in ~3 ms, before and after), nor does anything from the
+        // keyboard callback (the Teclado's keys included): those still go out at once.
         [ThreadStatic] private static bool _inMouseHookCallback;
 
         private static void InjectRemappedMouse(uint flags, uint mouseData)
@@ -516,7 +517,7 @@ namespace TrueReplayer
         {
             _hookWork.Enqueue(work);
             if (!NativeMethods.PostThreadMessage(_hookThreadId, WM_HOOK_WORK, IntPtr.Zero, IntPtr.Zero))
-                TrueReplayer.Services.DiagnosticLog.Error($"Input hook thread refused a queued remap click (PostThreadMessage error {Marshal.GetLastWin32Error()}).");
+                TrueReplayer.Services.DiagnosticLog.Error($"Input hook thread refused a queued mouse injection (PostThreadMessage error {Marshal.GetLastWin32Error()}).");
         }
 
         /// <summary>

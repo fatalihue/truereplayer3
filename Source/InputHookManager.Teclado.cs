@@ -22,8 +22,10 @@ namespace TrueReplayer
     ///     first press, with the Shortcuts on, outside a recording and with no modal gate up.
     /// The function chosen at the press is frozen in the key's slot, and its release uses the slot, never
     /// the table: a change of game or of layer mid-hold never leaves a key stuck. Everything is compiled
-    /// off this thread and swapped whole; the callback only indexes arrays. Injections carry TecladoMark
-    /// in dwExtraInfo and pass the hook's injected gate like every other injection of the app.
+    /// off this thread and swapped whole; the callback only indexes arrays. Keys go out carrying
+    /// TecladoMark in dwExtraInfo; clicks and wheel notches go out through the Key Remaps' own
+    /// InjectRemappedMouse, which waits for the mouse callback to return when it is called from inside
+    /// it (3.0.4, _inMouseHookCallback). Both pass the hook's injected gate like every other injection.
     /// The mouse's middle and side buttons and its wheel are sources too (phase 7), with the same two
     /// entry points in MouseHookCallbackCore and the same slots, after the keys' in the tables.
     /// </summary>
@@ -261,7 +263,7 @@ namespace TrueReplayer
             if (action == null) return false;
             _tecladoSlots[index] = null;
             _tecladoHeld--;
-            TecladoMouseFunction(action, index, down: false);
+            TecladoUp(action, index);
             return true;
         }
 
@@ -315,54 +317,23 @@ namespace TrueReplayer
                 _tecladoWheel -= Math.Sign(_tecladoWheel) * whole * WheelNotch;
                 for (int i = 0; i < Math.Min(whole, MaxNotchesPerMessage); i++)
                 {
-                    TecladoMouseFunction(action, index, down: true);
-                    TecladoMouseFunction(action, index, down: false);
+                    TecladoDown(action, index);
+                    TecladoUp(action, index);
                 }
                 return true;
             }
 
             _tecladoSlots[index] = action;
             _tecladoHeld++;
-            TecladoMouseFunction(action, index, down: true);
+            TecladoDown(action, index);
             return true;
         }
 
         private static int TecladoXIndex(uint mouseData) => XButtonName(mouseData) == "XButton2" ? TecladoKeys.MouseX2 : TecladoKeys.MouseX1;
 
-        // Set while a mouse callback runs a button's function (TecladoMouseDown, TecladoMouseUp).
-        private static bool _tecladoInMouseHook;
-
-        private static void TecladoMouseFunction(TecladoAction action, int index, bool down)
-        {
-            _tecladoInMouseHook = true;
-            try
-            {
-                if (down) TecladoDown(action, index);
-                else TecladoUp(action, index);
-            }
-            finally { _tecladoInMouseHook = false; }
-        }
-
-        /// <summary>
-        /// A mouse event the Teclado injects. Inside the mouse hook's own callback it goes out once the
-        /// callback has returned: a mouse SendInput made there let the very event the hook was swallowing
-        /// through to the app as well (measured: the middle button turned into the left one reached the
-        /// window as both). Queued on this thread, in order; a keyboard injection has no such problem.
-        /// </summary>
-        private static void TecladoMouse(uint flags, uint data)
-        {
-            if (_tecladoInMouseHook) TecladoAfterMouseHook(() => InjectRemappedMouse(flags, data));
-            else InjectRemappedMouse(flags, data);
-        }
-
-        // Runs on this thread after the callback in progress, behind whatever is queued already
-        // (PostToHookThread would run it at once, from here).
-        private static void TecladoAfterMouseHook(Action work)
-        {
-            _hookWork.Enqueue(work);
-            if (!NativeMethods.PostThreadMessage(_hookThreadId, WM_HOOK_WORK, IntPtr.Zero, IntPtr.Zero))
-                DiagnosticLog.Error($"Teclado: the hook thread refused a queued click (PostThreadMessage error {Marshal.GetLastWin32Error()}).");
-        }
+        // A click or a notch a button's function sends from inside the mouse callback needs nothing of
+        // its own: InjectRemappedMouse queues it behind the callback (_inMouseHookCallback,
+        // AfterMouseHookCallback), in order with the rest of that queue.
 
         // Physical only (LLMHF_INJECTED clear), or the test probe's mark in a test house: the Teclado's own
         // clicks, the remaps' and a macro's never come back in as a source.
@@ -379,8 +350,8 @@ namespace TrueReplayer
                     foreach (var stroke in a.Keys) TecladoSend(stroke, down: true);
                     break;
                 case "mouse":
-                    if (a.Wheel != 0) TecladoMouse(NativeMethods.MOUSEEVENTF_WHEEL, unchecked((uint)a.Wheel));
-                    else TecladoMouse(a.MouseDown, a.MouseData);
+                    if (a.Wheel != 0) InjectRemappedMouse(NativeMethods.MOUSEEVENTF_WHEEL, unchecked((uint)a.Wheel));
+                    else InjectRemappedMouse(a.MouseDown, a.MouseData);
                     break;
                 case "layer":
                     _tecladoLayer = true;
@@ -397,13 +368,13 @@ namespace TrueReplayer
                 case "macro":
                 {
                     // The original first, so the game sees its key before what the macro sends. A mouse
-                    // button's original goes out after the mouse callback (TecladoMouse), so the macro
-                    // starts behind it.
+                    // button's original goes out after the mouse callback (InjectRemappedMouse), so the
+                    // macro starts behind it.
                     var binding = a.Binding!;
                     if (a.KeepOriginal && a.OriginalMouse != null)
                     {
                         TecladoDown(a.OriginalMouse, index);
-                        if (_tecladoInMouseHook) { TecladoAfterMouseHook(() => TecladoRunner.Press(index, binding)); break; }
+                        if (_inMouseHookCallback) { AfterMouseHookCallback(() => TecladoRunner.Press(index, binding)); break; }
                     }
                     else if (a.KeepOriginal) TecladoSend(a.Original, down: true);
                     TecladoRunner.Press(index, binding);
@@ -416,7 +387,7 @@ namespace TrueReplayer
         private static void TecladoRepeat(TecladoAction a)
         {
             if (a.Kind == "key" && a.Keys.Length > 0) TecladoSend(a.Keys[^1], down: true);
-            else if (a.Kind == "mouse" && a.Wheel != 0) TecladoMouse(NativeMethods.MOUSEEVENTF_WHEEL, unchecked((uint)a.Wheel));
+            else if (a.Kind == "mouse" && a.Wheel != 0) InjectRemappedMouse(NativeMethods.MOUSEEVENTF_WHEEL, unchecked((uint)a.Wheel));
             // A held macro key repeats only the original it keeps; the macro is already running.
             else if (a.Kind == "macro" && a.KeepOriginal) TecladoSend(a.Original, down: true);
         }
@@ -429,7 +400,7 @@ namespace TrueReplayer
                     for (int i = a.Keys.Length - 1; i >= 0; i--) TecladoSend(a.Keys[i], down: false);
                     break;
                 case "mouse":
-                    if (a.Wheel == 0) TecladoMouse(a.MouseUp, a.MouseData);
+                    if (a.Wheel == 0) InjectRemappedMouse(a.MouseUp, a.MouseData);
                     break;
                 case "layer":
                     _tecladoLayer = false;
@@ -440,7 +411,7 @@ namespace TrueReplayer
                     {
                         TecladoUp(a.OriginalMouse, index);
                         // Behind the original's release and the macro's start, both queued from a mouse callback.
-                        if (_tecladoInMouseHook) { TecladoAfterMouseHook(() => TecladoRunner.Release(index)); break; }
+                        if (_inMouseHookCallback) { AfterMouseHookCallback(() => TecladoRunner.Release(index)); break; }
                     }
                     else if (a.KeepOriginal) TecladoSend(a.Original, down: false);
                     // Only a "hold" run stops at the release; the executor knows the mode.
