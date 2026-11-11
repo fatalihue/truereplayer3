@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -78,6 +79,26 @@ namespace TrueReplayer
         private static int _tecladoHeld;
         private static bool _tecladoLayer;
 
+        // A middle or side button whose press the Teclado swallowed and whose release has not come yet
+        // (MouseMiddle, MouseX1, MouseX2). Kept after its slot is let go (the game left the front, the
+        // Teclado was turned off, the mouse hook died): that release is swallowed too, or Windows turns an
+        // orphan side-button release into Back/Forward in the window in front.
+        private static readonly bool[] _tecladoOwedUp = new bool[3];
+        private static int _tecladoOwed;
+
+        // A key's mouse button the user's own finger already held at the press (left or right): the press
+        // was not sent, so neither is the release — the remaps' AppHoldsMouseButton, for the same reason.
+        private static readonly bool[] _tecladoNoButtonUp = new bool[TecladoKeys.TableSize];
+
+        /// <summary>
+        /// What the slots hold now, by VK and by button (0 left, 1 right, 2 middle). Written on this thread,
+        /// read by the executor before it lets go of a key or a button, as the slots read its own counts
+        /// before theirs: one holder never releases what the other still holds (Q held as Shift while a
+        /// macro presses and releases Shift).
+        /// </summary>
+        internal static readonly int[] TecladoSlotKeys = new int[256];
+        internal static readonly int[] TecladoSlotButtons = new int[3];
+
         // What the Teclado injects is marked, as the plan asks: "TEKD". The executor marks its own too.
         internal static readonly IntPtr TecladoMark = (IntPtr)0x54454B44;
 
@@ -103,6 +124,13 @@ namespace TrueReplayer
             if (_hookThreadId != 0) PostToHookThread(TecladoRecompute);
         }
 
+        /// <summary>
+        /// The Shortcuts were turned off (their hotkey, the tray, the status bar): the general pause. What
+        /// the game's keys hold is let go and their macros and texts stop at once — a Toggle macro had no
+        /// other way to stop, since the pause keeps the next press of its key raw.
+        /// </summary>
+        internal static void TecladoPause() => PostToHookThread(TecladoReleaseAll);
+
         /// <summary>The game in front changed (TecladoFront, on this thread).</summary>
         internal static void SetTecladoFront(string? gameId)
         {
@@ -119,37 +147,77 @@ namespace TrueReplayer
                 next = game;
             if (ReferenceEquals(next, _tecladoActive)) return;
             string? nextId = next != null ? _tecladoFrontId : null;
+            var previous = _tecladoActive;
+            var previousId = _tecladoActiveId;
+            // The new game first: a press that arrives while the old one's keys are being let go (a
+            // SendInput below lets a pending callback run inside it) belongs to the game in front now.
+            _tecladoActive = next;
+            _tecladoActiveId = nextId;
             // The same game compiled again (its keys saved, the library reloaded by a file changing on
             // disk mid-game): what is held keeps the function frozen in its slot and is let go by its own
             // release, and the macros run on. Another game, a game turned off, the Teclado off: what the
-            // old one holds is let go first.
-            if (next == null || _tecladoActive == null || nextId != _tecladoActiveId) TecladoReleaseAll();
-            _tecladoActive = next;
-            _tecladoActiveId = nextId;
+            // old one holds is let go.
+            if (next == null || previous == null || nextId != previousId) TecladoReleaseAll();
         }
 
-        /// <summary>Lets go of everything the Teclado holds: the game left the front, the hook stopped, the session came back.</summary>
-        private static void TecladoReleaseAll()
+        /// <summary>Lets go of everything the Teclado holds: the game left the front, the Teclado was turned off or paused, the hook stopped.</summary>
+        private static void TecladoReleaseAll() => TecladoRelease(keys: true, mouse: true, stopRuns: true);
+
+        /// <summary>
+        /// Lets go of the slots of the keys, of the mouse's buttons, or both (a dead hook lets go of its own
+        /// device's), and with <paramref name="stopRuns"/> stops every macro and text the keys started.
+        /// Each slot is counted down as it goes: a press that opens a slot meanwhile (inside one of the
+        /// SendInputs below) keeps its count, so its release is still read.
+        /// </summary>
+        private static void TecladoRelease(bool keys, bool mouse, bool stopRuns)
         {
             if (_tecladoHeld > 0)
             {
                 for (int i = 0; i < _tecladoSlots.Length; i++)
                 {
+                    if (i >= TecladoKeys.MouseBase ? !mouse : !keys) continue;
                     var action = _tecladoSlots[i];
                     if (action == null) continue;
                     _tecladoSlots[i] = null;
+                    _tecladoHeld--;
                     TecladoUp(action, i);
                 }
-                _tecladoHeld = 0;
+                if (_tecladoHeld < 0) _tecladoHeld = 0;
             }
-            if (_tecladoLayer)
+            // The layer goes with its key's slot (TecladoUp); with every slot let go, nothing holds it.
+            if (keys && mouse && _tecladoLayer)
             {
                 _tecladoLayer = false;
                 TecladoFront.SetLayer(false);
             }
-            // The macros the keys started stop too, whatever their mode, and let go of what they hold.
-            TecladoRunner.StopAll();
+            if (!stopRuns) return;
+            // The texts being typed stop at the next character, and the ones waiting are dropped.
+            TecladoCancelTexts();
+            // The macros the keys started stop too, whatever their mode, and let go of what they hold —
+            // behind whatever the mouse callback queued (a macro's start after its button's own click),
+            // or a start that overtook this stop would run on with nothing left to stop it.
+            TecladoQueued(TecladoRunner.StopAll);
         }
+
+        /// <summary>The session went away and came back, or the hooks stopped: no release owed from before is still coming.</summary>
+        private static void TecladoForgetOwed()
+        {
+            Array.Clear(_tecladoOwedUp);
+            _tecladoOwed = 0;
+        }
+
+        // Work behind what the mouse callback in progress (or one before it) has queued on this thread:
+        // a release must never overtake its press. Outside that, at once.
+        private static bool TecladoMustQueue => _inMouseHookCallback || !_hookWork.IsEmpty;
+
+        private static void TecladoQueued(Action work)
+        {
+            if (TecladoMustQueue) AfterMouseHookCallback(work);
+            else work();
+        }
+
+        /// <summary>Runs work on the hook thread once the callback in progress has returned (TecladoFront's layer, published from the callback).</summary>
+        internal static void AfterHookCallback(Action work) => AfterMouseHookCallback(work);
 
         // ── The two entry points ──
 
@@ -178,6 +246,10 @@ namespace TrueReplayer
             var held = _tecladoSlots[index];
             if (held != null)
             {
+                // Every auto-repeat of a held AltGr brings its phantom Ctrl back with it (the remap
+                // pairing takes it back each time, for the same reason): left there, the layer's keys
+                // would reach the game as Ctrl+key.
+                NeutraliseAltGrPhantomCtrl(vk);
                 TecladoRepeat(held);
                 return true;
             }
@@ -192,6 +264,11 @@ namespace TrueReplayer
             if (action == null) return false;
             // The app's own hotkeys win over a game's key: the key goes on to them.
             if (TecladoYields(vk)) return false;
+            // The same, for a press that went through raw while a gate was up (a picker of the app, the
+            // Shortcuts off, a recording): none of the sets above saw it. A low-level hook reads the key
+            // state as it was before this event, so a key Windows already holds down is that press's
+            // auto-repeat — a slot opened now would swallow the release the game is waiting for.
+            if (NativeMethods.GetAsyncKeyState(vk) < 0) return false;
 
             _tecladoSlots[index] = action;
             _tecladoHeld++;
@@ -249,18 +326,38 @@ namespace TrueReplayer
         // At most this many notches in one message: a wheel let spin fires its function, not a flood.
         private const int MaxNotchesPerMessage = 8;
 
-        /// <summary>A release of the middle or a side button the Teclado took: let go of what it did, and swallow the release.</summary>
-        private static bool TecladoMouseUp(int message, in NativeMethods.MSLLHOOKSTRUCT m)
+        /// <summary>Whether the mouse callback must call <see cref="TecladoMouseRelease"/>: a slot is open, or a release is owed.</summary>
+        private static bool TecladoMouseWatching => _tecladoHeld > 0 || _tecladoOwed > 0;
+
+        /// <summary>
+        /// The release of the middle or a side button the Teclado took at its press: let go of what it did,
+        /// and swallow the release — also when its slot was already let go (the release is owed, see
+        /// _tecladoOwedUp). A new press of a button with a release still owed means that release was lost
+        /// (it came while the hook was dead): the debt is dropped and the press goes on.
+        /// </summary>
+        private static bool TecladoMouseRelease(int message, in NativeMethods.MSLLHOOKSTRUCT m)
         {
-            int index = message switch
+            int index;
+            bool down;
+            switch (message)
             {
-                NativeMethods.WM_MBUTTONUP => TecladoKeys.MouseMiddle,
-                NativeMethods.WM_XBUTTONUP => TecladoXIndex(m.mouseData),
-                _ => -1,
-            };
-            if (index < 0 || !TecladoMousePhysical(m)) return false;
+                case NativeMethods.WM_MBUTTONUP: index = TecladoKeys.MouseMiddle; down = false; break;
+                case NativeMethods.WM_XBUTTONUP: index = TecladoXIndex(m.mouseData); down = false; break;
+                case NativeMethods.WM_MBUTTONDOWN: index = TecladoKeys.MouseMiddle; down = true; break;
+                case NativeMethods.WM_XBUTTONDOWN: index = TecladoXIndex(m.mouseData); down = true; break;
+                default: return false;
+            }
+            if (!TecladoMousePhysical(m)) return false;
+            int owed = index - TecladoKeys.MouseBase;
             var action = _tecladoSlots[index];
-            if (action == null) return false;
+            if (down)
+            {
+                if (action == null && _tecladoOwedUp[owed]) { _tecladoOwedUp[owed] = false; _tecladoOwed--; }
+                return false;
+            }
+            bool wasOwed = _tecladoOwedUp[owed];
+            if (wasOwed) { _tecladoOwedUp[owed] = false; _tecladoOwed--; }
+            if (action == null) return wasOwed;
             _tecladoSlots[index] = null;
             _tecladoHeld--;
             TecladoUp(action, index);
@@ -325,6 +422,9 @@ namespace TrueReplayer
 
             _tecladoSlots[index] = action;
             _tecladoHeld++;
+            // Its release is owed from now on, whatever happens to the slot.
+            int owed = index - TecladoKeys.MouseBase;
+            if (!_tecladoOwedUp[owed]) { _tecladoOwedUp[owed] = true; _tecladoOwed++; }
             TecladoDown(action, index);
             return true;
         }
@@ -347,24 +447,27 @@ namespace TrueReplayer
             switch (a.Kind)
             {
                 case "key":
-                    foreach (var stroke in a.Keys) TecladoSend(stroke, down: true);
+                    foreach (var stroke in a.Keys) TecladoHold(stroke);
                     break;
                 case "mouse":
-                    if (a.Wheel != 0) InjectRemappedMouse(NativeMethods.MOUSEEVENTF_WHEEL, unchecked((uint)a.Wheel));
-                    else InjectRemappedMouse(a.MouseDown, a.MouseData);
+                {
+                    if (a.Wheel != 0) { InjectRemappedMouse(NativeMethods.MOUSEEVENTF_WHEEL, unchecked((uint)a.Wheel)); break; }
+                    int b = TecladoButtonOf(a.MouseDown);
+                    // The user's own finger already holds this button (left or right): not pressed again,
+                    // and so not let go at the release either — the remaps' AppHoldsMouseButton.
+                    if (b is 0 or 1 && _physicalMouseDowns.Contains(b == 0 ? 0x01 : 0x02)) { _tecladoNoButtonUp[index] = true; break; }
+                    if (b >= 0) TecladoSlotButtons[b]++;
+                    InjectRemappedMouse(a.MouseDown, a.MouseData);
                     break;
+                }
                 case "layer":
                     _tecladoLayer = true;
                     TecladoFront.SetLayer(true);
                     break;
                 case "text":
-                {
                     // Typed off this thread: a hook callback must return at once.
-                    var text = a.Text;
-                    var enter = a.Enter;
-                    Task.Run(() => TecladoType(text, enter));
+                    TecladoQueueText(a.Text, a.Enter);
                     break;
-                }
                 case "macro":
                 {
                     // The original first, so the game sees its key before what the macro sends. A mouse
@@ -374,9 +477,9 @@ namespace TrueReplayer
                     if (a.KeepOriginal && a.OriginalMouse != null)
                     {
                         TecladoDown(a.OriginalMouse, index);
-                        if (_inMouseHookCallback) { AfterMouseHookCallback(() => TecladoRunner.Press(index, binding)); break; }
+                        if (TecladoMustQueue) { AfterMouseHookCallback(() => TecladoRunner.Press(index, binding)); break; }
                     }
-                    else if (a.KeepOriginal) TecladoSend(a.Original, down: true);
+                    else if (a.KeepOriginal) TecladoHold(a.Original);
                     TecladoRunner.Press(index, binding);
                     break;
                 }
@@ -397,11 +500,22 @@ namespace TrueReplayer
             switch (a.Kind)
             {
                 case "key":
-                    for (int i = a.Keys.Length - 1; i >= 0; i--) TecladoSend(a.Keys[i], down: false);
+                    for (int i = a.Keys.Length - 1; i >= 0; i--) TecladoLetGo(a.Keys[i]);
                     break;
                 case "mouse":
-                    if (a.Wheel == 0) InjectRemappedMouse(a.MouseUp, a.MouseData);
+                {
+                    if (a.Wheel != 0) break;
+                    if (_tecladoNoButtonUp[index]) { _tecladoNoButtonUp[index] = false; break; }
+                    int b = TecladoButtonOf(a.MouseDown);
+                    if (b >= 0)
+                    {
+                        if (TecladoSlotButtons[b] > 0) TecladoSlotButtons[b]--;
+                        // Another slot, or a macro of the executor, still holds it: theirs to let go.
+                        if (TecladoSlotButtons[b] > 0 || TecladoRunner.HoldsButton(b)) break;
+                    }
+                    InjectRemappedMouse(a.MouseUp, a.MouseData);
                     break;
+                }
                 case "layer":
                     _tecladoLayer = false;
                     TecladoFront.SetLayer(false);
@@ -410,15 +524,39 @@ namespace TrueReplayer
                     if (a.KeepOriginal && a.OriginalMouse != null)
                     {
                         TecladoUp(a.OriginalMouse, index);
-                        // Behind the original's release and the macro's start, both queued from a mouse callback.
-                        if (_inMouseHookCallback) { AfterMouseHookCallback(() => TecladoRunner.Release(index)); break; }
+                        // Behind the original's release and the macro's start, both queued from a mouse
+                        // callback — and behind a start still waiting in that queue when this release
+                        // comes from outside it (the game left the front just then).
+                        if (TecladoMustQueue) { AfterMouseHookCallback(() => TecladoRunner.Release(index)); break; }
                     }
-                    else if (a.KeepOriginal) TecladoSend(a.Original, down: false);
+                    else if (a.KeepOriginal) TecladoLetGo(a.Original);
                     // Only a "hold" run stops at the release; the executor knows the mode.
                     TecladoRunner.Release(index);
                     break;
             }
         }
+
+        /// <summary>A key a slot presses: counted (TecladoSlotKeys), then sent.</summary>
+        private static void TecladoHold(TecladoStroke s)
+        {
+            TecladoSlotKeys[s.Vk & 0xFF]++;
+            TecladoSend(s, down: true);
+        }
+
+        /// <summary>A key a slot lets go of: up only when no other slot and no macro of the executor still holds it.</summary>
+        private static void TecladoLetGo(TecladoStroke s)
+        {
+            int vk = s.Vk & 0xFF;
+            if (TecladoSlotKeys[vk] > 0) TecladoSlotKeys[vk]--;
+            if (TecladoSlotKeys[vk] == 0 && !TecladoRunner.HoldsKey(vk)) TecladoSend(s, down: false);
+        }
+
+        // The executor's button of a down flag: 0 left, 1 right, 2 middle; -1 for a side button (it has none).
+        private static int TecladoButtonOf(uint downFlags) =>
+            (downFlags & NativeMethods.MOUSEEVENTF_LEFTDOWN) != 0 ? 0
+            : (downFlags & NativeMethods.MOUSEEVENTF_RIGHTDOWN) != 0 ? 1
+            : (downFlags & NativeMethods.MOUSEEVENTF_MIDDLEDOWN) != 0 ? 2
+            : -1;
 
         /// <summary>One key, by scan code (the plan: "por scan code, com o bit de estendida"), marked as the Teclado's.</summary>
         internal static void TecladoSend(TecladoStroke s, bool down)
@@ -440,17 +578,50 @@ namespace TrueReplayer
             NativeMethods.SendInput(1, ref input, NativeMethods.InputSize);
         }
 
-        private static void TecladoType(string text, bool enter)
+        // The Texto function's texts, typed one at a time and in order by one task (two quick touches type
+        // one after the other, never interleaved), each with the token of the moment it was asked: letting
+        // go of everything (the game left the front, the pause, the Teclado off) cancels them all.
+        private static readonly ConcurrentQueue<(string Text, bool Enter, CancellationToken Token)> _tecladoTexts = new();
+        private static CancellationTokenSource _tecladoTextsCts = new();
+        private static int _tecladoTyping;
+
+        private static void TecladoQueueText(string text, bool enter)
+        {
+            _tecladoTexts.Enqueue((text, enter, _tecladoTextsCts.Token));
+            if (Interlocked.CompareExchange(ref _tecladoTyping, 1, 0) == 0) Task.Run(TecladoTypeTexts);
+        }
+
+        // On the hook thread. Nothing is registered on the token (the typing only reads it), so the cancel
+        // runs no callback here.
+        private static void TecladoCancelTexts()
+        {
+            _tecladoTextsCts.Cancel();
+            _tecladoTextsCts = new CancellationTokenSource();
+        }
+
+        private static void TecladoTypeTexts()
+        {
+            while (true)
+            {
+                while (_tecladoTexts.TryDequeue(out var item)) TecladoType(item.Text, item.Enter, item.Token);
+                Volatile.Write(ref _tecladoTyping, 0);
+                // A text queued between the last dequeue and the flag going down is typed here, not left behind.
+                if (_tecladoTexts.IsEmpty || Interlocked.CompareExchange(ref _tecladoTyping, 1, 0) != 0) return;
+            }
+        }
+
+        private static void TecladoType(string text, bool enter, CancellationToken token)
         {
             try
             {
                 foreach (char c in text)
                 {
+                    if (token.IsCancellationRequested) return;
                     TecladoSendChar(c, down: true);
                     TecladoSendChar(c, down: false);
                     Thread.Sleep(8);
                 }
-                if (enter)
+                if (enter && !token.IsCancellationRequested)
                 {
                     var key = new TecladoStroke(0x0D, 0x1C, false);
                     TecladoSend(key, down: true);
@@ -543,9 +714,12 @@ namespace TrueReplayer
             var macro = TecladoMacros.Resolve(fn.Macro, layout, reports);
             if (macro == null) return null;
             // MAPVK_VSC_TO_VK_EX: the original key's VK (only Pause needs it to be re-sent). A mouse
-            // button has no scan code: its original is the button itself.
+            // button has no scan code: its original is the button itself. Pause is 0x45 without the
+            // extended bit in the hook, which that mapping reads as NumLock: re-sent so, it toggled NumLock.
             bool mouse = index >= TecladoKeys.MouseBase;
-            ushort vk = mouse ? (ushort)0 : (ushort)NativeMethods.MapVirtualKeyEx(extended ? 0xE000u | scan : scan, 3, layout);
+            ushort vk = mouse ? (ushort)0
+                : scan == 0x45 && !extended ? (ushort)0x13
+                : (ushort)NativeMethods.MapVirtualKeyEx(extended ? 0xE000u | scan : scan, 3, layout);
             return new TecladoAction
             {
                 Kind = "macro",

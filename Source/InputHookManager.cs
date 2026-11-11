@@ -492,11 +492,19 @@ namespace TrueReplayer
 
         private static void InjectRemappedMouse(uint flags, uint mouseData)
         {
-            if (_inMouseHookCallback)
+            // Also behind a click a mouse callback already queued when this one comes from outside it
+            // (the Teclado letting go of a button as the game leaves the front): an up that overtook its
+            // own down would leave the button held. The queued work sends directly, never queues again.
+            if (_inMouseHookCallback || !_hookWork.IsEmpty)
             {
-                AfterMouseHookCallback(() => InjectRemappedMouse(flags, mouseData));
+                AfterMouseHookCallback(() => SendRemappedMouse(flags, mouseData));
                 return;
             }
+            SendRemappedMouse(flags, mouseData);
+        }
+
+        private static void SendRemappedMouse(uint flags, uint mouseData)
+        {
             var input = new NativeMethods.INPUT
             {
                 type = NativeMethods.INPUT_MOUSE,
@@ -1257,6 +1265,7 @@ namespace TrueReplayer
             _physicalMouseDowns.Clear();
             _swallowedXDowns.Clear();
             _captureSwallowedXDowns.Clear();
+            TecladoForgetOwed();
             _lastTapKey = null;
             _lastTapTicks = 0;
             _vkCodesCurrentlyDown.Clear();
@@ -1596,8 +1605,9 @@ namespace TrueReplayer
         /// <summary>The keyboard's share of <see cref="Stop"/>'s reset, resolving instead of dropping.</summary>
         private static void ResetKeyboardSession()
         {
-            // Teclado: a dead keyboard hook or a session that went away leaves no slot open.
-            TecladoReleaseAll();
+            // Teclado: a dead keyboard hook or a session that went away leaves no key's slot open, and no
+            // macro running blind. The mouse's slots are its own hook's (ResetMouseSession).
+            TecladoRelease(keys: true, mouse: false, stopRuns: true);
             ResolveTriggerPairs(mouse: false);
             CloseRemapPairings(mouse: false);
             _remapBypassedDowns.Clear();
@@ -1614,6 +1624,10 @@ namespace TrueReplayer
         /// <summary>The mouse's share of <see cref="Stop"/>'s reset, resolving instead of dropping.</summary>
         private static void ResetMouseSession()
         {
+            // Teclado: a button's slot (a side button held as the layer, or as Shift) would never see its
+            // release through the dead hook. Its owed release is kept: if the finger still holds the
+            // button, that release comes through the new hook and is swallowed.
+            TecladoRelease(keys: false, mouse: true, stopRuns: false);
             ResolveTriggerPairs(mouse: true);
             CloseRemapPairings(mouse: true);
             _physicalMouseDowns.Clear();
@@ -1637,6 +1651,7 @@ namespace TrueReplayer
             ResetMouseSession();
             // Nothing is held any more, so no swallowed side-button down has a release to come.
             _swallowedXDowns.Clear();
+            TecladoForgetOwed();
             _keyboardStrikes = 0;
             _mouseStrikes = 0;
             TrueReplayer.Services.DiagnosticLog.Info("Session returned to this desktop — held-key state reset (keys released on the secure desktop are never seen by the hooks).");
@@ -2182,8 +2197,10 @@ namespace TrueReplayer
             }
 
             // Teclado (branch teclado, phase 7): a middle or side button the game's keyboard took at its
-            // press is let go by it, before every gate — the keyboard's release, and for the same reason.
-            if (_tecladoHeld > 0 && TecladoMouseUp((int)wParam, hookStruct0)) return (IntPtr)1;
+            // press is let go by it, before every gate — the keyboard's release, and for the same reason;
+            // and its release is swallowed even after its slot was let go (an orphan side-button up is a
+            // Back/Forward in the window in front).
+            if (TecladoMouseWatching && TecladoMouseRelease((int)wParam, hookStruct0)) return (IntPtr)1;
 
             // X-button remap pairing release runs BEFORE the capture/suppress gates — same
             // stuck-injected-key hazard as the keyboard hoist above it. Physical ups only.

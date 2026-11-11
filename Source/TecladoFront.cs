@@ -105,13 +105,20 @@ namespace TrueReplayer.Services
             }
         }
 
-        /// <summary>The layer key went down or up (the hook, on this thread).</summary>
+        /// <summary>
+        /// The layer key went down or up (the hook, on this thread). Published once the key's callback has
+        /// returned: the page's message is serialised by the Changed handlers, which a low-level callback
+        /// must not pay for. The two delegates are made once, so the press allocates nothing for them.
+        /// </summary>
         internal static void SetLayer(bool held)
         {
             if (_layer == held) return;
             _layer = held;
-            Publish(_state with { Layer = held });
+            InputHookManager.AfterHookCallback(held ? PublishLayerOn : PublishLayerOff);
         }
+
+        private static readonly Action PublishLayerOn = () => Publish(_state with { Layer = true });
+        private static readonly Action PublishLayerOff = () => Publish(_state with { Layer = false });
 
         private static void OnEvent(IntPtr hook, uint ev, IntPtr hwnd, int idObject, int idChild, uint thread, uint time)
         {

@@ -36,7 +36,8 @@ namespace TrueReplayer.Services
 
         private enum CommandKind : byte { Press, Release, StopAll }
 
-        private readonly record struct Command(CommandKind Kind, int Key, Binding? Binding);
+        /// <param name="Done">Set once a StopAll has let go of everything (the app closing waits on it).</param>
+        private readonly record struct Command(CommandKind Kind, int Key, Binding? Binding, ManualResetEventSlim? Done = null);
 
         private sealed class Run
         {
@@ -49,6 +50,11 @@ namespace TrueReplayer.Services
             public bool Done;
             /// <summary>What this run holds, in the order it went down.</summary>
             public readonly List<InputHookManager.TecladoStroke> Keys = new();
+            /// <summary>
+            /// The modifiers a combination of this run pressed while the run already held them (a KeyDown
+            /// row's): the combination's own release leaves them to that row, as the engine does.
+            /// </summary>
+            public readonly List<ushort> ComboHeld = new();
             public readonly bool[] Buttons = new bool[3];
             /// <summary>A walk in progress (Game Mode): from where, by how much, in how many steps, at which.</summary>
             public int WalkX, WalkY, WalkDx, WalkDy, WalkSteps, WalkStep;
@@ -98,6 +104,29 @@ namespace TrueReplayer.Services
             if (_thread == null) return;
             Post(new Command(CommandKind.StopAll, 0, null));
         }
+
+        /// <summary>
+        /// Stops every run and waits, at most <paramref name="timeoutMs"/>, for what they hold to go up:
+        /// the app is closing (Environment.Exit right after), and a release still in the queue would race
+        /// the end of the process and leave a key down in the game.
+        /// </summary>
+        internal static void StopAllAndWait(int timeoutMs)
+        {
+            if (_thread == null) return;
+            using var done = new ManualResetEventSlim(false);
+            Post(new Command(CommandKind.StopAll, 0, null, done));
+            done.Wait(timeoutMs);
+        }
+
+        /// <summary>Whether a run holds the key (any thread; the hook reads it before a slot lets go of the same key).</summary>
+        internal static bool HoldsKey(int vk) => Volatile.Read(ref _keyHolders[vk & 0xFF]) > 0;
+
+        /// <summary>Whether a run holds the button (0 left, 1 right, 2 middle).</summary>
+        internal static bool HoldsButton(int button) => Volatile.Read(ref _buttonHolders[button]) > 0;
+
+        // Whether a slot of the hook holds the key or the button: then it is the slot's to let go.
+        private static bool SlotHoldsKey(int vk) => Volatile.Read(ref InputHookManager.TecladoSlotKeys[vk & 0xFF]) > 0;
+        private static bool SlotHoldsButton(int button) => Volatile.Read(ref InputHookManager.TecladoSlotButtons[button]) > 0;
 
         private static void Post(Command command)
         {
@@ -158,6 +187,7 @@ namespace TrueReplayer.Services
             {
                 case CommandKind.StopAll:
                     StopEverything();
+                    c.Done?.Set();
                     return;
                 case CommandKind.Release:
                 {
@@ -209,18 +239,20 @@ namespace TrueReplayer.Services
         {
             foreach (var r in _runs) { r.Done = true; Finish(r); }
             _runs.Clear();
-            // Nothing a run held can be left: whatever the counts still say goes up.
+            // Nothing a run held can be left: whatever the counts still say goes up — unless a slot of
+            // the hook holds it too (a key held as Shift while a macro also pressed Shift): then it is the
+            // slot's to let go.
             for (int vk = 0; vk < _keyHolders.Length; vk++)
             {
                 if (_keyHolders[vk] == 0) continue;
-                _keyHolders[vk] = 0;
-                InputHookManager.TecladoSend(_keyStrokes[vk], down: false);
+                Volatile.Write(ref _keyHolders[vk], 0);
+                if (!SlotHoldsKey(vk)) InputHookManager.TecladoSend(_keyStrokes[vk], down: false);
             }
             for (int b = 0; b < _buttonHolders.Length; b++)
             {
                 if (_buttonHolders[b] == 0) continue;
-                _buttonHolders[b] = 0;
-                SendButton(ButtonUpFlags[b], 0, 0, positioned: false);
+                Volatile.Write(ref _buttonHolders[b], 0);
+                if (!SlotHoldsButton(b)) SendButton(ButtonUpFlags[b], 0, 0, positioned: false);
             }
             _busy = false;
         }
@@ -230,11 +262,12 @@ namespace TrueReplayer.Services
         {
             for (int i = run.Keys.Count - 1; i >= 0; i--) ReleaseKey(run.Keys[i]);
             run.Keys.Clear();
+            run.ComboHeld.Clear();
             for (int b = 0; b < run.Buttons.Length; b++)
             {
                 if (!run.Buttons[b]) continue;
                 run.Buttons[b] = false;
-                if (_buttonHolders[b] > 0 && --_buttonHolders[b] == 0) SendButton(ButtonUpFlags[b], 0, 0, positioned: false);
+                ReleaseButton(b, 0, 0, positioned: false);
             }
         }
 
@@ -285,14 +318,18 @@ namespace TrueReplayer.Services
                     var s = op.Stroke;
                     if (Holds(run, s.Vk))
                     {
-                        // The macro pressed again a key it holds: a repeat, as the engine would send.
+                        // The macro pressed again a key it holds: a repeat, as the engine would send. A
+                        // combination's modifier pressed so is the KeyDown row's, and stays down after it.
+                        if (op.Combo) run.ComboHeld.Add(s.Vk);
                         InputHookManager.TecladoSend(s, down: true);
                         break;
                     }
                     run.Keys.Add(s);
-                    if (_keyHolders[s.Vk & 0xFF]++ == 0)
+                    int i = s.Vk & 0xFF;
+                    Volatile.Write(ref _keyHolders[i], _keyHolders[i] + 1);
+                    if (_keyHolders[i] == 1)
                     {
-                        _keyStrokes[s.Vk & 0xFF] = s;
+                        _keyStrokes[i] = s;
                         InputHookManager.TecladoSend(s, down: true);
                     }
                     break;
@@ -300,14 +337,18 @@ namespace TrueReplayer.Services
                 case TecladoOpKind.KeyUp:
                 {
                     var s = op.Stroke;
+                    // "KeyDown Ctrl, Ctrl+C, click, KeyUp Ctrl": the combination leaves the row's Ctrl down,
+                    // so the click is a Ctrl+click (ActionExecution's heldByMacro).
+                    if (op.Combo && run.ComboHeld.Remove(s.Vk)) break;
                     int at = IndexOfKey(run, s.Vk);
                     if (at >= 0)
                     {
                         run.Keys.RemoveAt(at);
                         ReleaseKey(s);
                     }
-                    // An up the macro never pressed goes out as the engine sends it, unless another run holds the key.
-                    else if (_keyHolders[s.Vk & 0xFF] == 0) InputHookManager.TecladoSend(s, down: false);
+                    // An up the macro never pressed goes out as the engine sends it, unless another run, or
+                    // a slot of the hook, holds the key.
+                    else if (_keyHolders[s.Vk & 0xFF] == 0 && !SlotHoldsKey(s.Vk)) InputHookManager.TecladoSend(s, down: false);
                     break;
                 }
                 case TecladoOpKind.ButtonDown:
@@ -322,14 +363,15 @@ namespace TrueReplayer.Services
                     {
                         if (run.Buttons[b]) { SendButton(ButtonDownFlags[b], x, y, positioned); break; }
                         run.Buttons[b] = true;
-                        if (_buttonHolders[b]++ == 0) SendButton(ButtonDownFlags[b], x, y, positioned);
+                        Volatile.Write(ref _buttonHolders[b], _buttonHolders[b] + 1);
+                        if (_buttonHolders[b] == 1) SendButton(ButtonDownFlags[b], x, y, positioned);
                     }
                     else if (run.Buttons[b])
                     {
                         run.Buttons[b] = false;
-                        if (--_buttonHolders[b] == 0) SendButton(ButtonUpFlags[b], x, y, positioned);
+                        ReleaseButton(b, x, y, positioned);
                     }
-                    else if (_buttonHolders[b] == 0) SendButton(ButtonUpFlags[b], x, y, positioned);
+                    else if (_buttonHolders[b] == 0 && !SlotHoldsButton(b)) SendButton(ButtonUpFlags[b], x, y, positioned);
                     break;
                 }
                 case TecladoOpKind.Wheel:
@@ -357,10 +399,20 @@ namespace TrueReplayer.Services
             return -1;
         }
 
+        // The last run to hold a key or a button lets go of it — unless a slot of the hook holds it too.
         private static void ReleaseKey(InputHookManager.TecladoStroke s)
         {
             int i = s.Vk & 0xFF;
-            if (_keyHolders[i] > 0 && --_keyHolders[i] == 0) InputHookManager.TecladoSend(s, down: false);
+            if (_keyHolders[i] == 0) return;
+            Volatile.Write(ref _keyHolders[i], _keyHolders[i] - 1);
+            if (_keyHolders[i] == 0 && !SlotHoldsKey(i)) InputHookManager.TecladoSend(s, down: false);
+        }
+
+        private static void ReleaseButton(int b, int x, int y, bool positioned)
+        {
+            if (_buttonHolders[b] == 0) return;
+            Volatile.Write(ref _buttonHolders[b], _buttonHolders[b] - 1);
+            if (_buttonHolders[b] == 0 && !SlotHoldsButton(b)) SendButton(ButtonUpFlags[b], x, y, positioned);
         }
 
         // ── The mouse, as SimulateMouse and MoveCursorTo do it ──

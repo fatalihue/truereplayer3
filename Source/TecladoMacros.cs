@@ -13,6 +13,7 @@ namespace TrueReplayer.Services
     /// <param name="Button">0 left, 1 right, 2 middle.</param>
     /// <param name="AtCursor">A button at the live cursor: no move, no point carried.</param>
     /// <param name="Data">Wheel: the delta. Char: the UTF-16 unit.</param>
+    /// <param name="Combo">A Keystroke's modifier: one the macro already holds (a KeyDown row's) is pressed again but not let go.</param>
     internal readonly record struct TecladoOp(
         TecladoOpKind Kind,
         int DelayMs,
@@ -21,7 +22,8 @@ namespace TrueReplayer.Services
         int X = 0,
         int Y = 0,
         bool AtCursor = false,
-        int Data = 0);
+        int Data = 0,
+        bool Combo = false);
 
     /// <summary>A library macro, flattened for the executor. Immutable once built.</summary>
     internal sealed class TecladoMacro
@@ -87,6 +89,22 @@ namespace TrueReplayer.Services
                 var stale = new List<string>();
                 foreach (var path in _cache.Keys) if (!live.Contains(path)) stale.Add(path);
                 foreach (var path in stale) _cache.Remove(path);
+            }
+        }
+
+        /// <summary>
+        /// The library's own spelling of a macro name: the name itself when the library has it, else the
+        /// one that differs only in case (the library's files cannot hold both), else the name as given.
+        /// An import that skips "farm" because "Farm" is here leaves the game's keys on "Farm".
+        /// </summary>
+        internal static string LibraryName(string name)
+        {
+            lock (_lock)
+            {
+                if (_library.ContainsKey(name)) return name;
+                foreach (var known in _library.Keys)
+                    if (string.Equals(known, name, StringComparison.OrdinalIgnoreCase)) return known;
+                return name;
             }
         }
 
@@ -200,12 +218,13 @@ namespace TrueReplayer.Services
                         Repeat(a, b, () =>
                         {
                             // SimulateKeystroke: the modifiers down (Win, Ctrl, Shift, Alt), 10 ms for the
-                            // target to see them, the key tapped, the modifiers up in reverse.
-                            foreach (var m in mods) b.Add(new TecladoOp(TecladoOpKind.KeyDown, 0, m));
+                            // target to see them, the key tapped, the modifiers up in reverse — but not one
+                            // a KeyDown row of the macro holds (Combo: the executor knows which).
+                            foreach (var m in mods) b.Add(new TecladoOp(TecladoOpKind.KeyDown, 0, m, Combo: true));
                             b.Wait(10);
                             b.Add(new TecladoOp(TecladoOpKind.KeyDown, 0, main));
                             b.Add(new TecladoOp(TecladoOpKind.KeyUp, 0, main));
-                            for (int i = mods.Count - 1; i >= 0; i--) b.Add(new TecladoOp(TecladoOpKind.KeyUp, 0, mods[i]));
+                            for (int i = mods.Count - 1; i >= 0; i--) b.Add(new TecladoOp(TecladoOpKind.KeyUp, 0, mods[i], Combo: true));
                         });
                         break;
                     }
@@ -287,8 +306,9 @@ namespace TrueReplayer.Services
                             if (c == '\r') continue;
                             if (!first) b.Wait(charDelay);
                             first = false;
+                            // A tab goes as the character (VK_PACKET), as the engine types it: the Tab key
+                            // would leave a game's chat box and send the rest of the text to the game.
                             if (c == '\n') Tap(b, EnterStroke);
-                            else if (c == '\t') Tap(b, TabStroke);
                             else b.Add(new TecladoOp(TecladoOpKind.Char, 0, Data: c));
                         }
                         break;
@@ -323,7 +343,6 @@ namespace TrueReplayer.Services
         internal const int DefaultCharDelayMs = 8;
 
         private static readonly InputHookManager.TecladoStroke EnterStroke = new(0x0D, 0x1C, false);
-        private static readonly InputHookManager.TecladoStroke TabStroke = new(0x09, 0x0F, false);
 
         private static bool HasToken(string text) => text.IndexOf('{') >= 0;
 

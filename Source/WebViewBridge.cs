@@ -2658,11 +2658,18 @@ namespace TrueReplayer
             try
             {
                 // As the macros' export: an open macro with unsaved edits is saved first, or the file
-                // would carry the copy on disk.
-                if (HasUnsavedChanges && CurrentProfileName != "No Profile"
-                    && names.Any(n => string.Equals(n, CurrentProfileName, StringComparison.OrdinalIgnoreCase))
-                    && !await CheckUnsavedChangesAsync(S.ProfilesUnsavedBeforeExporting))
-                    return;
+                // would carry the copy on disk — named by a key, or pulled in by a Run Macro step of one
+                // (the dependencies always go along).
+                if (HasUnsavedChanges && CurrentProfileName != "No Profile")
+                {
+                    bool openInExport = names.Any(n => string.Equals(n, CurrentProfileName, StringComparison.OrdinalIgnoreCase));
+                    if (!openInExport && names.Count > 0)
+                    {
+                        var closure = await profileController.ExpandWithRunProfileDependenciesAsync(names);
+                        openInExport = closure.Any(n => string.Equals(n, CurrentProfileName, StringComparison.OrdinalIgnoreCase));
+                    }
+                    if (openInExport && !await CheckUnsavedChangesAsync(S.ProfilesUnsavedBeforeExporting)) return;
+                }
                 var (exported, missingImages, bundledDependencies, savedPath) =
                     await profileController.ExportProfilesAsync(names, includeOrganization: false, includeDependencies: true, teclado: TecladoService.ForExport(game));
                 // Cancelled in the Save dialog: nothing written, nothing said.
@@ -15264,6 +15271,8 @@ namespace TrueReplayer
                 case "profileKeyEnabled":
                     ProfileKeyEnabled = valueElement.GetBoolean();
                     UserProfile.Current.ProfileKeyEnabled = ProfileKeyEnabled;
+                    // Teclado (branch teclado): the general pause lets go of the game's keys and stops their macros.
+                    if (!ProfileKeyEnabled) InputHookManager.TecladoPause();
                     TrayIconService.UpdateTrayIcon();
                     break;
                 case "browserSelectorEnabled":

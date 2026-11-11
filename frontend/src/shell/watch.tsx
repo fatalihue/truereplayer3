@@ -60,6 +60,8 @@ function hearTray(message: IncomingMessage, record: () => boolean, openMacro: (n
   if (command === 'settings') openSettings();
   else if (command === 'automations') useUi.setState(name ? { page: 'automations', automationAsk: { kind: 'open', name }, libraryPeek: false } : { page: 'automations', libraryPeek: false });
   else if (command === 'remaps') openPage('remaps');
+  // Teclado (branch teclado): the notification of an unreadable teclado.json.
+  else if (command === 'teclado') openPage('teclado');
   else {
     openPage('macros');
     if (command === 'dataLoop' && name) { openMacro(name); showMacroTab('data'); }

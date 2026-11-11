@@ -1480,6 +1480,20 @@ namespace TrueReplayer.Services
         public static string RunWaitImageTimedOutNamed(string name) => IsPt ? $"O Wait Image deu timeout ({name})" : $"Wait Image timed out ({name})";
         /// <summary>engine-run.wait.pixelTimedOut · Wait Pixel Color timed out ({{color}})</summary>
         public static string RunWaitPixelTimedOut(string color) => IsPt ? $"O Wait Pixel Color deu timeout ({color})" : $"Wait Pixel Color timed out ({color})";
+        /// <summary>engine-teclado.open · Open the Keyboard</summary>
+        public static string TecladoOpen => IsPt ? "Abrir o Teclado" : "Open the Keyboard";
+        /// <summary>engine-teclado.unreadable.title · Keyboard: file unreadable</summary>
+        public static string TecladoUnreadableTitle => IsPt ? "Teclado: arquivo ilegível" : "Keyboard: file unreadable";
+        /// <summary>engine-teclado.unreadable.backup · teclado.json could not be read, so the last backup was loaded ({{n}} game). The file is not overwritten — edits go to {{pending}}.</summary>
+        public static string TecladoUnreadableBackup(string n, string pending, int count) => IsPt ? (count == 0 ? $"Não foi possível ler o teclado.json, então o último backup foi carregado (nenhum jogo). O arquivo não é substituído — as mudanças vão para {pending}." : (count < 2 ? $"Não foi possível ler o teclado.json, então o último backup foi carregado ({n} jogo). O arquivo não é substituído — as mudanças vão para {pending}." : $"Não foi possível ler o teclado.json, então o último backup foi carregado ({n} jogos). O arquivo não é substituído — as mudanças vão para {pending}.")) : (count == 1 ? $"teclado.json could not be read, so the last backup was loaded ({n} game). The file is not overwritten — edits go to {pending}." : $"teclado.json could not be read, so the last backup was loaded ({n} games). The file is not overwritten — edits go to {pending}.");
+        /// <summary>engine-teclado.unreadable.noBackup · teclado.json could not be read and there is no backup, so no game changes any key. The file was NOT overwritten — see the session log.</summary>
+        public static string TecladoUnreadableNoBackup => IsPt ? "Não foi possível ler o teclado.json e não há backup, então nenhum jogo muda tecla alguma. O arquivo NÃO foi substituído — veja o log da sessão." : "teclado.json could not be read and there is no backup, so no game changes any key. The file was NOT overwritten — see the session log.";
+        /// <summary>engine-teclado.detail.read · The file could not be opened: {{reason}}</summary>
+        public static string TecladoDetailRead(string reason) => IsPt ? $"Não foi possível abrir o arquivo: {reason}" : $"The file could not be opened: {reason}";
+        /// <summary>engine-teclado.detail.parse · The file is not valid JSON: {{reason}}</summary>
+        public static string TecladoDetailParse(string reason) => IsPt ? $"O arquivo não é um JSON válido: {reason}" : $"The file is not valid JSON: {reason}";
+        /// <summary>engine-teclado.detail.unknown · The reason is unknown.</summary>
+        public static string TecladoDetailUnknown => IsPt ? "O motivo é desconhecido." : "The reason is unknown.";
         /// <summary>engine-tray.tip.ready · {{app}} — Ready</summary>
         public static string TrayTipReady(string app) => IsPt ? $"{app} — Pronto" : $"{app} — Ready";
         /// <summary>engine-tray.tip.readyArmed · {{app}} — Ready · {{n}} automation armed</summary>

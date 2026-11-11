@@ -2000,6 +2000,8 @@ namespace TrueReplayer
                 "automation-open" => "automations",
                 "dataloop-open" => "dataLoop",
                 "remaps-open" => "remaps",
+                // Teclado (branch teclado): the notification of an unreadable teclado.json.
+                "teclado-open" => "teclado",
                 "report-open" => "report",
                 _ => null,
             };
@@ -2035,6 +2037,8 @@ namespace TrueReplayer
         {
             UserProfile.Current.ProfileKeyEnabled = newValue;
             Services.DiagnosticLog.Info($"Profile Keys {(newValue ? "ENABLED" : "DISABLED")} via {via}");
+            // Teclado (branch teclado): the general pause lets go of the game's keys and stops their macros.
+            if (!newValue) InputHookManager.TecladoPause();
 
             // Persist immediately. Without this, AppSettingsManager.ApplyGlobalSettings
             // (called whenever a profile is loaded — including the next profile-hotkey

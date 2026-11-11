@@ -56,6 +56,9 @@ namespace TrueReplayer.Services
             Guard("replay stop", () => TrueReplayer.Controllers.MainController.Instance?.StopReplayIfRunning());
             Guard("automation stop", () => TriggerService.Instance?.StopAll());
             Guard("input hooks stop", InputHookManager.Stop);
+            // Teclado (branch teclado): the hooks' stop only queued the executor's; what its macros hold
+            // goes up before the process ends, or a key stays down in the game.
+            Guard("teclado macros stop", () => TecladoRunner.StopAllAndWait(500));
             // The original WndProc goes back before the process starts dying: with the subclass
             // left installed, the WM_DESTROY/WM_NCDESTROY still to come would re-enter a managed
             // thunk after Environment.Exit(0) has begun tearing the CLR down.

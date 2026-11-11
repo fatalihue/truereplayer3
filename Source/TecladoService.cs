@@ -124,8 +124,16 @@ namespace TrueReplayer.Services
         /// <summary><see cref="Current"/> came from teclado.bak.json because teclado.json was unreadable.</summary>
         public static bool LoadedFromBackup { get; private set; }
 
-        /// <summary>What went wrong, in the exception's own words, for the page's notice.</summary>
-        public static string? LoadFailureDetail { get; private set; }
+        /// <summary>
+        /// Why <see cref="LoadFailed"/> is set, in one line, for the page's notice: the engine's sentence
+        /// and the error's own words (RemapService.LoadFailureDetail's way). Said when it is read, so it
+        /// follows the interface's language; the log writes the exception itself.
+        /// </summary>
+        public static string? LoadFailureDetail => LoadFailed ? FailureDetail(_loadError, _loadErrorIsParse) : null;
+
+        // What LoadFailureDetail says, kept as the failure rather than as words.
+        private static Exception? _loadError;
+        private static bool _loadErrorIsParse;
 
         /// <summary>Raised after every Load and Save: the bridge pushes teclado:state on it.</summary>
         public static event Action? Changed;
@@ -156,7 +164,8 @@ namespace TrueReplayer.Services
                 var path = GetPath();
                 LoadFailed = false;
                 LoadedFromBackup = false;
-                LoadFailureDetail = null;
+                _loadError = null;
+                _loadErrorIsParse = false;
 
                 if (!File.Exists(path))
                 {
@@ -166,6 +175,7 @@ namespace TrueReplayer.Services
                     return;
                 }
 
+                bool parseFailed = false;
                 if (TryReadText(path, out var json, out var error))
                 {
                     var parsed = TryParse(json, out var parseError);
@@ -177,21 +187,28 @@ namespace TrueReplayer.Services
                         return;
                     }
                     error = parseError;
+                    parseFailed = true;
                 }
 
                 LoadFailed = true;
-                LoadFailureDetail = error?.Message;
+                _loadError = error;
+                _loadErrorIsParse = parseFailed;
                 DiagnosticLog.Error(
                     $"teclado.json could not be read — it will NOT be overwritten; edits this session go to {PendingFileName}",
                     error ?? new IOException("unknown read failure"));
+                // Said in a Windows notification too, as the Key Remaps do: Load runs in the window's
+                // ctor, and with no good copy a game's keys stop changing with nothing on screen to say why.
                 if (TryLoadBackup(out var backup))
                 {
                     Current = backup;
                     LoadedFromBackup = true;
+                    int count = backup.Games.Count;
+                    Announce(S.TecladoUnreadableTitle, S.TecladoUnreadableBackup(n: S.Num(count), pending: PendingFileName, count: count));
                 }
                 else
                 {
                     Current = new Config();
+                    Announce(S.TecladoUnreadableTitle, S.TecladoUnreadableNoBackup);
                 }
                 Raise();
             }
@@ -228,7 +245,8 @@ namespace TrueReplayer.Services
                         {
                             LoadFailed = false;
                             LoadedFromBackup = false;
-                            LoadFailureDetail = null;
+                            _loadError = null;
+                            _loadErrorIsParse = false;
                             DiagnosticLog.Info("teclado.json overwritten on explicit request — load-failure quarantine cleared.");
                         }
                     }
@@ -369,7 +387,8 @@ namespace TrueReplayer.Services
                     name = clean.Name,
                     finalName = FreeGameName(clean.Name),
                     exes = clean.Exes,
-                    keys = clean.Base.Count + clean.Layer.Count,
+                    // Keys, not functions: a key with a function on the base and on the layer counts once.
+                    keys = clean.Base.Keys.Union(clean.Layer.Keys, StringComparer.Ordinal).Count(),
                     // Another game already plays on one of its .exe: this one comes in turned off.
                     exeTakenBy = taken?.Name,
                     full = Current.Games.Count >= MaxGames,
@@ -394,9 +413,13 @@ namespace TrueReplayer.Services
             lock (_lock)
             {
                 if (Current.Games.Count >= MaxGames) return null;
+                // The names the macros took (renamed), else the library's spelling: a macro skipped for
+                // a local one that differs only in case ("farm" for "Farm", a collision the import sees
+                // regardless of case) is that local one, which the keys must name exactly.
                 foreach (var layer in new[] { clean.Base, clean.Layer })
                     foreach (var fn in layer.Values)
-                        if (fn.Kind == "macro" && fn.Macro != null && map.TryGetValue(fn.Macro, out var final)) fn.Macro = final;
+                        if (fn.Kind == "macro" && fn.Macro != null)
+                            fn.Macro = map.TryGetValue(fn.Macro, out var final) ? final : TecladoMacros.LibraryName(fn.Macro);
                 clean.Id = "g-" + Guid.NewGuid().ToString("N")[..10];
                 clean.Name = FreeGameName(clean.Name);
                 clean.On = TakenBy(clean) == null;
@@ -548,6 +571,22 @@ namespace TrueReplayer.Services
                 default:
                     return null;
             }
+        }
+
+        // The engine's sentence for the failure and, after it, the error's own words (RemapService's
+        // FailureDetail): the engine's phrase for the common ones (in use, access denied — S.Reason),
+        // the .NET text otherwise. A parse error is .NET's JSON message, which says the line and column.
+        private static string FailureDetail(Exception? ex, bool isParse) =>
+            ex == null ? S.TecladoDetailUnknown
+            : isParse ? S.TecladoDetailParse(ex.Message)
+            : S.TecladoDetailRead(S.Reason(ex));
+
+        // A Windows notification, the one surface this service reaches on its own (the window's ctor,
+        // before WebView2). Its button opens the Keyboard page. Never lets a failure break a load.
+        private static void Announce(string title, string text)
+        {
+            try { WindowsNotices.Show(title, text, null, (S.TecladoOpen, "teclado-open")); }
+            catch (Exception ex) { DiagnosticLog.Warn($"Teclado notification failed: {ex.GetType().Name}: {ex.Message}"); }
         }
 
         private static void Raise()
