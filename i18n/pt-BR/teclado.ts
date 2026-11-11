@@ -7,7 +7,6 @@ export default {
 
   games: {
     title: 'Jogos',
-    heading: 'Jogos',
     inFront: 'Na frente agora',
     locked: 'Travado',
     none: 'Nenhum jogo ainda',
@@ -42,6 +41,11 @@ export default {
     lockedToast: 'As teclas do {{game}} agora valem com qualquer janela na frente, menos a do {{app}}, até você destravar ou fechar o app.',
     removeExe: 'Remover {{exe}}',
     deleted: '{{game}} excluído',
+    turnedOff: {
+      zero: 'Nenhum outro jogo usa o mesmo .exe.',
+      one: '{{games}} foi desativado: ele usa o mesmo .exe.',
+      other: '{{games}} foram desativados: eles usam o mesmo .exe.',
+    },
   },
   file: {
     exported: {
@@ -78,11 +82,12 @@ export default {
     // O desenho do teclado: ABNT2, ANSI ou ISO (nomes de norma, iguais nos dois idiomas).
     layouts: { abnt2: 'ABNT2', ansi: 'ANSI', iso: 'ISO' },
     layoutLabel: 'Layout do desenho',
+    layoutButton: 'Layout do desenho: {{layout}}',
     layoutAuto: 'Automático · {{layout}}',
     layoutTip: 'O desenho segue o layout do Windows, ou o que você escolher aqui. Um jogo guarda cada tecla pela posição física, então trocar o desenho não muda as funções.',
   },
   board: {
-    label: 'Teclado ABNT2',
+    label: 'Teclado {{layout}}',
     held: 'Segurada',
     fromBase: '{{rule}} (da Base)',
     fromGlobal: '{{rule}} (de {{source}})',
@@ -121,6 +126,8 @@ export default {
   },
   fns: { default: 'Padrão', key: 'Outra tecla', mouse: 'Mouse', macro: 'Macro', text: 'Texto', off: 'Desligar', layer: 'Camada' },
   modes: { once: 'Uma vez', times: 'N vezes', hold: 'Enquanto segura', toggle: 'Alternar' },
+  // O modo "N vezes" numa frase (a dica da tecla, a seção da macro): com o número.
+  modeTimes: { zero: '{{count}} vezes', one: '{{count}} vez', other: '{{count}} vezes' },
   legend: {
     label: 'Legenda',
     off: 'Desligada',
@@ -150,6 +157,7 @@ export default {
     emptyTitle: 'Escolha uma tecla',
     emptyText: 'Clique numa tecla do desenho para dar uma função a ela. As setas andam pelo teclado.',
     defaultFromBase: 'Na Camada, {{key}} herda da Base: {{rule}}. Escolha outra função para mudar só na Camada.',
+    layerKeyHint: 'Esta é a tecla que segura a Camada: a função dela fica na Base.',
     defaultFromGlobal: 'Sem função aqui, {{key}} segue {{source}}: {{rule}}.',
     defaultTypes: 'A tecla segue normal: {{key}} digita {{typed}}.',
     defaultNormal: 'A tecla segue normal: {{key}} faz o de sempre.',
@@ -159,6 +167,8 @@ export default {
     capturePress: 'Clique e aperte a tecla',
     captureChange: 'Clique para trocar',
     captureListening: 'Aperte a tecla ou a combinação…',
+    // Um modificador apertado sozinho: ele espera o resto, e um clique o usa sozinho (Caps → Ctrl).
+    captureHeld: 'Aperte outra tecla, ou clique para usar {{key}} sozinho',
     button: 'Botão',
     mouseLabel: 'Botão do mouse',
     text: 'Texto',

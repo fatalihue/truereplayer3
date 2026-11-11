@@ -8,7 +8,6 @@ export default {
   // A lista à esquerda, no lugar da biblioteca.
   games: {
     title: 'Games',
-    heading: 'Games',
     inFront: 'In front now',
     locked: 'Locked',
     none: 'No game yet',
@@ -45,6 +44,11 @@ export default {
     lockedToast: 'The keys of {{game}} now work with any window in front except {{app}}’s, until you unlock or close the app.',
     removeExe: 'Remove {{exe}}',
     deleted: '{{game}} deleted',
+    // "Usar" num jogo desativa os outros jogos ativados do mesmo .exe (duas configurações de um jogo).
+    turnedOff: {
+      one: '{{games}} was turned off: it uses the same .exe.',
+      other: '{{games}} were turned off: they use the same .exe.',
+    },
   },
   // Exportar e Importar (fase 7): o jogo vai no .trprofile das macros, ao lado das macros que as teclas dele rodam.
   file: {
@@ -82,11 +86,12 @@ export default {
     // O desenho do teclado: ABNT2, ANSI ou ISO (nomes de norma, iguais nos dois idiomas).
     layouts: { abnt2: 'ABNT2', ansi: 'ANSI', iso: 'ISO' },
     layoutLabel: 'Drawing layout',
+    layoutButton: 'Drawing layout: {{layout}}',          // o nome acessível do botão do layout
     layoutAuto: 'Automatic · {{layout}}',
     layoutTip: 'The drawing follows the Windows layout, or the one you choose here. A game keeps each key by its physical position, so changing the drawing does not change the functions.',
   },
   board: {
-    label: 'ABNT2 keyboard',
+    label: '{{layout}} keyboard',                      // o nome acessível do desenho: ABNT2, ANSI ou ISO
     held: 'Held',                                      // a tecla de camada segura, na vista da Camada
     fromBase: '{{rule}} (from Base)',
     fromGlobal: '{{rule}} (from {{source}})',
@@ -129,6 +134,8 @@ export default {
   // As funções do plano do MK ("O produto (v1)").
   fns: { default: 'Default', key: 'Another key', mouse: 'Mouse', macro: 'Macro', text: 'Text', off: 'Turn off', layer: 'Layer' },
   modes: { once: 'Once', times: 'N times', hold: 'While held', toggle: 'Toggle' },
+  // O modo "N vezes" numa frase (a dica da tecla, a seção da macro): com o número.
+  modeTimes: { one: '{{count}} time', other: '{{count}} times' },
   legend: {
     label: 'Legend',
     off: 'Off',
@@ -159,6 +166,7 @@ export default {
     emptyTitle: 'Choose a key',
     emptyText: 'Click a key in the drawing to give it a function. The arrows move across the keyboard.',
     defaultFromBase: 'On the layer, {{key}} inherits from Base: {{rule}}. Choose another function to change it only on the layer.',
+    layerKeyHint: 'This is the key that holds the layer: its function stays on Base.', // a tecla de camada, vista na Camada
     defaultFromGlobal: 'With no function here, {{key}} follows {{source}}: {{rule}}.',
     defaultTypes: 'The key stays normal: {{key}} types {{typed}}.',
     defaultNormal: 'The key stays normal: {{key}} does what it always does.',
@@ -168,6 +176,8 @@ export default {
     capturePress: 'Click and press the key',
     captureChange: 'Click to change',
     captureListening: 'Press the key or the combo…',
+    // Um modificador apertado sozinho: ele espera o resto, e um clique o usa sozinho (Caps → Ctrl).
+    captureHeld: 'Press another key, or click to use {{key}} alone',
     button: 'Button',
     mouseLabel: 'Mouse button',
     text: 'Text',

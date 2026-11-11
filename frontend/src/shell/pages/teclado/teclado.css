@@ -9,6 +9,9 @@
   min-height: 0;
   background: var(--color-bg-base);
 }
+/* No game yet: no key to choose, so no panel column. */
+.tk[data-empty] { grid-template-columns: 15.5rem minmax(0, 1fr); }
+.tk .tk-empty-add { margin-top: 0.75rem; gap: 0.375rem; }
 .tk svg { flex: none; }
 .tk .insp-button svg { width: 0.875rem; height: 0.875rem; }
 .tk .insp-icon-button svg { width: 1rem; height: 1rem; }
@@ -156,7 +159,9 @@
 }
 .tk-bar .insp-seg { flex: none; }
 .tk-seg-device { width: 11.5rem; }
-.tk-seg-layer { width: 17rem; }
+/* The layer's option names its key ("Camada · segure Lateral 1"): it takes the room it needs, not half of a fixed 17rem. */
+.tk-seg-layer { min-width: 17rem; }
+.tk-seg-layer .insp-seg button { flex: 1 1 auto; padding: 0 0.625rem; }
 .tk-count { font-size: var(--text-minor); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
 .tk-layout {
   padding: 0 0.375rem;
@@ -165,7 +170,8 @@
   font-family: var(--font-mono);
   font-size: var(--text-caption);
   line-height: 1.125rem;
-  color: var(--color-text-tertiary);
+  /* A control, not a caption: the secondary ink of the chips beside it. */
+  color: var(--color-text-secondary);
 }
 
 /* ── The drawing ── */
@@ -207,6 +213,9 @@
 .tk-key:hover { --edge: var(--color-border-strong); }
 .tk-key:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; z-index: 1; }
 .tk-leg { font-family: var(--font-mono); font-size: var(--text-caption); line-height: 1; color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A key with its function's icon, or an inherited mark, in the corner: the legend stops short of it
+   (F10, Del and "Backspa…" ran under the icon). */
+.tk-key[data-mark] .tk-leg { padding-right: 0.8125rem; }
 /* The function's label: up to two lines, broken between words only ("Combo / 1-2-3"); in a narrow
    window, one line with an ellipsis. The tip and the panel have the whole name. */
 .tk-fn {
@@ -226,6 +235,12 @@
 @container (max-width: 60rem) {
   .tk-fn { display: block; white-space: nowrap; text-overflow: ellipsis; }
 }
+/* A key too short for its legend and a line of its function (--u under ~35.5 px: 18.25 keys across
+   40.5rem, 22.5 with the numpad across 50rem): the word goes, cut in half it said nothing; the colour
+   and the icon stay, and the tip and the panel have it whole. */
+@container (max-width: 40.5rem) { .tk-grid .tk-fn { display: none; } }
+@container (max-width: 50rem) { .tk-grid[data-numpad] .tk-fn { display: none; } }
+.tk-fn-ico { width: 0.6875rem; height: 0.6875rem; vertical-align: -0.0625rem; }
 .tk-ico { position: absolute; top: calc(var(--u) * 0.09); right: calc(var(--u) * 0.08); width: 0.6875rem; height: 0.6875rem; color: var(--ink); }
 .tk-inh { position: absolute; top: calc(var(--u) * 0.06); right: calc(var(--u) * 0.08); display: grid; place-items: center; font-size: var(--text-caption); line-height: 1; color: var(--color-text-tertiary); }
 .tk-inh svg { width: 0.6875rem; height: 0.6875rem; }
@@ -271,6 +286,8 @@
 }
 .tk-slot[data-iso] .tk-key { isolation: isolate; }
 .tk-slot[data-iso] .tk-key[aria-pressed='true'] { --edge: var(--color-accent); }
+/* Its outline is clipped with the rest: the focus shows on its edge, as the chosen one's does. */
+.tk-slot[data-iso] .tk-key:focus-visible { --edge: var(--color-accent-solid); }
 .tk-slot[data-iso] .tk-key[aria-pressed='true']::before { inset: 2px 2px 3px; }
 .tk-slot[data-iso] .tk-fn, .tk-slot[data-iso] .tk-leg { align-self: flex-end; }
 
@@ -299,7 +316,9 @@
 /* ── The mouse ── */
 .tk-mouse { display: grid; grid-template-columns: repeat(4, 7.5rem); gap: 0.5rem; justify-content: center; padding: 1.5rem 1.25rem 0.75rem; --u: 3.75rem; }
 .tk-mouse .tk-slot { height: 3.75rem; }
-.tk-mouse .tk-key[disabled] { cursor: default; opacity: 0.5; border-style: dashed; }
+/* Left and right stay out: faded, but not dashed — the dashed border is Off's, in the legend. */
+.tk-mouse .tk-key[data-out] { cursor: default; opacity: 0.5; }
+.tk-mouse .tk-key[data-out]:hover { --edge: var(--color-border-default); }
 .tk-mouse-note { grid-column: 1 / -1; margin: 0.25rem 0 0; text-align: center; font-size: var(--text-minor); color: var(--color-text-tertiary); }
 
 /* ── The legend and the notes under the drawing ── */
@@ -360,6 +379,7 @@
 .tk-macro-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .tk-macro-name { font-weight: 600; color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tk .tk-macro-swap { height: 1.75rem; padding: 0 0.625rem; font-size: var(--text-minor); }
+.tk .tk-picker-cancel { margin-top: 0.375rem; }
 .tk-where .kbd { height: 1rem; }
 .tk-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.375rem; padding: 1rem 2rem; text-align: center; }
 .tk-empty-title { font-weight: 600; color: var(--color-text-primary); }
@@ -368,9 +388,10 @@
 /* 1024–1279: the games fold into avatars, as the library does. */
 @container shell (max-width: 79.99rem) {
   .tk { grid-template-columns: 3.5rem minmax(0, 1fr) 21rem; }
+  .tk[data-empty] { grid-template-columns: 3.5rem minmax(0, 1fr); }
   .tk-game { justify-content: center; padding: 0.25rem; }
   /* The list's own "no games yet" too: the main area says it, with the way to add one. */
-  .tk-game-text, .tk-games-foot, .tk-games-none, .tk-games .lib-title, .tk-games .lib-new span, .tk-games .lib-heading { display: none; }
+  .tk-game-text, .tk-games-foot, .tk-games-none, .tk-games .lib-title, .tk-games .lib-new span { display: none; }
   .tk-games .lib-header { justify-content: center; padding: 0; }
   .tk-front-dot, .tk-game-lock { position: absolute; top: 0.25rem; right: 0.25rem; }
   .tk-game-lock { width: 0.625rem; height: 0.625rem; }

@@ -35,7 +35,10 @@ export function Rail() {
   const armed = useApp(a => (a.automation.enabled ? a.automation.entries.filter(e => e.trigger.armed && !e.isDisabled).length : 0));
   const { send } = useBridge();
   // The game playing: the one in front, or the one locked (phase 7), which plays with the app in front too.
+  // Not while the Shortcuts are off: that is the general pause, and the status bar says "paused".
+  const shortcuts = useApp(a => a.settings.profileKeyEnabled);
   const front = useMk(s => (s.enabled ? s.games.find(g => g.id === (s.locked ?? s.front) && g.on)?.name ?? null : null));
+  const playing = shortcuts ? front : null;
   const locked = useMk(s => s.locked !== null);
   const peeks = band !== 'wide' && page === 'macros';
   const openMacros = () => {
@@ -61,7 +64,7 @@ export function Rail() {
     <nav className="shell-rail" aria-label={t('rail.nav')}>
       {DESTINATIONS.map(({ id, label, Icon }) => {
         const badge = id === 'automations' && armed > 0;
-        const playing = id === 'teclado' && front;
+        const tecladoPlaying = id === 'teclado' && playing;
         return (
           <button
             key={id}
@@ -72,7 +75,7 @@ export function Rail() {
             data-library-toggle={id === 'macros' && peeks ? '' : undefined}
             data-tip={id === 'macros' && clicker ? t('rail.backToMacros')
               : badge ? t('rail.automationsArmed', { count: armed })
-              : playing ? (locked ? t('teclado.status.locked', { game: front }) : t('teclado.railPlaying', { game: front }))
+              : tecladoPlaying ? (locked ? t('teclado.status.locked', { game: playing }) : t('teclado.railPlaying', { game: playing }))
               : label}
             data-tip-pos="right"
             onPointerEnter={() => warm(id)}
@@ -82,7 +85,7 @@ export function Rail() {
             <Icon aria-hidden="true" />
             <span className="shell-rail-label">{label}</span>
             {badge && <span className="shell-rail-badge" aria-hidden="true">{armed}</span>}
-            {playing && <span className="shell-rail-dot" aria-hidden="true" />}
+            {tecladoPlaying && <span className="shell-rail-dot" aria-hidden="true" />}
           </button>
         );
       })}

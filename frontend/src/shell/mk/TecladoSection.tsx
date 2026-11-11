@@ -3,21 +3,29 @@
 import { Keyboard } from 'lucide-react';
 import { t } from '../../i18n';
 import { openPage } from '../ui';
-import { legendOf, MODES } from './mkModel';
-import { useMk } from './mkStore';
+import { currentKeys, legendOf, modeLabel } from './mkModel';
+import { layerKeyOf, useMk } from './mkStore';
 
 export function TecladoSection({ name }: { name: string }) {
   const games = useMk(s => s.games);
-  const uses: { game: string; id: string; code: string; layer: boolean; mode?: string }[] = [];
+  const uses: { game: string; id: string; code: string; layer: boolean; mode: string }[] = [];
   for (const g of games) {
-    for (const [side, keys] of [['base', g.base], ['layer', g.layer]] as const) {
+    // A game's layer without its layer key (the Layer function taken off the base) is kept for when
+    // one comes back, but nothing reaches it: its keys are no use of the macro now.
+    const sides = layerKeyOf(g) ? [['base', g.base], ['layer', g.layer]] as const : [['base', g.base]] as const;
+    for (const [side, keys] of sides) {
       for (const [code, fn] of Object.entries(keys)) {
-        if (fn.kind === 'macro' && fn.macro === name) uses.push({ game: g.name, id: g.id, code, layer: side === 'layer', mode: fn.mode });
+        if (fn.kind === 'macro' && fn.macro === name) uses.push({ game: g.name, id: g.id, code, layer: side === 'layer', mode: modeLabel(fn.mode, fn.times) });
       }
     }
   }
   const go = (u?: (typeof uses)[number]) => {
-    if (u) useMk.setState({ open: u.id, view: u.layer ? 'layer' : 'base', key: u.code, device: u.code.startsWith('Mouse') || u.code.startsWith('Wheel') ? 'mouse' : 'keyboard' });
+    if (u) {
+      const mouse = u.code.startsWith('Mouse') || u.code.startsWith('Wheel');
+      // A key of the numpad shows only with the numpad on.
+      const numpad = !mouse && currentKeys().some(k => k.code === u.code && k.block === 'num');
+      useMk.setState({ open: u.id, view: u.layer ? 'layer' : 'base', key: u.code, device: mouse ? 'mouse' : 'keyboard', ...(numpad ? { numpad: true } : {}) });
+    }
     openPage('teclado');
   };
   return (
@@ -38,7 +46,7 @@ export function TecladoSection({ name }: { name: string }) {
             <span className="mset-auto-name">
               {u.layer ? t('teclado.section.useLayer', { game: u.game, key: legendOf(u.code) }) : t('teclado.section.use', { game: u.game, key: legendOf(u.code) })}
             </span>
-            <span className="mset-target-sub">{t('teclado.section.sub', { mode: MODES.find(m => m.value === u.mode)?.label ?? MODES[0].label })}</span>
+            <span className="mset-target-sub">{t('teclado.section.sub', { mode: u.mode })}</span>
           </span>
           <button type="button" className="insp-link" onClick={() => go(u)}>{t('common.actions.open')}</button>
         </div>

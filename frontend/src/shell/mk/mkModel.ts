@@ -2,7 +2,7 @@
 // of TrueReplayer 3. The functions a key takes, the keyboard's drawing and the names the engine uses.
 
 import { Ban, Keyboard, Layers, ListChecks, Mouse, Type, type LucideIcon } from 'lucide-react';
-import { tn } from '../../i18n';
+import { t, tn } from '../../i18n';
 import { familyOf, useMk } from './mkStore';
 
 /** A key's functions, the ones of the MK plan ("O produto (v1)"). 'default' is a key with none. */
@@ -183,26 +183,38 @@ const BUTTON_NAMES = tn('teclado.buttons');
 export const legendOf = (code: string) =>
   currentKeys().find(k => k.code === code)?.legend ?? BUTTON_NAMES[code as keyof typeof BUTTON_NAMES] ?? code;
 
-// The positions whose engine name (KeyUtils, remaps.json) is the code itself.
-const SAME_NAME = new Set([
-  'Insert', 'Delete', 'Home', 'End', 'PageUp', 'PageDown', 'CapsLock', 'Escape', 'Tab', 'Space', 'Enter', 'Backspace',
-  'PrintScreen', 'ScrollLock', 'Pause', 'NumLock',
-]);
+// The engine's names (KeyUtils.NormalizeKeyName, what the Key Remaps keep) that are not the position's
+// own code: a modifier or Enter is one name for both of its keys (the engine reads the VK, not the side).
+const ENGINE_NAMES: Record<string, string[]> = {
+  shift: ['ShiftLeft', 'ShiftRight'], ctrl: ['ControlLeft', 'ControlRight'], alt: ['AltLeft', 'AltRight'], win: ['MetaLeft', 'MetaRight'],
+  spacebar: ['Space'], space: ['Space'], enter: ['Enter', 'NumpadEnter'], esc: ['Escape'],
+  up: ['ArrowUp'], down: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'],
+  apps: ['ContextMenu'], applications: ['ContextMenu'], menu: ['ContextMenu'],
+  nummultiply: ['NumpadMultiply'], numadd: ['NumpadAdd'], numsubtract: ['NumpadSubtract'], numdecimal: ['NumpadDecimal'], numdivide: ['NumpadDivide'],
+  // The side buttons: the only mouse buttons a Key Remap takes as its key.
+  xbutton1: ['MouseX1'], xbutton2: ['MouseX2'],
+};
 
-/** The engine's name for a physical position (what the Key Remaps keep). */
-export function trKeyName(code: string): string {
-  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
-  if (/^Digit\d$/.test(code)) return code.slice(5);
-  if (/^F\d{1,2}$/.test(code) || SAME_NAME.has(code)) return code;
-  const named: Record<string, string> = {
-    ControlLeft: 'LCtrl', ControlRight: 'RCtrl', ShiftLeft: 'LShift', ShiftRight: 'RShift', AltLeft: 'LAlt', AltRight: 'RAlt',
-    MetaLeft: 'LWin', MetaRight: 'RWin', ContextMenu: 'Apps', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right',
-  };
-  return named[code] ?? legendOf(code);
+/**
+ * The physical positions a Key Remap's key name (the engine's) stands for, to show the rule under the
+ * game's keys: "Shift" is both Shifts, "Num1" the numpad's 1, "Spacebar" the Space bar, a letter or a
+ * digit its key, and a character of the layout (ABNT2's "Ç") the key that prints it.
+ */
+export function codesOfTr(name: string): string[] {
+  const n = name.trim().toLowerCase();
+  if (!n) return [];
+  if (ENGINE_NAMES[n]) return ENGINE_NAMES[n];
+  if (/^num\d$/.test(n)) return [`Numpad${n.slice(3)}`];
+  if (/^[a-z]$/.test(n)) return [`Key${n.toUpperCase()}`];
+  if (/^\d$/.test(n)) return [`Digit${n}`];
+  const keys = currentKeys();
+  // F1…F12, Tab, CapsLock, Insert, PageUp, PrintScreen…: the engine's name is the code itself.
+  const same = keys.find(k => k.code.toLowerCase() === n);
+  if (same) return [same.code];
+  // A character key, by what its cap prints in the layout in use.
+  const printed = keys.find(k => PRINTS.test(k.code) && k.legend.toLowerCase() === n);
+  return printed ? [printed.code] : [];
 }
-
-/** The physical position of an engine key name, to draw a Key Remaps rule on the keyboard. */
-export const codeOfTr = (name: string): string | null => currentKeys().find(k => trKeyName(k.code).toLowerCase() === name.toLowerCase())?.code ?? null;
 
 // ── The functions on screen: the name, the icon, and the colour, which is the one of TR3's step that does the same ──
 
@@ -220,3 +232,9 @@ export const fnInfo = (kind: FnKind) => FNS.find(f => f.kind === kind)!;
 
 const MODE_NAMES = tn('teclado.modes');
 export const MODES: { value: MacroMode; label: string }[] = (['once', 'times', 'hold', 'toggle'] as const).map(value => ({ value, label: MODE_NAMES[value] }));
+
+/** A mode in a sentence: "N times" becomes the count ("3 vezes"), the others their name. */
+export function modeLabel(mode: MacroMode | undefined, times: number | undefined): string {
+  if (mode === 'times') return t('teclado.modeTimes', { count: times ?? 3 });
+  return (MODES.find(m => m.value === mode) ?? MODES[0]).label;
+}

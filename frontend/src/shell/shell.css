@@ -333,6 +333,11 @@ html[data-animations='true'] .shell-state[data-done]::after { border-color: var(
 .sb-switch[data-paused] .sb-dot { background: var(--color-warning); }
 /* Teclado (branch teclado): the layer held, in the Layer's teal (the IF step's colour). */
 .sb-switch[data-layer] .sb-dot { background: var(--color-action-if-fg); }
+/* The switches keep their size; the Teclado's, the last and the longest, gives way first with an
+   ellipsis — without it the group ran under the extension's state below ~760 px in pt-BR. */
+.sb-switches > .sb-switch { flex: none; }
+.sb-switches > .sb-switch[data-mk] { flex: 0 1 auto; min-width: 0; }
+.sb-switch[data-mk] .sb-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sb-extension { color: var(--color-text-tertiary); }
 .sb-extension[data-state='connected'] .sb-dot { background: var(--color-replay); }
 .sb-extension[data-state='reload'] { color: var(--color-warning-ink); }

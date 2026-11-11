@@ -31,9 +31,8 @@ interface MkState {
   numpad: boolean;
   /** The key chosen (physical position), or null with the panel closed. */
   key: string | null;
-  /** The engine's teclado:live: the game in front (its id), the process, and the layer key held. */
+  /** The engine's teclado:live: the game in front (its id) and the layer key held. */
   front: string | null;
-  frontProcess: string | null;
   holding: boolean;
   /** The game locked ("Lock to this game", phase 7): in front with any window but the app's, until unlocked. */
   locked: string | null;
@@ -60,7 +59,6 @@ export const useMk = create<MkState>(() => ({
   numpad: false,
   key: null,
   front: null,
-  frontProcess: null,
   holding: false,
   locked: null,
   macros: {},
@@ -115,8 +113,13 @@ function receive(state: TecladoState) {
   applyDrawing();
 }
 
+// Only what the screen shows: the process in front comes with every window switch, and nothing here
+// reads it — kept, it made every subscriber of the store draw again at each Alt+Tab.
 function receiveLive(live: TecladoLive) {
-  useMk.setState({ front: live.front ?? null, frontProcess: live.process ?? null, holding: !!live.layer, locked: live.locked ?? null });
+  const s = useMk.getState();
+  const front = live.front ?? null, holding = !!live.layer, locked = live.locked ?? null;
+  if (front === s.front && holding === s.holding && locked === s.locked) return;
+  useMk.setState({ front, holding, locked });
 }
 
 /** "Lock to this game" (phase 7), or its undoing with null: the engine answers with teclado:live. Lasts until the app closes. */
@@ -125,8 +128,14 @@ export const lockGame = (id: string | null) => send?.({ type: 'teclado:lock', pa
 /** "Export" (phase 7): the game and the macros its keys run, in one .trprofile (the engine opens the Save dialog). */
 export const exportGame = (id: string) => send?.({ type: 'teclado:export', payload: { id } });
 
-/** An edit: on the page at once, and whole to the engine, whose teclado:state then settles it. */
+/**
+ * An edit: on the page at once, and whole to the engine, whose teclado:state then settles it. Never
+ * before the engine's first teclado:state: the page opens before the app's state comes (the library
+ * loads first), and a save of the empty list it holds until then would replace every game, in
+ * teclado.json and in its backup too.
+ */
 function commit(games: Game[], enabled = useMk.getState().enabled, layoutPref = useMk.getState().layoutPref) {
+  if (!useMk.getState().loaded) return;
   useMk.setState({ games, enabled, layoutPref });
   applyDrawing();
   const config: TecladoConfig = { version: 1, enabled, games: games as TecladoGame[], layout: layoutPref === 'auto' ? undefined : layoutPref };
@@ -178,12 +187,11 @@ export const gameOf = (s: MkState) => s.games.find(g => g.id === s.open) ?? null
 export type Source = 'own' | 'base' | 'global';
 
 
-/** A key's function in the view shown. */
-export function fnAt(s: MkState, code: string, globals: Record<string, KeyFn>): { fn: KeyFn; source: Source } {
-  const game = gameOf(s);
+/** A key's function in a game and a view (the page passes what it read once, rule 1: no key reads the whole store). */
+export function fnFor(game: Game | null, view: 'base' | 'layer', code: string, globals: Record<string, KeyFn>): { fn: KeyFn; source: Source } {
   if (!game) return { fn: { kind: 'default' }, source: 'own' };
   const base = game.base[code];
-  if (s.view === 'layer') {
+  if (view === 'layer') {
     const own = game.layer[code];
     if (own) return { fn: own, source: 'own' };
     if (base) return { fn: base, source: 'base' };
@@ -198,13 +206,18 @@ export const layerKeyOf = (game: Game | null) =>
 
 // ── Editing ──
 
-/** Writes a key's function in the open game, in the view shown. */
-export function setGameFn(code: string, fn: KeyFn) {
+/**
+ * Writes a key's function in the open game, in the view shown — or, with `where`, in that game and
+ * view (a link made later, once the macro it names exists).
+ */
+export function setGameFn(code: string, fn: KeyFn, where?: { game: string; view: 'base' | 'layer' }) {
   const s = useMk.getState();
   const clean = fn.kind === 'default' ? null : fn;
+  const target = where?.game ?? s.open;
+  const view = where?.view ?? s.view;
   commit(s.games.map(g => {
-    if (g.id !== s.open) return g;
-    const side = s.view === 'layer' ? 'layer' : 'base';
+    if (g.id !== target) return g;
+    const side = view === 'layer' ? 'layer' : 'base';
     const next = { ...g[side] };
     if (clean) next[code] = clean; else delete next[code];
     // One layer key per game: a new layer key takes the function from the old one.
@@ -215,14 +228,41 @@ export function setGameFn(code: string, fn: KeyFn) {
   }));
 }
 
-export const setGameOn = (id: string, on: boolean) => commit(useMk.getState().games.map(g => (g.id === id ? { ...g, on } : g)));
-
 const exeOf = (process: string) => (/\.exe$/i.test(process.trim()) ? process.trim() : `${process.trim()}.exe`);
+// The .exe as the engine matches it (RemapService.NormalizeProcess): no case, no ".exe".
+const exeKey = (exe: string) => exe.trim().toLowerCase().replace(/\.exe$/, '');
+
+/**
+ * With two games on one .exe (two setups of one game), the one turned on is the one that plays: so
+ * turning one on turns off the others on its .exe — what "Use" is for, and what the import's notice
+ * ("turn one or the other on with Use") counts on. Left both on, the first in the list won, quietly.
+ */
+function onlyOneOn(games: Game[], id: string): { games: Game[]; off: string[] } {
+  const game = games.find(g => g.id === id);
+  if (!game?.on) return { games, off: [] };
+  const mine = new Set(game.exes.map(exeKey));
+  const off: string[] = [];
+  const next = games.map(g => {
+    if (g.id === id || !g.on || !g.exes.some(e => mine.has(exeKey(e)))) return g;
+    off.push(g.name);
+    return { ...g, on: false };
+  });
+  return { games: next, off };
+}
+
+/** "Use": on or off. The names of the games it turned off (they shared its .exe), for the page to say. */
+export function setGameOn(id: string, on: boolean): string[] {
+  if (!useMk.getState().loaded) return [];
+  const { games, off } = onlyOneOn(useMk.getState().games.map(g => (g.id === id ? { ...g, on } : g)), id);
+  commit(games);
+  return off;
+}
 
 /** A new game for a program (its .exe), opened; or the one that already has that .exe. */
 export function addGame(process: string) {
   const exe = exeOf(process);
   const s = useMk.getState();
+  if (!s.loaded) return;
   const known = s.games.find(g => g.exes.some(e => e.toLowerCase() === exe.toLowerCase()));
   if (known) { useMk.setState({ open: known.id, key: null, view: 'base' }); return; }
   const id = `g-${crypto.randomUUID().slice(0, 10)}`;
@@ -252,9 +292,13 @@ export function renameGame(id: string, name: string) {
   commit(useMk.getState().games.map(g => (g.id === id ? { ...g, name: clean.slice(0, 60) } : g)));
 }
 
-export function addExe(id: string, process: string) {
+/** Another .exe for a game; one turned on takes the .exe from the other games turned on (their names come back). */
+export function addExe(id: string, process: string): string[] {
   const exe = exeOf(process);
-  commit(useMk.getState().games.map(g => (g.id === id && !g.exes.some(e => e.toLowerCase() === exe.toLowerCase()) ? { ...g, exes: [...g.exes, exe] } : g)));
+  if (!useMk.getState().loaded) return [];
+  const { games, off } = onlyOneOn(useMk.getState().games.map(g => (g.id === id && !g.exes.some(e => e.toLowerCase() === exe.toLowerCase()) ? { ...g, exes: [...g.exes, exe] } : g)), id);
+  commit(games);
+  return off;
 }
 
 export function removeExe(id: string, exe: string) {

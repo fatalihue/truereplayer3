@@ -266,8 +266,9 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                     <AlertTriangle size={11} className="mt-0.5 shrink-0" style={{ color: 'var(--color-warning-ink)' }} />
                     <span>{t('teclado.file.full')}</span>
                   </div>
-                ) : withGame && (
-                  <>
+                ) : (
+                  // Always there, hidden while the card is unticked: the open dialog keeps its height (§6).
+                  <div className={withGame ? undefined : 'invisible'} aria-hidden={!withGame || undefined}>
                     {game.finalName !== game.name && <div className="mt-1 text-caption text-text-tertiary">{t('teclado.file.renamed', { name: game.finalName })}</div>}
                     {game.exeTakenBy && (
                       <div className="mt-1.5 flex items-start gap-1.5 text-caption text-warning-ink">
@@ -275,7 +276,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                         <span>{t('teclado.file.exeTaken', { other: game.exeTakenBy })}</span>
                       </div>
                     )}
-                  </>
+                  </div>
                 )}
               </div>
             </div>

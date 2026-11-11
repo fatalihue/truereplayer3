@@ -2925,7 +2925,6 @@ export type Chaves = {
   'teclado.page': never;
   'teclado.railPlaying': { game: string | number };
   'teclado.games.title': never;
-  'teclado.games.heading': never;
   'teclado.games.inFront': never;
   'teclado.games.locked': never;
   'teclado.games.none': never;
@@ -2954,6 +2953,7 @@ export type Chaves = {
   'teclado.head.lockedToast': { app: string | number; game: string | number };
   'teclado.head.removeExe': { exe: string | number };
   'teclado.head.deleted': { game: string | number };
+  'teclado.head.turnedOff': { count: number; games: string | number };
   'teclado.file.exported': { count: number; file: string | number; game: string | number; n: string | number };
   'teclado.file.summary': { game: string | number };
   'teclado.file.badge': never;
@@ -2981,9 +2981,10 @@ export type Chaves = {
   'teclado.bar.layouts.ansi': never;
   'teclado.bar.layouts.iso': never;
   'teclado.bar.layoutLabel': never;
+  'teclado.bar.layoutButton': { layout: string | number };
   'teclado.bar.layoutAuto': { layout: string | number };
   'teclado.bar.layoutTip': never;
-  'teclado.board.label': never;
+  'teclado.board.label': { layout: string | number };
   'teclado.board.held': never;
   'teclado.board.fromBase': { rule: string | number };
   'teclado.board.fromGlobal': { rule: string | number; source: string | number };
@@ -3029,6 +3030,7 @@ export type Chaves = {
   'teclado.modes.times': never;
   'teclado.modes.hold': never;
   'teclado.modes.toggle': never;
+  'teclado.modeTimes': { count: number };
   'teclado.legend.label': never;
   'teclado.legend.off': never;
   'teclado.legend.fromBase': never;
@@ -3052,6 +3054,7 @@ export type Chaves = {
   'teclado.panel.emptyTitle': never;
   'teclado.panel.emptyText': never;
   'teclado.panel.defaultFromBase': { key: string | number; rule: string | number };
+  'teclado.panel.layerKeyHint': never;
   'teclado.panel.defaultFromGlobal': { key: string | number; rule: string | number; source: string | number };
   'teclado.panel.defaultTypes': { key: string | number; typed: string | number };
   'teclado.panel.defaultNormal': { key: string | number };
@@ -3061,6 +3064,7 @@ export type Chaves = {
   'teclado.panel.capturePress': never;
   'teclado.panel.captureChange': never;
   'teclado.panel.captureListening': never;
+  'teclado.panel.captureHeld': { key: string | number };
   'teclado.panel.button': never;
   'teclado.panel.mouseLabel': never;
   'teclado.panel.text': never;
@@ -3542,7 +3546,7 @@ export type Tabelas = {
   'settings.hotkeys.clip': 'label' | 'hint' | 'words';
   'settings.hotkeys.screenText': 'label' | 'hint' | 'words';
   'shell.refuse': 'automations' | 'browser';
-  'teclado.games': 'title' | 'heading' | 'inFront' | 'locked' | 'none' | 'foot';
+  'teclado.games': 'title' | 'inFront' | 'locked' | 'none' | 'foot';
   'teclado.add': 'label' | 'addExe' | 'filter' | 'loading' | 'none' | 'typed' | 'typedPlaceholder';
   'teclado.empty': 'title' | 'text';
   'teclado.bar.layouts': 'abnt2' | 'ansi' | 'iso';
