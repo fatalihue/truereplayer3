@@ -28,6 +28,7 @@ import { useApp, useShell } from '../../store';
 import { openPage, useUi } from '../../ui';
 import { useShellBand } from '../../useShellBand';
 import { MOUSE_TARGETS, mouseTarget } from '../remaps/remapModel';
+import { COLUMNS, labelTop, labelY, MouseDrawing, type MouseCode, type MouseOut, type MousePartState } from './mouseDrawing';
 import '../../inspector/editors.css';
 import '../../inspector/windowEditors.css';
 import '../remaps/remaps.css';
@@ -602,19 +603,30 @@ function Key({ cap, game, view, globals, layerKey }: FaceProps & { cap: KeyCap }
   );
 }
 
-/** A key's face, the keyboard's or a mouse button's: its legend, its function's mark, and the × that clears it. */
-function KeyFace({ code, legend, game, view, globals, layerKey, selected, tabIndex }: FaceProps & {
-  code: string; legend: string; selected: boolean; tabIndex: number;
-}) {
+/**
+ * What a key shows, on its face and, for a mouse button, on the drawing too: its function, where it
+ * comes from, whether it is the layer key held, and the function in words (the accessible name, the tip).
+ */
+function faceOf(code: string, legend: string, { game, view, globals, layerKey }: FaceProps) {
   const { fn, source } = fnFor(game, view, code, globals);
   const held = view === 'layer' && code === layerKey;
-  const Icon = source === 'own' ? fnInfo(fn.kind).Icon : null;
-  const label = held ? t('teclado.board.held') : labelOf(fn);
   const rule = sentenceOf(fn);
   const words = fn.kind === 'default' ? legend
     : `${legend}: ${source === 'base' ? t('teclado.board.fromBase', { rule })
       : source === 'global' ? t('teclado.board.fromGlobal', { rule, source: globalName() })
       : rule}`;
+  // The colour is the own function's; an inherited one shows untinted, with its mark.
+  const mark = fn.kind !== 'default' && source === 'own' ? fn.kind : undefined;
+  return { fn, source, held, words, mark };
+}
+
+/** A key's face, the keyboard's or a mouse button's: its legend, its function's mark, and the × that clears it. */
+function KeyFace({ code, legend, game, view, globals, layerKey, selected, tabIndex }: FaceProps & {
+  code: string; legend: string; selected: boolean; tabIndex: number;
+}) {
+  const { fn, source, held, words, mark } = faceOf(code, legend, { game, view, globals, layerKey });
+  const Icon = source === 'own' ? fnInfo(fn.kind).Icon : null;
+  const label = held ? t('teclado.board.held') : labelOf(fn);
   // An inherited Off has no word either (and none of the own key's dashed border): the Off icon, in
   // the inherited key's ink, tells it from a key that inherits nothing.
   const inheritedOff = source !== 'own' && fn.kind === 'off' && !held;
@@ -624,7 +636,7 @@ function KeyFace({ code, legend, game, view, globals, layerKey, selected, tabInd
         type="button"
         className="tk-key"
         data-code={code}
-        data-fn={fn.kind !== 'default' && source === 'own' ? fn.kind : undefined}
+        data-fn={mark}
         data-source={source !== 'own' ? source : undefined}
         data-held={held || undefined}
         data-mark={Icon || source !== 'own' ? '' : undefined}
@@ -652,30 +664,73 @@ function KeyFace({ code, legend, game, view, globals, layerKey, selected, tabInd
   );
 }
 
-/** The mouse: middle, the side buttons and the wheel take a function; left and right stay out. */
-function MouseBoard({ game, view, globals, layerKey }: FaceProps) {
+const isOut = (id: MouseCode | MouseOut): id is MouseOut => id === 'MouseLeft' || id === 'MouseRight';
+/** The five buttons that take a function, column by column, in the drawing's order (for the arrows). */
+const MOUSE_COLUMNS = [COLUMNS.left, COLUMNS.right].map(c => c.filter((id): id is MouseCode => !isOut(id)));
+
+/**
+ * The mouse (plan teclado-mouse-desenho-2026-11-12.md): the drawing in the middle and the buttons'
+ * faces beside it, each at its line's height, in the drawing's order. The middle, the side buttons
+ * and the wheel take a function; left and right stay out, so you never lose the click.
+ */
+function MouseBoard(face: FaceProps) {
+  // Each button's state, read once for the drawing (its face reads it again, as every key does).
+  const parts = {} as Record<MouseCode, MousePartState>;
+  for (const code of MOUSE_CODES) {
+    const f = faceOf(code, legendOf(code), face);
+    parts[code] = { fn: f.mark, source: f.source !== 'own' ? f.source : undefined, held: f.held, tip: f.words };
+  }
+  const column = (ids: (MouseCode | MouseOut)[]) => ids.map(id => (isOut(id) ? <OutKey key={id} id={id} /> : <MouseKey key={id} code={id} {...face} />));
   return (
-    <div className="tk-mouse" role="group" aria-label={t('teclado.board.mouseLabel')}>
-      {[t('teclado.board.left'), t('teclado.board.right')].map(name => (
-        <div key={name} className="tk-slot">
-          {/* aria-disabled, not disabled: a disabled button gets no pointer events, so its tip never showed. */}
-          <button type="button" className="tk-key" data-out="" aria-disabled="true" data-tip={t('teclado.board.mouseOutTip')}>
-            <span className="tk-leg">{name}</span>
-            <span className="tk-fn">{t('teclado.board.alwaysNormal')}</span>
-          </button>
-        </div>
-      ))}
-      {MOUSE_CODES.map(code => <MouseKey key={code} code={code} game={game} view={view} globals={globals} layerKey={layerKey} />)}
+    <div className="tk-mouse" role="group" aria-label={t('teclado.board.mouseLabel')} onKeyDown={mouseArrows}>
+      <div className="tk-mboard">
+        <div className="tk-mcol">{column(COLUMNS.left)}</div>
+        <MouseDrawing parts={parts} outTip={t('teclado.board.mouseOutTip')} />
+        <div className="tk-mcol">{column(COLUMNS.right)}</div>
+      </div>
       <p className="tk-mouse-note">{t('teclado.board.mouseNote')}</p>
     </div>
   );
 }
 
-function MouseKey({ code, ...face }: FaceProps & { code: string }) {
+/** The arrows between the five buttons, as across the keyboard: up and down in a column, left and right to the nearest in the other. */
+function mouseArrows(e: ReactKeyboardEvent<HTMLDivElement>) {
+  const code = (e.target as HTMLElement).dataset.code as MouseCode | undefined;
+  const col = code ? MOUSE_COLUMNS.findIndex(c => c.includes(code)) : -1;
+  if (!code || col < 0 || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+  e.preventDefault();
+  const list = MOUSE_COLUMNS[col];
+  const at = list.indexOf(code);
+  let next: MouseCode | undefined;
+  if (e.key === 'ArrowUp') next = list[at - 1];
+  else if (e.key === 'ArrowDown') next = list[at + 1];
+  else if ((e.key === 'ArrowRight') === (col === 0)) {
+    const y = labelY(code);
+    next = MOUSE_COLUMNS[1 - col].reduce((a, b) => (Math.abs(labelY(b) - y) < Math.abs(labelY(a) - y) ? b : a));
+  }
+  if (!next) return;
+  pickKey(next);
+  e.currentTarget.querySelector<HTMLElement>(`[data-code="${next}"]`)?.focus();
+}
+
+function MouseKey({ code, ...face }: FaceProps & { code: MouseCode }) {
   const selected = useMk(s => s.key === code);
   return (
-    <div className="tk-slot">
+    <div className="tk-slot tk-mco" data-part={code} style={{ top: labelTop(code) }}>
       <KeyFace code={code} legend={legendOf(code)} {...face} selected={selected} tabIndex={0} />
+    </div>
+  );
+}
+
+/** Left or right: drawn and named, but out. */
+function OutKey({ id }: { id: MouseOut }) {
+  return (
+    <div className="tk-slot tk-mco" data-part={id} style={{ top: labelTop(id) }}>
+      {/* aria-disabled, not disabled: a disabled button gets no pointer events, so its tip never showed. */}
+      <button type="button" className="tk-key" data-out="" aria-disabled="true" data-tip={t('teclado.board.mouseOutTip')}>
+        <span className="tk-leg">{id === 'MouseLeft' ? t('teclado.board.left') : t('teclado.board.right')}</span>
+        <span className="tk-fn">{t('teclado.board.alwaysNormal')}</span>
+      </button>
     </div>
   );
 }
@@ -726,12 +781,15 @@ function Notes() {
 // ── The key ──
 
 function EmptyPanel() {
+  // The Mouse view says button, on the drawing or by its name.
+  const mouse = useMk(s => s.device === 'mouse');
+  const title = mouse ? t('teclado.panel.emptyTitleMouse') : t('teclado.panel.emptyTitle');
   return (
-    <aside className="tk-panel" data-empty aria-label={t('teclado.panel.emptyTitle')}>
+    <aside className="tk-panel" data-empty aria-label={title}>
       <div className="tk-empty">
-        <span className="rm-empty-icon" aria-hidden="true"><Keyboard /></span>
-        <span className="tk-empty-title">{t('teclado.panel.emptyTitle')}</span>
-        <span className="tk-empty-text">{t('teclado.panel.emptyText')}</span>
+        <span className="rm-empty-icon" aria-hidden="true">{mouse ? <Mouse /> : <Keyboard />}</span>
+        <span className="tk-empty-title">{title}</span>
+        <span className="tk-empty-text">{mouse ? t('teclado.panel.emptyTextMouse') : t('teclado.panel.emptyText')}</span>
       </div>
     </aside>
   );

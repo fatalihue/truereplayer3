@@ -248,11 +248,12 @@
 /* The functions, in the colour of TR3's step that does the same: tinted at 12% with the border at 40% (the "on" rule). */
 .tk-key[data-fn] { --face: linear-gradient(var(--fn-bg) 0 0), var(--color-bg-elevated); --edge: color-mix(in srgb, var(--fn-fg) 40%, transparent); --ink: var(--fn-fg); }
 .tk-key[data-fn]:hover { --edge: color-mix(in srgb, var(--fn-fg) 65%, transparent); }
-.tk-key[data-fn='key'] { --fn-fg: var(--color-action-key-fg); --fn-bg: var(--color-action-key-bg); }
-.tk-key[data-fn='mouse'] { --fn-fg: var(--color-action-mouse-fg); --fn-bg: var(--color-action-mouse-bg); }
-.tk-key[data-fn='macro'] { --fn-fg: var(--color-action-runprofile-fg); --fn-bg: var(--color-action-runprofile-bg); }
-.tk-key[data-fn='text'] { --fn-fg: var(--color-action-sendtext-fg); --fn-bg: var(--color-action-sendtext-bg); }
-.tk-key[data-fn='layer'] { --fn-fg: var(--color-action-if-fg); --fn-bg: var(--color-action-if-bg); }
+/* The colours, one place for the keys, the legend's swatches and the mouse drawing's buttons. */
+:is(.tk-key, .tk-swatch, .tk-mp)[data-fn='key'] { --fn-fg: var(--color-action-key-fg); --fn-bg: var(--color-action-key-bg); }
+:is(.tk-key, .tk-swatch, .tk-mp)[data-fn='mouse'] { --fn-fg: var(--color-action-mouse-fg); --fn-bg: var(--color-action-mouse-bg); }
+:is(.tk-key, .tk-swatch, .tk-mp)[data-fn='macro'] { --fn-fg: var(--color-action-runprofile-fg); --fn-bg: var(--color-action-runprofile-bg); }
+:is(.tk-key, .tk-swatch, .tk-mp)[data-fn='text'] { --fn-fg: var(--color-action-sendtext-fg); --fn-bg: var(--color-action-sendtext-bg); }
+:is(.tk-key, .tk-swatch, .tk-mp)[data-fn='layer'] { --fn-fg: var(--color-action-if-fg); --fn-bg: var(--color-action-if-bg); }
 /* Off: the shape changes (dashed), not only the colour. */
 .tk-key[data-fn='off'] { --face: transparent; --edge: var(--color-border-strong); --ink: var(--color-text-tertiary); border-style: dashed; border-bottom-width: 1px; }
 .tk-key[data-fn='off']:hover { --edge: var(--color-text-tertiary); }
@@ -313,24 +314,99 @@
 .tk-slot:hover .tk-x, .tk-x:focus-visible { opacity: 1; }
 .tk-x:hover { color: var(--color-text-primary); border-color: var(--color-text-tertiary); }
 
-/* ── The mouse ── */
-.tk-mouse { display: grid; grid-template-columns: repeat(4, 7.5rem); gap: 0.5rem; justify-content: center; padding: 1.5rem 1.25rem 0.75rem; --u: 3.75rem; }
-.tk-mouse .tk-slot { height: 3.75rem; }
-/* Left and right stay out: faded, but not dashed — the dashed border is Off's, in the legend. */
-.tk-mouse .tk-key[data-out] { cursor: default; opacity: 0.5; }
-.tk-mouse .tk-key[data-out]:hover { --edge: var(--color-border-default); }
-.tk-mouse-note { grid-column: 1 / -1; margin: 0.25rem 0 0; text-align: center; text-wrap: balance; font-size: var(--text-minor); color: var(--color-text-tertiary); }
+/* ── The mouse (plan teclado-mouse-desenho-2026-11-12.md): the drawing in the middle, each button's
+   face beside it. The drawing scales by its viewBox (240 × 300) and the faces keep their size: a
+   face's middle sits at a fixed % of the drawing's height, where its line ends, so the two always
+   meet. The narrowest page (the 520 px band) leaves 23rem: two 6.5rem columns and a 10rem drawing. ── */
+.tk-mouse { container-type: inline-size; padding: 1.5rem 1.25rem 0.75rem; }
+.tk-mboard {
+  --co: clamp(6.5rem, 24cqi, 10.5rem);
+  /* A face's height; its padding reads --u, as the keyboard's do. */
+  --u: 2.5rem;
+  display: grid;
+  grid-template-columns: var(--co) clamp(10rem, calc(100cqi - 2 * var(--co)), 20rem) var(--co);
+  justify-content: center;
+}
+.tk-mcol { position: relative; min-width: 0; }
+.tk-mco { position: absolute; left: 0; right: 0; height: var(--u); margin-top: calc(var(--u) / -2); }
+/* The labels are the keys' faces laid on the page itself, flat, their words in the primary ink: so
+   they keep 4.5:1 in all 37 themes (the secondary ink on the raised face fell to 2.8:1 in Material
+   Lighter, and the steps' colour ink is solved for 3:1). The function's colour stays in the 12 %
+   wash, the 40 % edge and the icon; the drawing's button carries it too. */
+.tk-mco .tk-key { inset: 0; --face: transparent; --edge-hot: var(--color-text-tertiary); border-bottom-width: 1px; }
+.tk-mco .tk-key:not([data-fn]) { --edge: var(--color-border-strong); }
+.tk-mco .tk-key[data-fn] { --face: linear-gradient(var(--fn-bg) 0 0), transparent; --edge-hot: color-mix(in srgb, var(--fn-fg) 65%, transparent); }
+.tk-mco .tk-key[data-fn='off'] { --face: transparent; --edge-hot: var(--color-text-tertiary); }
+.tk-mco .tk-key[data-held] { --face: linear-gradient(var(--color-action-if-bg) 0 0), transparent; --edge: color-mix(in srgb, var(--color-action-if-fg) 40%, transparent); }
+.tk-mco .tk-key:hover { --edge: var(--edge-hot); }
+/* Left and right stay out: no fill and the faintest hairline, not Off's dashes; the words in the
+   primary ink too (the old 50 % veil took them under 4.5:1), the function in the regular weight. */
+.tk-mco .tk-key[data-out],
+.tk-mco .tk-key[data-out]:hover { --edge: var(--color-border-subtle); cursor: default; }
+.tk-mco .tk-key[data-out] .tk-fn { font-weight: 400; }
+.tk-mco .tk-leg, .tk-mco .tk-fn { color: var(--color-text-primary); }
+/* The inherited marks (↧, ⇄) in the second ink: the third fell under 3:1 on the held key's teal wash. */
+.tk-mco .tk-inh { color: var(--color-text-secondary); }
+.tk-mco .tk-x { top: -0.375rem; right: -0.375rem; }
+/* One line each: the tip and the panel have the rest. */
+.tk-mco .tk-fn { display: block; white-space: nowrap; text-overflow: ellipsis; }
+
+.tk-mdraw { display: block; width: 100%; height: auto; overflow: visible; }
+.tk-mdraw path, .tk-mdraw circle { vector-effect: non-scaling-stroke; }
+/* The body: the shell in the card's tone, outlined in the third ink (the borders are too faint to
+   draw a shape on some themes: 1.2:1), over a lip that gives it the keycap's thicker bottom edge. */
+.tk-m-lip { fill: color-mix(in srgb, var(--color-text-tertiary) 45%, transparent); }
+.tk-m-body { fill: var(--color-bg-card); }
+.tk-m-out { fill: var(--color-bg-card); stroke: var(--color-border-strong); stroke-width: 1; }
+.tk-m-well { fill: var(--color-bg-base); stroke: var(--color-border-strong); stroke-width: 1; }
+.tk-m-grip { fill: none; stroke: var(--color-border-strong); stroke-width: 1; stroke-linecap: round; }
+.tk-m-shell { fill: none; stroke: var(--color-text-tertiary); stroke-width: 1.25; }
+/* A button that takes a function is a key's face: its function's colour (12 % fill, 40 % edge), Off
+   dashed, untinted when inherited, the layer key held in the Layer's teal, the chosen one in the accent. */
+.tk-mp {
+  --face: var(--color-bg-elevated);
+  --tint: transparent;
+  --edge: var(--color-border-default);
+  --edge-hot: var(--color-border-strong);
+  --ink: var(--color-text-secondary);
+  cursor: pointer;
+}
+.tk-mp-face { fill: var(--face); }
+.tk-mp-edge { fill: var(--tint); stroke: var(--edge); stroke-width: 1; }
+.tk-mp-ink { fill: none; stroke: var(--ink); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.tk-mp[data-fn] { --tint: var(--fn-bg); --edge: color-mix(in srgb, var(--fn-fg) 40%, transparent); --edge-hot: color-mix(in srgb, var(--fn-fg) 65%, transparent); --ink: var(--fn-fg); }
+.tk-mp[data-fn='off'] { --face: transparent; --tint: transparent; --edge: var(--color-border-strong); --edge-hot: var(--color-text-tertiary); --ink: var(--color-text-tertiary); }
+.tk-mp[data-fn='off'] .tk-mp-edge { stroke-dasharray: 3 2; }
+.tk-mp[data-source] { --ink: var(--color-text-tertiary); }
+.tk-mp[data-held] { --tint: color-mix(in srgb, var(--color-action-if-fg) 22%, transparent); }
+.tk-mp:hover { --edge: var(--edge-hot); }
+.tk-mp[data-on] { --edge: var(--color-accent); }
+.tk-mp[data-on] .tk-mp-edge { stroke-width: 2; }
+/* The lines: a hairline from a dot on the button, in the third ink (3:1 or more on every theme);
+   under the pointer in the second, the chosen one's in the accent. */
+.tk-ml { --edge: var(--color-text-tertiary); --edge-hot: var(--color-text-secondary); pointer-events: none; }
+.tk-ml-line { fill: none; stroke: var(--edge); stroke-width: 1; }
+.tk-ml-dot { fill: var(--edge); }
+.tk-ml[data-on] { --edge: var(--color-accent); }
+/* The pointer on a face or on its button lights both, and the line between them: CSS only (:has). */
+.tk-mouse:has([data-part='MouseMiddle']:hover) :is(.tk-mp, .tk-ml)[data-part='MouseMiddle']:not([data-on]),
+.tk-mouse:has([data-part='MouseX1']:hover) :is(.tk-mp, .tk-ml)[data-part='MouseX1']:not([data-on]),
+.tk-mouse:has([data-part='MouseX2']:hover) :is(.tk-mp, .tk-ml)[data-part='MouseX2']:not([data-on]),
+.tk-mouse:has([data-part='WheelUp']:hover) :is(.tk-mp, .tk-ml)[data-part='WheelUp']:not([data-on]),
+.tk-mouse:has([data-part='WheelDown']:hover) :is(.tk-mp, .tk-ml)[data-part='WheelDown']:not([data-on]),
+.tk-mouse:has([data-part='MouseMiddle']:hover) .tk-mco[data-part='MouseMiddle'] > .tk-key,
+.tk-mouse:has([data-part='MouseX1']:hover) .tk-mco[data-part='MouseX1'] > .tk-key,
+.tk-mouse:has([data-part='MouseX2']:hover) .tk-mco[data-part='MouseX2'] > .tk-key,
+.tk-mouse:has([data-part='WheelUp']:hover) .tk-mco[data-part='WheelUp'] > .tk-key,
+.tk-mouse:has([data-part='WheelDown']:hover) .tk-mco[data-part='WheelDown'] > .tk-key { --edge: var(--edge-hot); }
+/* The note in an ink between the second and the primary: the second alone is 4.0:1 on Material Lighter. */
+.tk-mouse-note { max-width: 40rem; margin: 1rem auto 0; text-align: center; text-wrap: balance; font-size: var(--text-minor); color: color-mix(in srgb, var(--color-text-secondary) 60%, var(--color-text-primary)); }
 
 /* ── The legend and the notes under the drawing ── */
 .tk-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.375rem 1rem; padding: 0.25rem 1.25rem 0.75rem; font-size: var(--text-minor); color: var(--color-text-secondary); }
 .tk-legend-item { display: inline-flex; align-items: center; gap: 0.375rem; }
 .tk-swatch { width: 0.875rem; height: 0.875rem; box-sizing: border-box; border: 1px solid var(--edge); border-radius: 0.1875rem; background: var(--face); }
 .tk-swatch[data-fn] { --face: linear-gradient(var(--fn-bg) 0 0), var(--color-bg-elevated); --edge: color-mix(in srgb, var(--fn-fg) 40%, transparent); }
-.tk-swatch[data-fn='key'] { --fn-fg: var(--color-action-key-fg); --fn-bg: var(--color-action-key-bg); }
-.tk-swatch[data-fn='mouse'] { --fn-fg: var(--color-action-mouse-fg); --fn-bg: var(--color-action-mouse-bg); }
-.tk-swatch[data-fn='macro'] { --fn-fg: var(--color-action-runprofile-fg); --fn-bg: var(--color-action-runprofile-bg); }
-.tk-swatch[data-fn='text'] { --fn-fg: var(--color-action-sendtext-fg); --fn-bg: var(--color-action-sendtext-bg); }
-.tk-swatch[data-fn='layer'] { --fn-fg: var(--color-action-if-fg); --fn-bg: var(--color-action-if-bg); }
 .tk-swatch[data-fn='off'] { --face: transparent; --edge: var(--color-border-strong); border-style: dashed; }
 .tk-swatch[data-inh] { --face: var(--color-bg-elevated); --edge: var(--color-border-default); }
 .tk-legend-item svg { width: 0.75rem; height: 0.75rem; }
@@ -401,4 +477,8 @@
   .tk { grid-template-columns: 3.5rem minmax(0, 1fr); }
   .tk-panel { position: absolute; inset: 0 0 0 auto; width: min(22.5rem, 85%); box-shadow: var(--shadow-overlay); z-index: 4; }
   .tk-panel[data-empty] { display: none; }
+}
+/* 520–759: the mouse keeps a narrower gutter, so its two columns and the drawing fit (23rem). */
+@container shell (max-width: 47.49rem) {
+  .tk-mouse { padding-inline: 0.75rem; }
 }

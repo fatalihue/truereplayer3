@@ -3054,6 +3054,8 @@ export type Chaves = {
   'teclado.panel.foot': { game: string | number };
   'teclado.panel.emptyTitle': never;
   'teclado.panel.emptyText': never;
+  'teclado.panel.emptyTitleMouse': never;
+  'teclado.panel.emptyTextMouse': never;
   'teclado.panel.defaultFromBase': { key: string | number; rule: string | number };
   'teclado.panel.layerKeyHint': never;
   'teclado.panel.defaultFromGlobal': { key: string | number; rule: string | number; source: string | number };

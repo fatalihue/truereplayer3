@@ -165,6 +165,9 @@ export default {
     foot: 'Saved as you go. Applies with {{game}} in front.',
     emptyTitle: 'Choose a key',
     emptyText: 'Click a key in the drawing to give it a function. The arrows move across the keyboard.',
+    // A visão Mouse: um botão, no desenho ou pelo nome ao lado dele.
+    emptyTitleMouse: 'Choose a button',
+    emptyTextMouse: 'Click a button in the drawing, or its name, to give it a function. The arrows move between the buttons.',
     defaultFromBase: 'On the layer, {{key}} inherits from Base: {{rule}}. Choose another function to change it only on the layer.',
     layerKeyHint: 'This is the key that holds the layer: its function stays on Base.', // a tecla de camada, vista na Camada
     defaultFromGlobal: 'With no function here, {{key}} follows {{source}}: {{rule}}.',

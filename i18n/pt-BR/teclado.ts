@@ -157,6 +157,8 @@ export default {
     foot: 'Salva sozinho. Vale com o {{game}} na frente.',
     emptyTitle: 'Escolha uma tecla',
     emptyText: 'Clique numa tecla do desenho para dar uma função a ela. As setas andam pelo teclado.',
+    emptyTitleMouse: 'Escolha um botão',
+    emptyTextMouse: 'Clique num botão do desenho, ou no nome dele, para dar uma função a ele. As setas andam entre os botões.',
     defaultFromBase: 'Na Camada, {{key}} herda da Base: {{rule}}. Escolha outra função para mudar só na Camada.',
     layerKeyHint: 'Esta é a tecla que segura a Camada: a função dela fica na Base.',
     defaultFromGlobal: 'Sem função aqui, {{key}} segue {{source}}: {{rule}}.',
