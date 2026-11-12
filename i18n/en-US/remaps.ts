@@ -122,6 +122,9 @@ export default {
     another: 'Another key',         // opção do segmentado de 3 · orçamento: 95 px
     mouse: 'Mouse',                 // opção do segmentado de 3
     nothingHint: 'The key does nothing while the remap is on.',  // sob o segmentado, com Nothing escolhido
+    // Sob a tecla do remap, quando ela é um botão lateral do mouse: o gancho segura a mensagem do botão, nunca
+    // o Raw Input, por onde um jogo como o Roblox lê o mouse (medido em 12-11-2026).
+    sideRaw: 'A game that reads the mouse directly also gets the original side button.',
     oneApp: 'Only in one app',      // opção do segmentado de 2 · orçamento: 143 px
     mouseTarget: 'Mouse target',    // nome da lista dos destinos do mouse (leitor de tela)
     app: 'App',                     // rótulo e nome do campo do app · nome

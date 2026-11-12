@@ -143,8 +143,10 @@ namespace TrueReplayer.Services
         /// kept original still goes before its macro, and one SendInput per call (a game that counts
         /// messages, not deltas, gets as many as there were). Not from the hook thread: a mouse SendInput
         /// made there, after the mouse callback returned, waited ~300 ms for that very hook
-        /// (LowLevelHooksTimeout), with all the system's input behind it — a wheel 5 of 5, a click now and
-        /// then (measured on 12-11-2026, teclado-roda-raw-real.mjs).
+        /// (LowLevelHooksTimeout), with all the system's mouse input behind it — a wheel 5 of 5, a click now
+        /// and then (measured on 12-11-2026, teclado-roda-raw-real.mjs; the keyboard went through, the Key
+        /// Remaps' measure says, remap-lateral-espera-real.mjs). The Key Remaps send theirs the same way, from
+        /// their own thread (InputHookManager.RemapMouseLoop).
         /// </summary>
         internal static void Mouse(uint flags, uint data, IntPtr mark) => Post(new Command(CommandKind.Mouse, 0, null, null, flags, data, mark));
 

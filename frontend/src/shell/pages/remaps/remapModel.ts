@@ -20,6 +20,11 @@ export const MOUSE_TARGETS: { name: string; label: string }[] = (
 export const mouseTarget = (name: string) => MOUSE_TARGETS.find(m => m.name.toLowerCase() === name.toLowerCase());
 /** A side, in words: the mouse target's name, or the key as its keycap says it (PgDn, Esc, Caps). */
 export const describeKey = (name: string) => mouseTarget(name)?.label ?? compactKey(name);
+/**
+ * A side button as the key pressed. The hook swallows its click, but a game that reads the mouse directly
+ * (Raw Input) still gets it: a mouse hook never holds that back (the panel says so).
+ */
+export const isSideButton = (name: string) => /^xbutton[12]$/i.test(name);
 
 // "Chrome.EXE" and "chrome" are one scope, as RemapService.NormalizeProcess has it.
 export const normProcess = (p?: string) => {

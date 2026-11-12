@@ -17,9 +17,9 @@ import { anchorBelow, type MenuAnchor } from '../../menuAnchor';
 import { useApp } from '../../store';
 import { openPage, useUi } from '../../ui';
 import {
-  appName, describeKey, draftOf, draftProblem, emptyDraft, EXPORT_KIND, fromWarning, hotkeysOf, indexOf, MAX_REMAPS,
-  mergeImport, MOUSE_TARGETS, mouseTarget, normProcess, parseRemapImport, refOf, ruleArrow, ruleKey, ruleOf, ruleWords,
-  targetOf, toNote, type Draft,
+  appName, describeKey, draftOf, draftProblem, emptyDraft, EXPORT_KIND, fromWarning, hotkeysOf, indexOf, isSideButton,
+  MAX_REMAPS, mergeImport, MOUSE_TARGETS, mouseTarget, normProcess, parseRemapImport, refOf, ruleArrow, ruleKey, ruleOf,
+  ruleWords, targetOf, toNote, type Draft,
 } from './remapModel';
 import { closePanel, commitList, listNow, stepList, useList, useRemapsUi, type Filter } from './remapsStore';
 import '../../inspector/editors.css';
@@ -558,6 +558,7 @@ function Panel({ editing }: { editing: number | null }) {
           <CaptureButton side="from" value={draft.from} label={t('remaps.panel.captureFrom')} onKey={(key) => change({ from: key })} />
           {refused?.side === 'from' && <p className="rm-msg" data-tone="refused" role="alert">{refused.text}</p>}
           {warning && <p className="rm-msg" data-tone="warn">{warning}</p>}
+          {isSideButton(draft.from) && <p className="rm-hint">{t('remaps.panel.sideRaw')}</p>}
         </section>
         <section className="rm-sec" aria-label={t('remaps.fields.does')}>
           <span className="rm-label">{t('remaps.fields.does')}</span>

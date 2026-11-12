@@ -2493,6 +2493,7 @@ export type Chaves = {
   'remaps.panel.another': never;
   'remaps.panel.mouse': never;
   'remaps.panel.nothingHint': never;
+  'remaps.panel.sideRaw': never;
   'remaps.panel.oneApp': never;
   'remaps.panel.mouseTarget': never;
   'remaps.panel.app': never;

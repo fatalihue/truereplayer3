@@ -99,6 +99,8 @@ export default {
     another: 'Outra tecla',
     mouse: 'Mouse',
     nothingHint: 'A tecla não faz nada enquanto o remap está ativado.',
+    // "Direto", como o aviso do Teclado (teclado.mouseNote).
+    sideRaw: 'Um jogo que lê o mouse direto recebe também o botão lateral original.',
     oneApp: 'Só em um app',
     mouseTarget: 'Ação do mouse',
     app: 'App',
