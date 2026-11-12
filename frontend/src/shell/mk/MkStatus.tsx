@@ -26,8 +26,8 @@ export function MkSwitch() {
     : t('teclado.status.idle');
   const tip = !enabled ? t('teclado.status.offTip') : paused ? t('teclado.status.pausedTip')
     : locked ? t('teclado.status.lockedTip', { game: locked.name, app: APP_NAME }) : t('teclado.status.onTip');
-  // The last switch, and the longest ("Teclado ativado · nenhum jogo na frente"): in a narrow window its
-  // words give way with an ellipsis (shell.css, data-mk) instead of running under the extension's state.
+  // The last switch, and the one whose words give way first in a short bar, after the extension's state
+  // (shell.css: from the right, with an ellipsis). data-mk names it for the test scripts.
   return (
     <button
       type="button"

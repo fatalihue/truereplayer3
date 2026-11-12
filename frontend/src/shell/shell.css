@@ -302,7 +302,6 @@ html[data-animations='true'] .shell-state[data-done]::after { border-color: var(
 }
 .shell-statusbar-spacer { flex: 1; }
 .shell-saved[data-error] { color: var(--color-recording); }
-.shell-version { flex: none; }
 /* The master switches: one click from on to off, with the state in words and in a dot. */
 .sb-switches { display: flex; align-items: center; gap: 0.25rem; min-width: 0; }
 .sb-switch,
@@ -310,6 +309,8 @@ html[data-animations='true'] .shell-state[data-done]::after { border-color: var(
   display: flex;
   align-items: center;
   gap: 0.375rem;
+  /* The dot and its padding: the words can go (below), the state stays. */
+  min-width: 1.125rem;
   height: 1.25rem;
   padding: 0 0.375rem;
   border: 0;
@@ -333,11 +334,24 @@ html[data-animations='true'] .shell-state[data-done]::after { border-color: var(
 .sb-switch[data-paused] .sb-dot { background: var(--color-warning); }
 /* Teclado (branch teclado): the layer held, in the Layer's teal (the IF step's colour). */
 .sb-switch[data-layer] .sb-dot { background: var(--color-action-if-fg); }
-/* The switches keep their size; the Teclado's, the last and the longest, gives way first with an
-   ellipsis — without it the group ran under the extension's state below ~760 px in pt-BR. */
-.sb-switches > .sb-switch { flex: none; }
-.sb-switches > .sb-switch[data-mk] { flex: 0 1 auto; min-width: 0; }
-.sb-switch[data-mk] .sb-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* A short bar: the words give way from the right, each down to an ellipsis and then to nothing,
+   and every item keeps its dot — the version, the save, the extension's state, then the switches'
+   from the right (the Teclado's, the Key Remaps', the Automations'), the Shortcuts' last. Each step
+   shrinks a million times faster than the next, so it gives way whole before the next begins.
+   Only the Teclado's gave way before: the other switches kept their size and ran over the
+   extension's state — at the default zoom, up to ~560 px in pt-BR (~720 px with every state at its
+   longest) and ~500 px in en-US (~560 px) — and the save's words broke onto a second line. */
+.sb-text,
+.shell-saved,
+.shell-version { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shell-statusbar > .sb-switches { flex: 0 1 auto; }
+.shell-statusbar > .sb-extension { flex: 0 1e6 auto; }
+.shell-statusbar > .shell-saved { flex: 0 1e12 auto; }
+.shell-statusbar > .shell-version { flex: 0 1e18 auto; }
+.sb-switches > .sb-switch { flex: 0 1 auto; }
+.sb-switches > .sb-switch:nth-last-child(3) { flex-shrink: 1e6; }
+.sb-switches > .sb-switch:nth-last-child(2) { flex-shrink: 1e12; }
+.sb-switches > .sb-switch:nth-last-child(1) { flex-shrink: 1e18; }
 .sb-extension { color: var(--color-text-tertiary); }
 .sb-extension[data-state='connected'] .sb-dot { background: var(--color-replay); }
 .sb-extension[data-state='reload'] { color: var(--color-warning-ink); }

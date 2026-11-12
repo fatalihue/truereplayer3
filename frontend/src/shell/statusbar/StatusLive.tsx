@@ -38,7 +38,7 @@ export function Switches() {
         onClick={() => settings.change('profileKeyEnabled', !shortcuts)}
       >
         <span className="sb-dot" />
-        {byClicker ? t('statusbar.shortcutsPaused') : shortcuts ? t('statusbar.shortcutsOn') : t('statusbar.shortcutsOff')}
+        <span className="sb-text">{byClicker ? t('statusbar.shortcutsPaused') : shortcuts ? t('statusbar.shortcutsOn') : t('statusbar.shortcutsOff')}</span>
       </button>
       <button
         type="button"
@@ -48,7 +48,7 @@ export function Switches() {
         onClick={() => automations.setEnabled(!automationsOn)}
       >
         <span className="sb-dot" />
-        {automationsOn ? t('statusbar.automationsOn', { count: armed }) : t('statusbar.automationsOff')}
+        <span className="sb-text">{automationsOn ? t('statusbar.automationsOn', { count: armed }) : t('statusbar.automationsOff')}</span>
       </button>
       <button
         type="button"
@@ -59,7 +59,7 @@ export function Switches() {
         onClick={() => remaps.setEnabled(!remapsOn)}
       >
         <span className="sb-dot" />
-        {remapsPaused ? t('statusbar.remapsPaused') : remapsOn ? t('statusbar.remapsOn', { count: remapsActive }) : t('statusbar.remapsOff')}
+        <span className="sb-text">{remapsPaused ? t('statusbar.remapsPaused') : remapsOn ? t('statusbar.remapsOn', { count: remapsActive }) : t('statusbar.remapsOff')}</span>
       </button>
       {/* Teclado (branch teclado): the game in front and the layer, beside the Key Remaps. */}
       <MkSwitch />
@@ -91,7 +91,7 @@ export function Extension() {
       onClick={() => openSettings('browser')}
     >
       <span className="sb-dot" />
-      {text}
+      <span className="sb-text">{text}</span>
     </button>
   );
 }
