@@ -11,19 +11,21 @@ export default {
   shortcutsOffTip: 'Desativados: as hotkeys e as hotstrings das macros, os Key Remaps e as hotkeys de gravar, reproduzir e copiar ficam pausados — as de gravar e reproduzir só param o que já está rodando.',
   shortcutsPausedTip: 'Pausados enquanto a página do Clicker está aberta: as hotkeys e as hotstrings das macros esperam ela fechar.',
 
-  automationsOn: {
-    zero: 'Automações ativadas · 0 armadas',
-    one: 'Automações ativadas · {{count}} armada',
-    other: 'Automações ativadas · {{count}} armadas',
+  automationsOn: 'Automações ativadas',
+  automationsArmed: {
+    zero: '0 armadas',
+    one: '{{count}} armada',
+    other: '{{count}} armadas',
   },
   automationsOff: 'Automações desativadas',
   automationsOnTip: 'As automações armadas rodam suas macros quando o gatilho chega. Desativadas, todas esperam.',
   automationsOffTip: 'Desativadas: nenhuma automação roda, armada ou não.',
 
-  remapsOn: {
-    zero: 'Key Remaps ativados · 0 ativos',
-    one: 'Key Remaps ativados · {{count}} ativo',
-    other: 'Key Remaps ativados · {{count}} ativos',
+  remapsOn: 'Key Remaps ativados',
+  remapsActive: {
+    zero: '0 ativos',
+    one: '{{count}} ativo',
+    other: '{{count}} ativos',
   },
   remapsOff: 'Key Remaps desativados',
   remapsPaused: 'Key Remaps pausados',

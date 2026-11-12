@@ -1,6 +1,7 @@
 // A barra de status (shell/StatusBar.tsx e shell/statusbar/StatusLive.tsx): as três chaves gerais, a
 // extensão do navegador, o "salvo" e a versão. Cada estado de cada chave é uma frase inteira, porque
-// em português "ativados" concorda com o item.
+// em português "ativados" concorda com o item. A contagem ("2 armed") vem à parte, depois de um "·" que
+// a barra põe: numa barra estreita ela sai inteira antes de qualquer nome.
 export default {
   switches: 'Master switches',                   // nome do grupo das chaves, para o leitor de tela
 
@@ -13,14 +14,16 @@ export default {
   shortcutsOffTip: "Off: the macros' hotkeys and hotstrings, the Key Remaps, and the record, replay and copy hotkeys are paused — record and replay only stop what is already running.",
   shortcutsPausedTip: "Paused while the Clicker page is open: the macros' hotkeys and hotstrings wait for it to close.",
 
-  // count = as automações armadas.
-  automationsOn: { one: 'Automations On · {{count}} armed', other: 'Automations On · {{count}} armed' },
+  automationsOn: 'Automations On',
+  // count = as automações armadas; vem depois de "Automations On".
+  automationsArmed: { one: '{{count}} armed', other: '{{count}} armed' },
   automationsOff: 'Automations Off',
   automationsOnTip: 'The armed automations run their macros when their trigger comes. Off holds them all.',
   automationsOffTip: 'Off: no automation runs, armed or not.',
 
-  // count = os remaps ligados.
-  remapsOn: { one: 'Key Remaps On · {{count}} active', other: 'Key Remaps On · {{count}} active' },
+  remapsOn: 'Key Remaps On',
+  // count = os remaps ligados; vem depois de "Key Remaps On".
+  remapsActive: { one: '{{count}} active', other: '{{count}} active' },
   remapsOff: 'Key Remaps Off',
   remapsPaused: 'Key Remaps paused',             // ligados, com os atalhos desligados
   remapsOnTip: 'The key remaps are in effect. They also pause while recording.',
