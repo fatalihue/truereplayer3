@@ -212,7 +212,12 @@
 }
 .tk-key:hover { --edge: var(--color-border-strong); }
 .tk-key:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; z-index: 1; }
-.tk-leg { font-family: var(--font-mono); font-size: var(--text-caption); line-height: 1; color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Every word on a key (the legend, the label, the ↧ mark) is in the primary ink, 4.5:1 or more on all
+   37 themes (plan teclado-mouse-desenho-2026-11-12.md): the second ink fell to 2.8:1 on the raised face
+   (Material Lighter), the steps' colour ink is solved for 3:1, and the primary itself fell to 3.5:1 on
+   a function's wash over the raised face (Solarized Dark), so a key with a function lies on the page
+   (below). The function's colour stays in the wash, the edge and the icon. */
+.tk-leg { font-family: var(--font-mono); font-size: var(--text-caption); line-height: 1; color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* A key with its function's icon, or an inherited mark, in the corner: the legend stops short of it
    (F10, Del and "Backspa…" ran under the icon). */
 .tk-key[data-mark] .tk-leg { padding-right: 0.8125rem; }
@@ -226,7 +231,7 @@
   font-size: var(--text-caption);
   line-height: 1.15;
   font-weight: 600;
-  color: var(--ink);
+  color: var(--color-text-primary);
   overflow: hidden;
   overflow-wrap: normal;
 }
@@ -242,11 +247,13 @@
 @container (max-width: 50rem) { .tk-grid[data-numpad] .tk-fn { display: none; } }
 .tk-fn-ico { width: 0.6875rem; height: 0.6875rem; vertical-align: -0.0625rem; }
 .tk-ico { position: absolute; top: calc(var(--u) * 0.09); right: calc(var(--u) * 0.08); width: 0.6875rem; height: 0.6875rem; color: var(--ink); }
-.tk-inh { position: absolute; top: calc(var(--u) * 0.06); right: calc(var(--u) * 0.08); display: grid; place-items: center; font-size: var(--text-caption); line-height: 1; color: var(--color-text-tertiary); }
+.tk-inh { position: absolute; top: calc(var(--u) * 0.06); right: calc(var(--u) * 0.08); display: grid; place-items: center; font-size: var(--text-caption); line-height: 1; color: var(--color-text-primary); }
 .tk-inh svg { width: 0.6875rem; height: 0.6875rem; }
 
-/* The functions, in the colour of TR3's step that does the same: tinted at 12% with the border at 40% (the "on" rule). */
-.tk-key[data-fn] { --face: linear-gradient(var(--fn-bg) 0 0), var(--color-bg-elevated); --edge: color-mix(in srgb, var(--fn-fg) 40%, transparent); --ink: var(--fn-fg); }
+/* The functions, in the colour of TR3's step that does the same: tinted at 12% with the border at 40%
+   (the "on" rule), the wash over the page (the drawing's background) rather than over the raised face,
+   so the primary ink on it keeps 5.25:1 or more. */
+.tk-key[data-fn] { --face: linear-gradient(var(--fn-bg) 0 0), var(--color-bg-base); --edge: color-mix(in srgb, var(--fn-fg) 40%, transparent); --ink: var(--fn-fg); }
 .tk-key[data-fn]:hover { --edge: color-mix(in srgb, var(--fn-fg) 65%, transparent); }
 /* The colours, one place for the keys, the legend's swatches and the mouse drawing's buttons. */
 :is(.tk-key, .tk-swatch, .tk-mp)[data-fn='key'] { --fn-fg: var(--color-action-key-fg); --fn-bg: var(--color-action-key-bg); }
@@ -257,12 +264,12 @@
 /* Off: the shape changes (dashed), not only the colour. */
 .tk-key[data-fn='off'] { --face: transparent; --edge: var(--color-border-strong); --ink: var(--color-text-tertiary); border-style: dashed; border-bottom-width: 1px; }
 .tk-key[data-fn='off']:hover { --edge: var(--color-text-tertiary); }
-/* Inherited (from the base, on the layer; or from the general remaps): no tint, the label in the third ink and the mark in the corner. */
+/* Inherited (from the base, on the layer; or from the general remaps): no tint, the label in the regular weight and the mark in the corner. */
 .tk-key[data-source] { --face: var(--color-bg-elevated); --edge: var(--color-border-default); --ink: var(--color-text-tertiary); border-style: solid; border-bottom-width: 2px; }
 .tk-key[data-source] .tk-fn { font-weight: 400; }
 .tk-key[data-source]:hover { --edge: var(--color-border-strong); }
-/* The layer key, held, in the layer's view. */
-.tk-key[data-held] { border-bottom-width: 1px; --face: linear-gradient(color-mix(in srgb, var(--color-action-if-fg) 22%, transparent) 0 0), var(--color-bg-elevated); }
+/* The layer key, held, in the layer's view: the Layer's teal at the "on" rule, on the page as a function's. */
+.tk-key[data-held] { border-bottom-width: 1px; --face: linear-gradient(var(--color-action-if-bg) 0 0), var(--color-bg-base); --edge: color-mix(in srgb, var(--color-action-if-fg) 40%, transparent); }
 /* The chosen one: the ring in the accent. */
 .tk-key[aria-pressed='true'] { outline: 2px solid var(--color-accent); outline-offset: 1px; z-index: 1; }
 
@@ -329,24 +336,20 @@
 }
 .tk-mcol { position: relative; min-width: 0; }
 .tk-mco { position: absolute; left: 0; right: 0; height: var(--u); margin-top: calc(var(--u) / -2); }
-/* The labels are the keys' faces laid on the page itself, flat, their words in the primary ink: so
-   they keep 4.5:1 in all 37 themes (the secondary ink on the raised face fell to 2.8:1 in Material
-   Lighter, and the steps' colour ink is solved for 3:1). The function's colour stays in the 12 %
-   wash, the 40 % edge and the icon; the drawing's button carries it too. */
+/* The labels are the keys' faces, words in the primary ink and a function's wash on the page, as on
+   the keyboard; flat on the page with a key that has nothing too, a label beside a drawing rather
+   than a raised key. */
 .tk-mco .tk-key { inset: 0; --face: transparent; --edge-hot: var(--color-text-tertiary); border-bottom-width: 1px; }
 .tk-mco .tk-key:not([data-fn]) { --edge: var(--color-border-strong); }
-.tk-mco .tk-key[data-fn] { --face: linear-gradient(var(--fn-bg) 0 0), transparent; --edge-hot: color-mix(in srgb, var(--fn-fg) 65%, transparent); }
-.tk-mco .tk-key[data-fn='off'] { --face: transparent; --edge-hot: var(--color-text-tertiary); }
-.tk-mco .tk-key[data-held] { --face: linear-gradient(var(--color-action-if-bg) 0 0), transparent; --edge: color-mix(in srgb, var(--color-action-if-fg) 40%, transparent); }
+.tk-mco .tk-key[data-fn] { --edge-hot: color-mix(in srgb, var(--fn-fg) 65%, transparent); }
+.tk-mco .tk-key[data-fn='off'] { --edge-hot: var(--color-text-tertiary); }
+.tk-mco .tk-key[data-held] { --edge: color-mix(in srgb, var(--color-action-if-fg) 40%, transparent); }
 .tk-mco .tk-key:hover { --edge: var(--edge-hot); }
 /* Left and right stay out: no fill and the faintest hairline, not Off's dashes; the words in the
    primary ink too (the old 50 % veil took them under 4.5:1), the function in the regular weight. */
 .tk-mco .tk-key[data-out],
 .tk-mco .tk-key[data-out]:hover { --edge: var(--color-border-subtle); cursor: default; }
 .tk-mco .tk-key[data-out] .tk-fn { font-weight: 400; }
-.tk-mco .tk-leg, .tk-mco .tk-fn { color: var(--color-text-primary); }
-/* The inherited marks (↧, ⇄) in the second ink: the third fell under 3:1 on the held key's teal wash. */
-.tk-mco .tk-inh { color: var(--color-text-secondary); }
 .tk-mco .tk-x { top: -0.375rem; right: -0.375rem; }
 /* One line each: the tip and the panel have the rest. */
 .tk-mco .tk-fn { display: block; white-space: nowrap; text-overflow: ellipsis; }
@@ -406,7 +409,7 @@
 .tk-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.375rem 1rem; padding: 0.25rem 1.25rem 0.75rem; font-size: var(--text-minor); color: var(--color-text-secondary); }
 .tk-legend-item { display: inline-flex; align-items: center; gap: 0.375rem; }
 .tk-swatch { width: 0.875rem; height: 0.875rem; box-sizing: border-box; border: 1px solid var(--edge); border-radius: 0.1875rem; background: var(--face); }
-.tk-swatch[data-fn] { --face: linear-gradient(var(--fn-bg) 0 0), var(--color-bg-elevated); --edge: color-mix(in srgb, var(--fn-fg) 40%, transparent); }
+.tk-swatch[data-fn] { --face: linear-gradient(var(--fn-bg) 0 0), var(--color-bg-base); --edge: color-mix(in srgb, var(--fn-fg) 40%, transparent); }
 .tk-swatch[data-fn='off'] { --face: transparent; --edge: var(--color-border-strong); border-style: dashed; }
 .tk-swatch[data-inh] { --face: var(--color-bg-elevated); --edge: var(--color-border-default); }
 .tk-legend-item svg { width: 0.75rem; height: 0.75rem; }
