@@ -34,10 +34,12 @@ namespace TrueReplayer.Services
             public int IntervalMs { get; init; }
         }
 
-        private enum CommandKind : byte { Press, Release, StopAll }
+        private enum CommandKind : byte { Press, Release, StopAll, Mouse }
 
         /// <param name="Done">Set once a StopAll has let go of everything (the app closing waits on it).</param>
-        private readonly record struct Command(CommandKind Kind, int Key, Binding? Binding, ManualResetEventSlim? Done = null);
+        /// <param name="Flags">Mouse: the MOUSEEVENTF flags, the mouseData and the dwExtraInfo mark it goes out with.</param>
+        private readonly record struct Command(CommandKind Kind, int Key, Binding? Binding, ManualResetEventSlim? Done = null,
+            uint Flags = 0, uint Data = 0, IntPtr Mark = default);
 
         private sealed class Run
         {
@@ -135,29 +137,22 @@ namespace TrueReplayer.Services
             _wake.Set();
         }
 
-        // Turns of the wheel the hook hands over, sent from this thread in order, one SendInput each (a game
-        // that counts messages, not deltas, gets as many as there were). A wheel SendInput made on the hook
-        // thread after the mouse callback returned waited ~300 ms for that very hook (LowLevelHooksTimeout),
-        // with all the system's input behind it (measured on 12-11-2026, teclado-roda-raw-real.mjs: 5 of 5;
-        // a click there went out at once, and so did a wheel from inside the keyboard callback).
-        private readonly record struct WheelTurn(int Delta, IntPtr Mark);
-        private static readonly ConcurrentQueue<WheelTurn> _wheel = new();
+        /// <summary>
+        /// A click, a button's release or a turn of the wheel a key's function sends (hook thread; no
+        /// allocation), sent from this thread in the order it came, with the macros' starts and stops: a
+        /// kept original still goes before its macro, and one SendInput per call (a game that counts
+        /// messages, not deltas, gets as many as there were). Not from the hook thread: a mouse SendInput
+        /// made there, after the mouse callback returned, waited ~300 ms for that very hook
+        /// (LowLevelHooksTimeout), with all the system's input behind it — a wheel 5 of 5, a click now and
+        /// then (measured on 12-11-2026, teclado-roda-raw-real.mjs).
+        /// </summary>
+        internal static void Mouse(uint flags, uint data, IntPtr mark) => Post(new Command(CommandKind.Mouse, 0, null, null, flags, data, mark));
 
         /// <summary>
         /// Takes back, from the programs that read the mouse through Raw Input, a turn of the wheel the hook
-        /// swallowed (see InputHookManager.TecladoWheelCancelMark). Hook thread; no allocation.
+        /// swallowed (see InputHookManager.TecladoWheelCancelMark).
         /// </summary>
-        internal static void TakeBackWheel(int delta) => QueueWheel(new WheelTurn(-delta, InputHookManager.TecladoWheelCancelMark));
-
-        /// <summary>A function's turn of the wheel, from the mouse callback (InputHookManager.TecladoWheelOut).</summary>
-        internal static void TurnWheel(int delta) => QueueWheel(new WheelTurn(delta, InputHookManager.TecladoMark));
-
-        private static void QueueWheel(WheelTurn turn)
-        {
-            EnsureStarted();
-            _wheel.Enqueue(turn);
-            _wake.Set();
-        }
+        internal static void TakeBackWheel(int delta) => Mouse(NativeMethods.MOUSEEVENTF_WHEEL, unchecked((uint)-delta), InputHookManager.TecladoWheelCancelMark);
 
         // ── The thread ──
 
@@ -167,7 +162,6 @@ namespace TrueReplayer.Services
             {
                 try
                 {
-                    while (_wheel.TryDequeue(out var w)) SendMouse(0, 0, unchecked((uint)w.Delta), NativeMethods.MOUSEEVENTF_WHEEL, w.Mark);
                     while (_commands.TryDequeue(out var c)) Apply(c);
 
                     long now = Stopwatch.GetTimestamp();
@@ -210,6 +204,9 @@ namespace TrueReplayer.Services
         {
             switch (c.Kind)
             {
+                case CommandKind.Mouse:
+                    SendMouse(0, 0, c.Data, c.Flags, c.Mark);
+                    return;
                 case CommandKind.StopAll:
                     StopEverything();
                     c.Done?.Set();

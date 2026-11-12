@@ -482,29 +482,20 @@ namespace TrueReplayer
         // and a side button remapped to the middle one (a Scimitar key sent as XButton1 by iCUE's
         // virtual mouse): every press and every release reached the app as the side button AND the
         // middle one, ~300 ms late, and even the physical release was read only after that wait.
-        // So a mouse injection from in here (a remap's, or the function of a mouse button the Teclado
-        // took) waits until the callback has returned — queued on this thread, in order with
-        // everything queued before it, which keeps a down ahead of its up (measured: the middle one
-        // alone, ~3 ms after the press). A keyboard injection from the mouse callback does not do it
-        // (XButton2 → F8 arrived alone, in ~3 ms, before and after), nor does anything from the
-        // keyboard callback (the Teclado's keys included): those still go out at once.
+        // So a remap's mouse injection from in here waits until the callback has returned — queued
+        // on this thread, in order with everything queued before it, which keeps a down ahead of
+        // its up (measured: the middle one alone, ~3 ms after the press). A keyboard injection from
+        // the mouse callback does not do it (XButton2 → F8 arrived alone, in ~3 ms, before and
+        // after), nor does the keyboard callback (Teclado branch): those still go out at once.
         [ThreadStatic] private static bool _inMouseHookCallback;
 
         private static void InjectRemappedMouse(uint flags, uint mouseData)
         {
-            // Also behind a click a mouse callback already queued when this one comes from outside it
-            // (the Teclado letting go of a button as the game leaves the front): an up that overtook its
-            // own down would leave the button held. The queued work sends directly, never queues again.
-            if (_inMouseHookCallback || !_hookWork.IsEmpty)
+            if (_inMouseHookCallback)
             {
-                AfterMouseHookCallback(() => SendRemappedMouse(flags, mouseData));
+                AfterMouseHookCallback(() => InjectRemappedMouse(flags, mouseData));
                 return;
             }
-            SendRemappedMouse(flags, mouseData);
-        }
-
-        private static void SendRemappedMouse(uint flags, uint mouseData)
-        {
             var input = new NativeMethods.INPUT
             {
                 type = NativeMethods.INPUT_MOUSE,
@@ -525,7 +516,7 @@ namespace TrueReplayer
         {
             _hookWork.Enqueue(work);
             if (!NativeMethods.PostThreadMessage(_hookThreadId, WM_HOOK_WORK, IntPtr.Zero, IntPtr.Zero))
-                TrueReplayer.Services.DiagnosticLog.Error($"Input hook thread refused a queued mouse injection (PostThreadMessage error {Marshal.GetLastWin32Error()}).");
+                TrueReplayer.Services.DiagnosticLog.Error($"Input hook thread refused a queued remap click (PostThreadMessage error {Marshal.GetLastWin32Error()}).");
         }
 
         /// <summary>
@@ -2493,8 +2484,10 @@ namespace TrueReplayer
                     // the macro — on replay it releases a button nobody pressed. Both conditions
                     // are required: the flag alone would be enough while delivery is synchronous,
                     // and the LLMHF_INJECTED bit alone would also swallow the third-party injected
-                    // clicks that recordings do capture today.
-                    bool ourInjection = _injectingRemapMouse && (hookStruct.flags & 0x1) != 0;
+                    // clicks that recordings do capture today. The Teclado's clicks are sent from its
+                    // executor's thread (TecladoRunner.Mouse) and carry its mark instead: a button the
+                    // game held as a click, let go as a recording starts, is not the user's either.
+                    bool ourInjection = (hookStruct.flags & 0x1) != 0 && (_injectingRemapMouse || hookStruct.dwExtraInfo == TecladoMark);
 
                     if (!skipRecording && !ourInjection)
                         OnMouseEvent?.Invoke(button, hookStruct.pt.x, hookStruct.pt.y, isDown, scrollDelta, Environment.TickCount64);
