@@ -2904,11 +2904,13 @@ export type Chaves = {
   'statusbar.shortcutsOnTip': never;
   'statusbar.shortcutsOffTip': never;
   'statusbar.shortcutsPausedTip': never;
-  'statusbar.automationsOn': { count: number };
+  'statusbar.automationsOn': never;
+  'statusbar.automationsArmed': { count: number };
   'statusbar.automationsOff': never;
   'statusbar.automationsOnTip': never;
   'statusbar.automationsOffTip': never;
-  'statusbar.remapsOn': { count: number };
+  'statusbar.remapsOn': never;
+  'statusbar.remapsActive': { count: number };
   'statusbar.remapsOff': never;
   'statusbar.remapsPaused': never;
   'statusbar.remapsOnTip': never;

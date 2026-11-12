@@ -334,10 +334,19 @@ html[data-animations='true'] .shell-state[data-done]::after { border-color: var(
 .sb-switch[data-paused] .sb-dot { background: var(--color-warning); }
 /* Teclado (branch teclado): the layer held, in the Layer's teal (the IF step's colour). */
 .sb-switch[data-layer] .sb-dot { background: var(--color-action-if-fg); }
-/* A short bar: the words give way from the right, each down to an ellipsis and then to nothing,
-   and every item keeps its dot — the version, the save, the extension's state, then the switches'
-   from the right (the Teclado's, the Key Remaps', the Automations'), the Shortcuts' last. Each step
-   shrinks a million times faster than the next, so it gives way whole before the next begins.
+/* The details StatusLive's fit takes out whole, before any word of a name or of the extension's state
+   is cut: the version and the save, then the counts after the switches' names ("· 2 armed"). A count
+   out of sight is still read out. */
+.sb-switch { position: relative; }
+.sb-count::before { content: '\00a0·\00a0'; }
+.sb-count[data-gone] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.shell-saved[data-gone],
+.shell-version[data-gone] { display: none; }
+/* A short bar, once the details are out: the words give way from the right, each down to an ellipsis
+   and then to nothing, and every item keeps its dot — the extension's state, then the switches' from
+   the right (the Teclado's, the Key Remaps', the Automations'), the Shortcuts' last. Each step shrinks
+   a million times faster than the next, so it gives way whole before the next begins. The version and
+   the save have the first places too, for the moment before the fit is in.
    Only the Teclado's gave way before: the other switches kept their size and ran over the
    extension's state — at the default zoom, up to ~560 px in pt-BR (~720 px with every state at its
    longest) and ~500 px in en-US (~560 px) — and the save's words broke onto a second line. */
