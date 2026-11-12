@@ -135,6 +135,30 @@ namespace TrueReplayer.Services
             _wake.Set();
         }
 
+        // Turns of the wheel the hook hands over, sent from this thread in order, one SendInput each (a game
+        // that counts messages, not deltas, gets as many as there were). A wheel SendInput made on the hook
+        // thread after the mouse callback returned waited ~300 ms for that very hook (LowLevelHooksTimeout),
+        // with all the system's input behind it (measured on 12-11-2026, teclado-roda-raw-real.mjs: 5 of 5;
+        // a click there went out at once, and so did a wheel from inside the keyboard callback).
+        private readonly record struct WheelTurn(int Delta, IntPtr Mark);
+        private static readonly ConcurrentQueue<WheelTurn> _wheel = new();
+
+        /// <summary>
+        /// Takes back, from the programs that read the mouse through Raw Input, a turn of the wheel the hook
+        /// swallowed (see InputHookManager.TecladoWheelCancelMark). Hook thread; no allocation.
+        /// </summary>
+        internal static void TakeBackWheel(int delta) => QueueWheel(new WheelTurn(-delta, InputHookManager.TecladoWheelCancelMark));
+
+        /// <summary>A function's turn of the wheel, from the mouse callback (InputHookManager.TecladoWheelOut).</summary>
+        internal static void TurnWheel(int delta) => QueueWheel(new WheelTurn(delta, InputHookManager.TecladoMark));
+
+        private static void QueueWheel(WheelTurn turn)
+        {
+            EnsureStarted();
+            _wheel.Enqueue(turn);
+            _wake.Set();
+        }
+
         // ── The thread ──
 
         private static void Loop()
@@ -143,6 +167,7 @@ namespace TrueReplayer.Services
             {
                 try
                 {
+                    while (_wheel.TryDequeue(out var w)) SendMouse(0, 0, unchecked((uint)w.Delta), NativeMethods.MOUSEEVENTF_WHEEL, w.Mark);
                     while (_commands.TryDequeue(out var c)) Apply(c);
 
                     long now = Stopwatch.GetTimestamp();
@@ -508,14 +533,14 @@ namespace TrueReplayer.Services
 
         private static void SendWheel(int delta) => SendMouse(0, 0, unchecked((uint)delta), NativeMethods.MOUSEEVENTF_WHEEL);
 
-        private static void SendMouse(int dx, int dy, uint data, uint flags)
+        private static void SendMouse(int dx, int dy, uint data, uint flags, IntPtr mark = default)
         {
             var input = new NativeMethods.INPUT
             {
                 type = NativeMethods.INPUT_MOUSE,
                 U = new NativeMethods.InputUnion
                 {
-                    mi = new NativeMethods.MOUSEINPUT { dx = dx, dy = dy, mouseData = data, dwFlags = flags, dwExtraInfo = InputHookManager.TecladoMark },
+                    mi = new NativeMethods.MOUSEINPUT { dx = dx, dy = dy, mouseData = data, dwFlags = flags, dwExtraInfo = mark == IntPtr.Zero ? InputHookManager.TecladoMark : mark },
                 },
             };
             NativeMethods.SendInput(1, ref input, NativeMethods.InputSize);

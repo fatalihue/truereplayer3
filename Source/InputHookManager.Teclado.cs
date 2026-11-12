@@ -24,9 +24,12 @@ namespace TrueReplayer
     /// The function chosen at the press is frozen in the key's slot, and its release uses the slot, never
     /// the table: a change of game or of layer mid-hold never leaves a key stuck. Everything is compiled
     /// off this thread and swapped whole; the callback only indexes arrays. Keys go out carrying
-    /// TecladoMark in dwExtraInfo; clicks and wheel notches go out through the Key Remaps' own
-    /// InjectRemappedMouse, which waits for the mouse callback to return when it is called from inside
-    /// it (3.0.4, _inMouseHookCallback). Both pass the hook's injected gate like every other injection.
+    /// TecladoMark in dwExtraInfo; clicks go out through the Key Remaps' own InjectRemappedMouse, which
+    /// waits for the mouse callback to return when it is called from inside it (3.0.4,
+    /// _inMouseHookCallback), and so do wheel notches from the keyboard callback; a notch from the mouse
+    /// callback, and the opposite turn that takes a swallowed one back from the Raw Input readers, go out
+    /// from the executor's thread (TecladoWheelOut, TecladoRunner). All pass the hook's injected gate like
+    /// every other injection.
     /// The mouse's middle and side buttons and its wheel are sources too (phase 7), with the same two
     /// entry points in MouseHookCallbackCore and the same slots, after the keys' in the tables.
     /// </summary>
@@ -112,14 +115,23 @@ namespace TrueReplayer
         internal static IReadOnlyDictionary<string, TecladoMacros.Report> TecladoMacroReports => _tecladoMacroReports;
         private static volatile IReadOnlyDictionary<string, TecladoMacros.Report> _tecladoMacroReports = new Dictionary<string, TecladoMacros.Report>();
 
+        private static bool TecladoAnyMouse(TecladoTables tables)
+        {
+            foreach (var game in tables.Games.Values)
+                for (int i = TecladoKeys.MouseBase; i < TecladoKeys.TableSize; i++)
+                    if (game.Base[i] != null || game.Layer[i] != null) return true;
+            return false;
+        }
+
         /// <summary>Compiles and publishes the config (TecladoService, after every load and save, and when the library changes).</summary>
         internal static void PublishTeclado(TecladoService.Config config)
         {
             var reports = new Dictionary<string, TecladoMacros.Report>(StringComparer.Ordinal);
             var tables = CompileTeclado(config, reports, out bool anyMacro);
             _tecladoMacroReports = reports;
-            // The executor's thread is started here, off the hook thread, before a key can need it.
-            if (anyMacro) TecladoRunner.EnsureStarted();
+            // The executor's thread is started here, off the hook thread, before a key can need it: a macro's,
+            // or a mouse button's (it sends the wheel turns the mouse callback hands over, TecladoRunner).
+            if (anyMacro || TecladoAnyMouse(tables)) TecladoRunner.EnsureStarted();
             _tecladoTables = tables;
             if (_hookThreadId != 0) PostToHookThread(TecladoRecompute);
         }
@@ -412,11 +424,16 @@ namespace TrueReplayer
                 _tecladoWheel += delta;
                 int whole = Math.Abs(_tecladoWheel) / WheelNotch;
                 _tecladoWheel -= Math.Sign(_tecladoWheel) * whole * WheelNotch;
+                // A macro that keeps the original lets this turn go on as it came, to the message readers and
+                // the raw readers alike: re-sent, it would reach the raw readers twice.
+                bool keep = action.Kind == "macro" && action.KeepOriginal;
                 for (int i = 0; i < Math.Min(whole, MaxNotchesPerMessage); i++)
                 {
-                    TecladoDown(action, index);
-                    TecladoUp(action, index);
+                    if (keep) { TecladoRunner.Press(index, action.Binding!); TecladoRunner.Release(index); }
+                    else { TecladoDown(action, index); TecladoUp(action, index); }
                 }
+                if (keep) return false;
+                TecladoRunner.TakeBackWheel(delta);
                 return true;
             }
 
@@ -431,9 +448,31 @@ namespace TrueReplayer
 
         private static int TecladoXIndex(uint mouseData) => XButtonName(mouseData) == "XButton2" ? TecladoKeys.MouseX2 : TecladoKeys.MouseX1;
 
-        // A click or a notch a button's function sends from inside the mouse callback needs nothing of
-        // its own: InjectRemappedMouse queues it behind the callback (_inMouseHookCallback,
-        // AfterMouseHookCallback), in order with the rest of that queue.
+        // A game that reads the mouse through Raw Input (Roblox's camera zoom) gets a turn of the wheel even
+        // when this hook swallows its message: a mouse hook stops the message, never the raw input, while
+        // the keyboard hook stops both (measured on 12-11-2026, teclado-roda-raw-real.mjs; the owner's live
+        // test had the wheel Off and Roblox still zooming). So every turn the Teclado takes is taken back:
+        // the executor sends the opposite turn, marked "TEKC" (TecladoRunner.TakeBackWheel), the mouse
+        // callback swallows its message at the top, and only its raw input goes out, which brings what the
+        // raw readers got back to zero. From the executor's thread, not this one: a mouse SendInput made
+        // on the hook thread, even after the callback returned, sometimes waited ~300 ms for this very hook
+        // and went out without it (measured: the opposite turn's message then reached the window). A click
+        // cannot be taken back like that: a game that reads the mouse directly also gets the middle and
+        // side buttons (the page says so).
+        internal static readonly IntPtr TecladoWheelCancelMark = (IntPtr)0x54454B43;
+
+        // A function's turn of the wheel. From inside the keyboard callback it goes out at once (measured:
+        // ~1 ms); one the mouse callback would leave to its queue goes to the executor's thread, since a
+        // wheel sent from that queue, on this thread, waited ~300 ms for this very hook (TecladoRunner).
+        private static void TecladoWheelOut(int delta)
+        {
+            if (TecladoMustQueue) TecladoRunner.TurnWheel(delta);
+            else InjectRemappedMouse(NativeMethods.MOUSEEVENTF_WHEEL, unchecked((uint)delta));
+        }
+
+        // A click a button's function sends from inside the mouse callback needs nothing of its own:
+        // InjectRemappedMouse queues it behind the callback (_inMouseHookCallback, AfterMouseHookCallback),
+        // in order with the rest of that queue. A notch goes to the executor instead (TecladoWheelOut).
 
         // Physical only (LLMHF_INJECTED clear), or the test probe's mark in a test house: the Teclado's own
         // clicks, the remaps' and a macro's never come back in as a source.
@@ -451,7 +490,7 @@ namespace TrueReplayer
                     break;
                 case "mouse":
                 {
-                    if (a.Wheel != 0) { InjectRemappedMouse(NativeMethods.MOUSEEVENTF_WHEEL, unchecked((uint)a.Wheel)); break; }
+                    if (a.Wheel != 0) { TecladoWheelOut(a.Wheel); break; }
                     int b = TecladoButtonOf(a.MouseDown);
                     // The user's own finger already holds this button (left or right): not pressed again,
                     // and so not let go at the release either — the remaps' AppHoldsMouseButton.
@@ -490,7 +529,7 @@ namespace TrueReplayer
         private static void TecladoRepeat(TecladoAction a)
         {
             if (a.Kind == "key" && a.Keys.Length > 0) TecladoSend(a.Keys[^1], down: true);
-            else if (a.Kind == "mouse" && a.Wheel != 0) InjectRemappedMouse(NativeMethods.MOUSEEVENTF_WHEEL, unchecked((uint)a.Wheel));
+            else if (a.Kind == "mouse" && a.Wheel != 0) TecladoWheelOut(a.Wheel);
             // A held macro key repeats only the original it keeps; the macro is already running.
             else if (a.Kind == "macro" && a.KeepOriginal) TecladoSend(a.Original, down: true);
         }

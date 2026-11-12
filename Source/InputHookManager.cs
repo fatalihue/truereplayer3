@@ -2196,6 +2196,11 @@ namespace TrueReplayer
                 }
             }
 
+            // Teclado: the opposite turn that takes a wheel notch back from the games that read Raw Input
+            // (TecladoRunner.TakeBackWheel) is for them alone: its message stops here, before anything else sees it.
+            if ((int)wParam == NativeMethods.WM_MOUSEWHEEL && (hookStruct0.flags & 0x1) != 0 && hookStruct0.dwExtraInfo == TecladoWheelCancelMark)
+                return (IntPtr)1;
+
             // Teclado (branch teclado, phase 7): a middle or side button the game's keyboard took at its
             // press is let go by it, before every gate — the keyboard's release, and for the same reason;
             // and its release is swallowed even after its slot was let go (an orphan side-button up is a

@@ -101,7 +101,7 @@ export default {
     right: 'Right',
     alwaysNormal: 'Always normal',
     mouseOutTip: 'Stays out, so you never lose the click',
-    mouseNote: 'Left and right stay out, so you never lose the click. The wheel only takes one-touch functions.',
+    mouseNote: 'Left and right stay out, so you never lose the click. The wheel only takes one-touch functions. A game that reads the mouse directly also gets the original middle and side clicks.',
   },
   // Os botões do mouse que aceitam função.
   buttons: { MouseMiddle: 'Middle', MouseX1: 'Side 1', MouseX2: 'Side 2', WheelUp: 'Wheel ↑', WheelDown: 'Wheel ↓' },

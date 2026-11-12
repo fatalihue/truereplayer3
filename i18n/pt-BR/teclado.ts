@@ -97,7 +97,8 @@ export default {
     right: 'Direito',
     alwaysNormal: 'Sempre normal',
     mouseOutTip: 'Fica de fora, para você nunca perder o clique',
-    mouseNote: 'O esquerdo e o direito ficam de fora, para você nunca perder o clique. A roda só aceita funções de toque.',
+    // A roda é anulada para quem lê o mouse direto (o Raw Input); um clique não tem como ser desfeito.
+    mouseNote: 'O esquerdo e o direito ficam de fora, para você nunca perder o clique. A roda só aceita funções de toque. Um jogo que lê o mouse direto recebe também o clique original do meio e dos laterais.',
   },
   buttons: { MouseMiddle: 'Meio', MouseX1: 'Lateral 1', MouseX2: 'Lateral 2', WheelUp: 'Roda ↑', WheelDown: 'Roda ↓' },
   // Os nomes de tecla do desenho que o glossário de teclas não tem (os outros, como Ctrl e Esc, vêm de lá).
