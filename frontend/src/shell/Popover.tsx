@@ -52,15 +52,19 @@ export function Popover({ anchor, label, toggle, focusFirst, onClose, restoreFoc
     }, 0);
   }, [opener]);
 
-  // Placed and focused once, before the first paint: the panel does not move while it is open.
+  // Placed and focused once, before the first paint: the panel does not move while it is open. It may
+  // grow only as far as the window on its side, and scrolls past that, so what arrives after it opened
+  // never runs out of the window. Above its button it hangs from it: a change of height moves its top.
   useLayoutEffect(() => {
     const el = panelRef.current;
     if (!el || placed.current) return;
     placed.current = true;
-    const r = el.getBoundingClientRect();
-    const spot = placeAtAnchor(anchor, { width: r.width, height: r.height });
+    // Its layout size: a rect now would be the pop-in's first frame, 2 % smaller.
+    const spot = placeAtAnchor(anchor, { width: el.offsetWidth, height: el.offsetHeight });
     el.style.left = `${spot.left}px`;
-    el.style.top = `${spot.top}px`;
+    if (spot.bottom === undefined) el.style.top = `${spot.top}px`;
+    else { el.style.top = 'auto'; el.style.bottom = `${spot.bottom}px`; }
+    el.style.maxHeight = `${spot.maxHeight}px`;
     el.style.visibility = '';
     const first = focusFirst ? el.querySelector<HTMLElement>('input, button:not(:disabled)') : null;
     (first ?? el).focus({ preventScroll: true });

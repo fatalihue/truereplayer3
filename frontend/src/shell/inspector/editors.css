@@ -518,7 +518,9 @@ button.insp-image:focus-visible { outline: 2px solid var(--color-accent-solid); 
 .insp-swatch { width: 1.5rem; height: 1.5rem; flex: none; box-sizing: border-box; border: 1px solid var(--color-border-strong); border-radius: var(--radius-control); }
 .insp-swatch[data-none] { border-style: dashed; }
 
-/* The running processes. */
+/* The running processes. The list has its height from the start, while it still loads, and keeps it
+   while the filter narrows it: the panel is placed once, at the size it will have, and nothing in it
+   jumps. In a short window it is what shrinks (to 4.5rem at least); past that, the panel scrolls. */
 .insp-procs { display: flex; flex-direction: column; gap: 0.375rem; width: 20rem; max-width: calc(100vw - 2rem); padding: 0.5rem; box-sizing: border-box; }
 .insp-procs-filter {
   height: 2rem;
@@ -531,7 +533,7 @@ button.insp-image:focus-visible { outline: 2px solid var(--color-accent-solid); 
   outline: none;
 }
 .insp-procs-filter:focus { border-color: var(--color-accent-solid); }
-.insp-procs-list { display: flex; flex-direction: column; max-height: 16rem; overflow-y: auto; }
+.insp-procs-list { display: flex; flex-direction: column; height: 16rem; min-height: 4.5rem; overflow-y: auto; }
 .insp-procs-list button {
   display: flex;
   flex-direction: column;
@@ -549,7 +551,7 @@ button.insp-image:focus-visible { outline: 2px solid var(--color-accent-solid); 
 .insp-procs-list button:focus-visible { background: var(--color-bg-elevated); outline: none; }
 .insp-procs-name { font-family: var(--font-mono); }
 .insp-procs-title { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-minor); color: var(--color-text-tertiary); }
-.insp-procs-none { padding: 0.5rem; font-size: var(--text-minor); color: var(--color-text-tertiary); }
+.insp-procs-none { margin: auto; padding: 0.5rem; text-align: center; font-size: var(--text-minor); color: var(--color-text-tertiary); }
 
 /* The days of a Time check. */
 .insp-days { display: flex; gap: 0.25rem; }

@@ -146,10 +146,11 @@ function MenuList({ entries, label, place, focusFirst, onClose, onBack, panel }:
     const el = listRef.current;
     if (!el || placed.current) return;
     placed.current = true;
-    const r = el.getBoundingClientRect();
-    const spot = place({ width: r.width, height: r.height });
+    // Its layout size: a rect now would be the pop-in's first frame, 2 % smaller.
+    const spot = place({ width: el.offsetWidth, height: el.offsetHeight });
     el.style.left = `${spot.left}px`;
     el.style.top = `${spot.top}px`;
+    el.style.maxHeight = `${spot.maxHeight}px`;
     el.style.visibility = '';
     const target = focusFirst ? firstItem(el) : el;
     target?.focus({ preventScroll: true });
