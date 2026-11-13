@@ -83,7 +83,11 @@ const defaultSettings = {
   runEndSound: false,
   runAsAdmin: false,
   automationEnabled: true,
-  remaps: { enabled: true, entries: [] as { from: string; to: string; enabled: boolean; process?: string }[] },
+  // A stand-in until the engine's list replaces it whole (state:init, settings:loaded), which carries
+  // no placeholder. On a cold start the page is up before that (state:init waits for the library to
+  // load): a save of this empty list would be written over remaps.json and its backup
+  // (RemapService.Save), so nothing saves it (useRemaps).
+  remaps: { enabled: true, entries: [] as { from: string; to: string; enabled: boolean; process?: string }[], placeholder: true },
 };
 
 export const initialState: AppState = {

@@ -582,6 +582,12 @@ export interface SettingsState {
     loadedFromBackup?: boolean;
     loadFailureDetail?: string | null;
     pendingFile?: string;
+    /**
+     * The page's own mark on the empty list it starts with (appStateReducers), never sent by the
+     * engine: true until the engine's list arrives (state:init, or settings:loaded). Nothing is saved
+     * or shown as the user's list before that (useRemaps, RemapsPage).
+     */
+    placeholder?: boolean;
   };
 }
 

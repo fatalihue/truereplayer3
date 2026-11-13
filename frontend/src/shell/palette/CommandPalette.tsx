@@ -197,6 +197,8 @@ function useItems(): PaletteItem[] {
   // One automation per macro: New automation has a macro to give one to.
   const automationLeft = useApp(a => a.profiles.some(p => !a.automation.entries.some(e => e.profile === p.name)));
   const remapsOn = useApp(a => a.settings.remaps.enabled);
+  // Before the engine's list is in, the switch would say (and save) the page's empty stand-in.
+  const remapsLoaded = useApp(a => !a.settings.remaps.placeholder);
   const remapsFull = useApp(a => a.settings.remaps.entries.length >= MAX_REMAPS);
   const recordKey = useApp(a => a.settings.recordingHotkey);
   const replayKey = useApp(a => a.settings.replayHotkey);
@@ -329,7 +331,7 @@ function useItems(): PaletteItem[] {
     cmd('livevars', 'Live Variables', () => dock.toggle('vars'), { icon: Variable, detail: 'Dock', words: t('palette.words.liveVariables') }),
     cmd('shortcuts', shortcuts ? t('palette.cmd.shortcutsOff') : t('palette.cmd.shortcutsOn'), () => settings.change('profileKeyEnabled', !shortcuts), { icon: Keyboard, words: t('palette.words.shortcuts') }),
     cmd('automations', automationsOn ? t('palette.cmd.automationsOff') : t('palette.cmd.automationsOn'), () => automations.setEnabled(!automationsOn), { icon: Zap, words: t('palette.words.automations') }),
-    cmd('remaps', remapsOn ? t('palette.cmd.remapsOff') : t('palette.cmd.remapsOn'), () => remaps.setEnabled(!remapsOn), { icon: CornerDownRight, words: t('palette.words.remaps') }),
+    cmd('remaps', remapsOn ? t('palette.cmd.remapsOff') : t('palette.cmd.remapsOn'), () => remaps.setEnabled(!remapsOn), { icon: CornerDownRight, words: t('palette.words.remaps'), disabled: !remapsLoaded }),
     cmd('clicker-page', t('common.pages.clicker'), () => { if (!clicker) settings.change('useCursorClick', true); openPage('clicker'); }, { icon: MousePointerClick, words: t('palette.words.clicker') }),
     cmd('automations-page', t('common.pages.automations'), () => openPage('automations'), { icon: Zap, words: t('palette.words.automationsPage') }),
     cmd('automation-new', t('palette.cmd.newAutomation'), () => useUi.setState({ page: 'automations', automationAsk: { kind: 'new' }, libraryPeek: false }), { icon: Plus, detail: t('common.pages.automations'), words: t('palette.words.newAutomation'), disabled: !automationLeft, hint: t('palette.hint.automationPerMacro') }),

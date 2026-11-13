@@ -33,6 +33,7 @@ import './remaps.css';
  * the page's changes. Today's Settings › Keys › Key Remaps is the reference (components/RemapSection).
  */
 export default function RemapsPage() {
+  const loaded = useApp(a => !a.settings.remaps.placeholder);
   const list = useList();
   const open = useRemapsUi(s => s.open);
   const { save } = useRemaps();
@@ -43,13 +44,14 @@ export default function RemapsPage() {
 
   // A rule the panel held that is gone (deleted, an undo): the panel goes with it.
   useEffect(() => { if (open && !panel) closePanel(); }, [open, panel]);
-  // "New remap" asked from Ctrl+K, before the page was here or while it is.
+  // "New remap" asked from Ctrl+K, before the page was here or while it is — taken up once the
+  // engine's list is in, which the limit is counted on.
   const asked = useUi(s => s.remapNew);
   useEffect(() => {
-    if (!asked) return;
+    if (!asked || !loaded) return;
     useUi.setState({ remapNew: false });
     startNew();
-  }, [asked]);
+  }, [asked, loaded]);
 
   // Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z), while the page is on screen; a text field keeps its own.
   useEffect(() => {
@@ -68,6 +70,11 @@ export default function RemapsPage() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // On a cold start the page can open before the engine's list (state:init waits for the library):
+  // what it would show is the empty stand-in, and an edit there would save it over remaps.json and its
+  // backup. Nothing is drawn, nor editable, before the list is in — the Teclado's rule (9afe2ae).
+  if (!loaded) return <section className="shell-page rm" aria-label={t('common.pages.remaps')} aria-busy="true" />;
 
   return (
     <section className="shell-page rm" aria-label={t('common.pages.remaps')} data-panel={panel || undefined}>
