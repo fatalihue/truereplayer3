@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { ArrowRightLeft, Ban, Download, Ellipsis, Gamepad2, Keyboard, ListChecks, Lock, LockOpen, Mouse, Plus, X } from 'lucide-react';
+import { create } from 'zustand';
 import { APP_NAME } from '../../../appIdentity';
 import { useBridge } from '../../../bridge/BridgeContext';
 import type { RemapEntryDto, TecladoMacroReport } from '../../../bridge/messageTypes';
@@ -13,7 +14,7 @@ import { MacroPicker } from '../../inspector/MacroPicker';
 import { freeName, keycaps } from '../../library/model';
 import { stepName } from '../../list/stepTypes';
 import { Menu } from '../../Menu';
-import { anchorBelow, type MenuAnchor } from '../../menuAnchor';
+import { anchorBelow, anchorFromEvent, fromKeyboard, type MenuAnchor } from '../../menuAnchor';
 import {
   codesOfTr, currentKeys, FAMILIES, FNS, fnInfo, legendOf, MODES, modeLabel, MOUSE_CODES, type FnKind, type Game, type KeyCap, type KeyFn,
 } from '../../mk/mkModel';
@@ -191,6 +192,15 @@ function radioKeys(e: ReactKeyboardEvent<HTMLDivElement>) {
 
 // ── The games (as the library) ──
 
+/**
+ * A right-click on a game in the list (or Shift+F10, the Menu key) opens that game and its ⋯ menu at
+ * the cursor. The menu lives in the head, where Rename and Add .exe act on the open game; the list
+ * only asks for it here, and only the head reads the ask, so neither the list nor the keyboard draws
+ * again (rule 1).
+ */
+const useGameMenu = create<{ ask: { id: string; anchor: MenuAnchor; keyboard: boolean; seq: number } | null }>(() => ({ ask: null }));
+let gameMenuSeq = 0;
+
 function Games() {
   const games = useMk(s => s.games);
   const open = useMk(s => s.open);
@@ -205,7 +215,13 @@ function Games() {
   const row = (g: Game) => (
     <button key={g.id} type="button" className="tk-game" aria-current={open === g.id || undefined} data-off={!g.on || undefined}
       aria-label={folded ? g.name : undefined} data-tip={folded ? g.name : undefined} data-tip-pos="end"
-      onClick={() => openGame(g.id)}>
+      onClick={() => openGame(g.id)}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        // The open game keeps its chosen key: only another game is opened (openGame closes the key).
+        if (open !== g.id) openGame(g.id);
+        useGameMenu.setState({ ask: { id: g.id, anchor: anchorFromEvent(e), keyboard: fromKeyboard(e), seq: ++gameMenuSeq } });
+      }}>
       <span className="tk-avatar" aria-hidden="true">{initialOf(g.name)}</span>
       <span className="tk-game-text">
         <span className="tk-game-name">{g.name}</span>
@@ -305,6 +321,9 @@ function Head() {
   const [menu, setMenu] = useState<{ anchor: MenuAnchor; button: HTMLButtonElement } | null>(null);
   const [adding, setAdding] = useState<{ anchor: MenuAnchor; button: HTMLButtonElement } | null>(null);
   const [renaming, setRenaming] = useState(false);
+  // The list's right-click on a game: the same menu, at the cursor. Leaving the page forgets it.
+  const ask = useGameMenu(s => s.ask);
+  useEffect(() => () => useGameMenu.setState({ ask: null }), []);
   if (!game) return <header className="tk-head" />;
   const isLocked = locked === game.id;
   // "In front" only while the game's keys do change: the Teclado on and not paused, the game on.
@@ -327,6 +346,15 @@ function Head() {
       duration: 10000,
       action: { label: t('common.actions.undo'), onClick: undo },
     });
+  };
+  // The ⋯ under its button, or the right-click's at the cursor: the list opened this game and asked in
+  // the same event, so the ask names the game shown (a click away closes either, as any menu).
+  const shown: { anchor: MenuAnchor; button: HTMLButtonElement | null; keyboard: boolean; seq: number } | null = menu
+    ? { ...menu, keyboard: false, seq: 0 }
+    : ask && ask.id === game.id ? { anchor: ask.anchor, button: null, keyboard: ask.keyboard, seq: ask.seq } : null;
+  const closeMenu = () => {
+    setMenu(null);
+    if (useGameMenu.getState().ask) useGameMenu.setState({ ask: null });
   };
   return (
     <header className="tk-head">
@@ -374,14 +402,20 @@ function Head() {
           onClick={(e) => setMenu(menu ? null : { anchor: anchorBelow(e.currentTarget, 'end'), button: e.currentTarget })}>
           <Ellipsis aria-hidden="true" />
         </button>
-        {menu && (
-          <Menu anchor={menu.anchor} label={t('teclado.head.more')} toggle={menu.button} onClose={() => setMenu(null)}
+        {shown && (
+          <Menu key={shown.seq} anchor={shown.anchor} label={shown.button ? t('teclado.head.more') : game.name} toggle={shown.button}
+            focusFirst={shown.keyboard} onClose={closeMenu}
             entries={[
               { label: t('common.actions.rename'), onSelect: () => setRenaming(true) },
               {
                 label: t('teclado.add.addExe'),
                 // The popover gives the focus back to what had it when it opened: the ⋯, not the menu's item that goes.
-                onSelect: () => { moreRef.current?.focus({ preventScroll: true }); setAdding({ anchor: menu.anchor, button: menu.button }); },
+                // From the right-click it opens where the menu was, with the ⋯ as its toggle.
+                onSelect: () => {
+                  moreRef.current?.focus({ preventScroll: true });
+                  const button = shown.button ?? moreRef.current;
+                  if (button) setAdding({ anchor: shown.anchor, button });
+                },
               },
               isLocked
                 ? { label: t('teclado.head.unlock'), icon: LockOpen, onSelect: () => lockGame(null) }
