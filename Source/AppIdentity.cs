@@ -80,8 +80,7 @@ namespace TrueReplayer
         /// For the test pack it is <see cref="LocalRoot"/>; for the public one, %LOCALAPPDATA%\TrueReplayer.
         /// "Installed" (the Run value, the extension's host, the AUMID) means the exe is inside it.
         /// </summary>
-        public static string InstallRoot => _velopack.Value.Root ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), PackId);
+        public static string InstallRoot => _velopack.Value.Root ?? Path.Combine(Known(_localAppData, LocalAppDataName), PackId);
 
         /// <summary>The name on screen: window, tray, dialogs, shortcuts, the exe's description.</summary>
         public const string DisplayName = "TrueReplayer 3";
@@ -116,12 +115,64 @@ namespace TrueReplayer
         public const string IconFileOff = Id + "Off.ico";
         public const string IconFileAlert = Id + "Alert.ico";
 
-        // Environment.GetFolderPath is a shell lookup, and neither folder can move while the
-        // process is alive.
-        private static readonly Lazy<string> _documentsRoot = new(() => Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), Id));
-        private static readonly Lazy<string> _localRoot = new(() => Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Id));
+        // The two Windows folders everything here lives under, looked up once: a shell lookup, and
+        // neither can move while the process is alive. Never "" and never relative. GetFolderPath
+        // answers "" when the shell cannot find the folder where Windows keeps it — Documents deleted,
+        // redirected to a drive that is not there, a test house without one — and AppData\Local just
+        // the same: .NET 8 does not fall back on the LOCALAPPDATA variable (.claude/planos/fatias/
+        // pasta-sonda.mjs, 12-11-2026). Then
+        // Path.Combine("", Id) is the relative "TrueReplayer3", resolved against the working
+        // directory: beside a test kit's .cmd, where one wrote its data on 12-11-2026, or the app's own
+        // folder (the Start-menu shortcut starts it there), which Velopack replaces on every update.
+        // So a folder that is missing is made where Windows keeps it (Create, as Explorer makes it),
+        // and one that cannot be made now keeps that place too (DoNotVerify): DataFolderProblem stops
+        // the launch before anything is read or written there, and says why. Null only when Windows
+        // has no place for the folder at all.
+        private static readonly Lazy<string?> _documents = new(() => KnownFolder(Environment.SpecialFolder.MyDocuments));
+        private static readonly Lazy<string?> _localAppData = new(() => KnownFolder(Environment.SpecialFolder.LocalApplicationData));
+        private const string DocumentsName = "Documents";
+        private const string LocalAppDataName = @"AppData\Local";
+
+        private static string? KnownFolder(Environment.SpecialFolder folder)
+        {
+            foreach (var option in new[] { Environment.SpecialFolderOption.None, Environment.SpecialFolderOption.Create, Environment.SpecialFolderOption.DoNotVerify })
+            {
+                try
+                {
+                    string path = Environment.GetFolderPath(folder, option);
+                    if (Path.IsPathFullyQualified(path)) return path;
+                }
+                catch (Exception) { /* the next way of asking, then none */ }
+            }
+            return null;
+        }
+
+        // A folder read with no place known throws instead of turning relative. Nothing reaches here
+        // in a launch that went on: DataFolderProblem stops it first.
+        private static string Known(Lazy<string?> folder, string name) =>
+            folder.Value ?? throw new DirectoryNotFoundException($"Windows has no location for the {name} folder.");
+
+        private static readonly Lazy<string> _documentsRoot = new(() => Path.Combine(Known(_documents, DocumentsName), Id));
+        private static readonly Lazy<string> _localRoot = new(() => Path.Combine(Known(_localAppData, LocalAppDataName), Id));
+
+        /// <summary>
+        /// Null when this app's two folders can be used: <see cref="DocumentsRoot"/> and
+        /// <see cref="LocalRoot"/>, each one there or made now. Otherwise the first that cannot — its
+        /// path, or its place under the user's folder when Windows has none — and the error (null when
+        /// Windows has no place). Program asks before anything else is read or written, and a launch
+        /// that gets an answer stops there: what it would save goes nowhere else.
+        /// </summary>
+        public static (string Dir, Exception? Error)? DataFolderProblem()
+        {
+            foreach (var (folder, name) in new[] { (_documents, DocumentsName), (_localAppData, LocalAppDataName) })
+            {
+                if (folder.Value is not { } root) return (Path.Combine(name, Id), null);
+                string dir = Path.Combine(root, Id);
+                try { Directory.CreateDirectory(dir); }
+                catch (Exception ex) { return (dir, ex); }
+            }
+            return null;
+        }
 
         /// <summary>Documents\TrueReplayer3: the user's data — settings, remaps and the sidecars.</summary>
         public static string DocumentsRoot => _documentsRoot.Value;
@@ -162,10 +213,10 @@ namespace TrueReplayer
             /// </summary>
             public const string RunValueName = Id;
 
-            private static readonly Lazy<string> _documentsRoot = new(() => Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), Id));
-            private static readonly Lazy<string> _localRoot = new(() => Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Id));
+            // The same two folders as this app's, never relative either: a relative "TrueReplayer"
+            // would make the import read whatever folder of that name the working directory has.
+            private static readonly Lazy<string> _documentsRoot = new(() => Path.Combine(Known(_documents, DocumentsName), Id));
+            private static readonly Lazy<string> _localRoot = new(() => Path.Combine(Known(_localAppData, LocalAppDataName), Id));
 
             public static string DocumentsRoot => _documentsRoot.Value;
 

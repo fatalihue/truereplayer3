@@ -39,6 +39,12 @@ export default {
     title: '{{app}} — Dependência ausente',
   },
 
+  dataFolder: {
+    text: 'Não foi possível abrir o {{app}}, porque a pasta em que ele guarda os dados não pode ser usada:\n\n{{dir}}\n{{reason}}\n\nConfira se a pasta, ou a unidade em que ela fica (como o OneDrive ou uma unidade de rede), está disponível e abra o {{app}} de novo.',
+    title: '{{app}} — Pasta indisponível',
+    noLocation: 'O Windows não tem um local para esta pasta.',
+  },
+
   // O primeiro parágrafo é o mesmo do aviso da página quando o 2 tenta abrir (shell.coexist.why).
   coexist: {
     heading: 'O {{tr2}} está aberto',

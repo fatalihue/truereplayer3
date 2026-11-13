@@ -62,6 +62,18 @@ export default {
     title: '{{app}} — Missing Dependency',   // título da caixa
   },
 
+  // A abertura com uma das pastas dos dados inutilizável (Program.cs, AppIdentity.DataFolderProblem): ela
+  // não existe e não pôde ser criada agora (o OneDrive ou uma unidade de rede fora do ar, sem permissão),
+  // ou o Windows não tem um lugar para ela. O app não abre, e nada é salvo em outro lugar. dir = a pasta
+  // (C:\Users\…\Documents\TrueReplayer3; Documents\TrueReplayer3 quando o Windows não dá um caminho);
+  // reason = o motivo (S.Reason), ou o noLocation abaixo.
+  dataFolder: {
+    text: "{{app}} can't open, because the folder where it keeps its data can't be used:\n\n{{dir}}\n{{reason}}\n\nMake sure the folder, or the drive it's on (such as OneDrive or a network drive), is available, then open {{app}} again.",
+    title: '{{app}} — Folder Unavailable',   // título da caixa
+    // O motivo quando o Windows não tem um lugar para a pasta.
+    noLocation: 'Windows has no location for this folder.',
+  },
+
   // Aberto com o TrueReplayer 2 aberto (CoexistenceGuard): o diálogo espera o 2 fechar e segue
   // sozinho. Exit é o item do menu da bandeja do TrueReplayer 2, que só existe em inglês.
   coexist: {

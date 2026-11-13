@@ -25,6 +25,15 @@ namespace TrueReplayer
                 .OnBeforeUninstallFastCallback(_ => RemoveSystemEntries())
                 .Run();
 
+            // The two folders the data lives in, before anything reads or writes them: one that cannot
+            // be used ends the launch here, with the reason, so nothing is saved anywhere else
+            // (AppIdentity.DataFolderProblem).
+            if (AppIdentity.DataFolderProblem() is { } problem)
+            {
+                ShowDataFolderProblem(problem.Dir, problem.Error);
+                return;
+            }
+
             // A recovery relaunch: let the process that launched it finish dying first.
             WaitForPredecessor(args);
 
@@ -150,8 +159,24 @@ namespace TrueReplayer
         internal const string WaitForPidArg = "--wait-pid=";
 
         // A test run's carries its house (CoexistenceGuard.ForThisRun), so a test build never stands
-        // in the way of the owner's TrueReplayer 3.
-        private static readonly string InstanceMutexName = CoexistenceGuard.ForThisRun(AppIdentity.InstanceMutexName);
+        // in the way of the owner's TrueReplayer 3. Made on first use, not with the class: the house is
+        // named by the data folder, which Main checks first (a field initializer could run before it).
+        private static string? _instanceMutexName;
+        private static string InstanceMutexName => _instanceMutexName ??= CoexistenceGuard.ForThisRun(AppIdentity.InstanceMutexName);
+
+        /// <summary>
+        /// The launch's end when a data folder cannot be used (Main, AppIdentity.DataFolderProblem):
+        /// the folder and the reason, in the language S.Resolve picks with no choice stored (Windows', a
+        /// test house's English) — the interface's own is kept in interface.json, in the folder that is
+        /// not there.
+        /// </summary>
+        private static void ShowDataFolderProblem(string dir, Exception? error)
+        {
+            try { S.Resolve(null); }
+            catch { /* the default, English */ }
+            string reason = error != null ? S.Reason(error) : S.WindowDataFolderNoLocation;
+            NativeMessageBox(S.WindowDataFolderText(app: AppIdentity.DisplayName, dir: dir, reason: reason), S.WindowDataFolderTitle(app: AppIdentity.DisplayName));
+        }
 
         /// <summary>
         /// Blocks (bounded) until the process named by <see cref="WaitForPidArg"/> has exited. The

@@ -1656,6 +1656,12 @@ namespace TrueReplayer.Services
         public static string WindowMissingWebViewText(string app) => IsPt ? $"O {app} precisa do Microsoft Edge WebView2 Runtime.\n\nClique em OK para abrir a página de download.\nDepois de instalar, reinicie o {app}." : $"{app} requires Microsoft Edge WebView2 Runtime.\n\nClick OK to open the download page.\nAfter installing, restart {app}.";
         /// <summary>engine-window.missingWebView.title · {{app}} — Missing Dependency</summary>
         public static string WindowMissingWebViewTitle(string app) => IsPt ? $"{app} — Dependência ausente" : $"{app} — Missing Dependency";
+        /// <summary>engine-window.dataFolder.text · {{app}} can't open, because the folder where it keeps its data can't be used:  {{dir}} {{reason}}  Make sure the folder, or the drive it's on (such as OneDrive or a network drive), is available, then open {{app}} again.</summary>
+        public static string WindowDataFolderText(string app, string dir, string reason) => IsPt ? $"Não foi possível abrir o {app}, porque a pasta em que ele guarda os dados não pode ser usada:\n\n{dir}\n{reason}\n\nConfira se a pasta, ou a unidade em que ela fica (como o OneDrive ou uma unidade de rede), está disponível e abra o {app} de novo." : $"{app} can't open, because the folder where it keeps its data can't be used:\n\n{dir}\n{reason}\n\nMake sure the folder, or the drive it's on (such as OneDrive or a network drive), is available, then open {app} again.";
+        /// <summary>engine-window.dataFolder.title · {{app}} — Folder Unavailable</summary>
+        public static string WindowDataFolderTitle(string app) => IsPt ? $"{app} — Pasta indisponível" : $"{app} — Folder Unavailable";
+        /// <summary>engine-window.dataFolder.noLocation · Windows has no location for this folder.</summary>
+        public static string WindowDataFolderNoLocation => IsPt ? "O Windows não tem um local para esta pasta." : "Windows has no location for this folder.";
         /// <summary>engine-window.coexist.heading · {{tr2}} is open</summary>
         public static string WindowCoexistHeading(string tr2) => IsPt ? $"O {tr2} está aberto" : $"{tr2} is open";
         /// <summary>engine-window.coexist.text · Only one can run at a time: shortcuts, remapped keys, automations and the browser extension would clash.  Close {{tr2}} from its tray menu (Exit asks about anything unsaved), and {{app}} opens by itself.</summary>
