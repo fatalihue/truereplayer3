@@ -92,6 +92,9 @@ namespace TrueReplayer.Services
         private static DeckTip? _tip;
         private static DeckWindow? _tipFrom;
 
+        // ── Summoned (Fase 4): the deck the hotkey called, on screen now (the Deck thread's) ──
+        private static string? _summoned;
+
         // ── Stepping aside ──
         private static int _overlays;
         private static volatile bool _captureHidden, _capturesSeeDecks;
@@ -336,8 +339,9 @@ namespace TrueReplayer.Services
             // With the Deck turned off, no window at all: nothing of Direct2D is loaded for decks nobody sees.
             foreach (var deck in config.Enabled ? config.Decks : new List<DeckService.Deck>())
             {
-                // A summoned deck has no window at rest; it comes with the hotkey (Fase 4).
-                if (deck.Mode != "fixed") continue;
+                // A summoned deck has its window too, hidden until the hotkey calls it (Fase 4) — and none while it
+                // has no hotkey to be called with, or is off.
+                if (deck.Mode != "fixed" && (deck.Mode != "summon" || deck.Hotkey == null || !deck.On)) continue;
                 keep.Add(deck.Id);
                 if (!_windows.TryGetValue(deck.Id, out var window))
                 {
@@ -348,6 +352,8 @@ namespace TrueReplayer.Services
                 window.Update(deck, _exclude);
                 window.SetPassthrough(_passApplied);
             }
+            // The summoned deck left the config, or stopped being one: it closes.
+            if (_summoned != null && !keep.Contains(_summoned)) CloseSummon("config", fromHook: false);
             foreach (var id in _windows.Keys.Where(k => !keep.Contains(k)).ToList())
             {
                 var window = _windows[id];
@@ -367,8 +373,10 @@ namespace TrueReplayer.Services
             foreach (var deck in config.Decks)
             {
                 if (!_windows.TryGetValue(deck.Id, out var window)) continue;
-                bool show = config.Enabled && deck.On && !_allHidden && !_hidden.Contains(deck.Id) && AppsLetShow(deck)
-                    && _overlays == 0 && !_captureHidden;
+                // A summoned deck shows while it is called, whatever hides the fixed ones (the hotkey is a request).
+                bool show = (window.IsSummonDeck ? _summoned == deck.Id
+                        : !_allHidden && !_hidden.Contains(deck.Id) && AppsLetShow(deck))
+                    && config.Enabled && deck.On && _overlays == 0 && !_captureHidden;
                 bool was = window.Shown;
                 window.SetShown(show);
                 if (show && !was)
@@ -403,7 +411,10 @@ namespace TrueReplayer.Services
         private static void PublishHits()
         {
             var shown = _windows.Values.Where(w => w.Shown).ToList();
-            var hits = new InputHookManager.DeckHits(_owner, _passApplied, shown.Select(w => w.Hwnd).ToArray(), shown.Select(w => w.ScreenRect).ToArray());
+            // A deck that lets the mouse through (keys only) is not the hook's to route to, nor the recorder's to leave out.
+            var mouse = shown.Where(w => !w.MouseOff).ToList();
+            DeckNative.RECT? summoned = _summoned != null && _windows.TryGetValue(_summoned, out var s) && s.Shown ? s.ScreenRect : null;
+            var hits = new InputHookManager.DeckHits(_owner, _passApplied, mouse.Select(w => w.Hwnd).ToArray(), mouse.Select(w => w.ScreenRect).ToArray(), summoned);
             _hits = hits;
             _shownIds = shown.Select(w => w.Id).ToArray();
             InputHookManager.SetDeckHits(hits);
@@ -523,6 +534,68 @@ namespace TrueReplayer.Services
             if (_routedOver != null && _routedOver != over) _routedOver.RoutedLeave();
             _routedOver = over;
             over?.RoutedMove(x, y);
+        }
+
+        // ── Summoned (Fase 4) ──
+
+        /// <summary>A summon hotkey was pressed (the hook's thread: never waits). The deck shows where it is called.</summary>
+        public static void Summon(string deckId) => Post(() => DoSummon(deckId));
+
+        /// <summary>A key that picks on the summoned deck (the hook's thread): 1–9, 0, the arrows, Enter, Page Up, Page Down.</summary>
+        public static void SummonKey(int vk) => Post(() =>
+        {
+            if (_summoned != null && _windows.TryGetValue(_summoned, out var w)) w.SummonKey(vk);
+        });
+
+        /// <summary>The held summon hotkey was let go (the hook's thread): the button under the mouse runs, and the deck goes.</summary>
+        public static void SummonRelease() => Post(() =>
+        {
+            if (_summoned != null && _windows.TryGetValue(_summoned, out var w) && w.Shown) w.SummonRelease();
+            else CloseSummon("release", fromHook: true);
+        });
+
+        /// <summary>The hook closed the summoned deck (Esc, another key, the hotkey again, a click outside).</summary>
+        public static void SummonClose(string why) => Post(() => CloseSummon(why, fromHook: true));
+
+        private static void DoSummon(string deckId)
+        {
+            var deck = DeckService.Current.Decks.FirstOrDefault(d => d.Id == deckId);
+            if (deck == null || !_windows.TryGetValue(deckId, out var window) || !window.IsSummonDeck)
+            {
+                InputHookManager.DeckSummonEnded(deckId);
+                return;
+            }
+            if (_summoned != null && _summoned != deckId) CloseSummon("another", fromHook: false);
+            if (!DeckNative.GetCursorPos(out var cursor)) cursor = new DeckNative.POINT(0, 0);
+            // A game holding the cursor in an area (ClipCursor): the deck shows in the middle of it, by keys only — the
+            // cursor cannot be taken to the deck's buttons there.
+            bool held = DeckNative.GetClipCursor(out var clip)
+                && (clip.Left > DeckNative.GetSystemMetrics(DeckNative.SM_XVIRTUALSCREEN)
+                    || clip.Top > DeckNative.GetSystemMetrics(DeckNative.SM_YVIRTUALSCREEN)
+                    || clip.Width < DeckNative.GetSystemMetrics(DeckNative.SM_CXVIRTUALSCREEN)
+                    || clip.Height < DeckNative.GetSystemMetrics(DeckNative.SM_CYVIRTUALSCREEN));
+            var at = held ? new DeckNative.POINT(clip.Left + clip.Width / 2, clip.Top + clip.Height / 2)
+                : deck.Summon.At == "center" ? Centre(MonitorAt(cursor.X, cursor.Y).Work)
+                : cursor;
+            bool mouseOff = deck.Summon.KeysOnly || held;
+            _summoned = deckId;
+            window.PrepareSummon(at.X, at.Y, mouseOff);
+            window.SetPassthrough(_passApplied);
+            RefreshVisibility();
+            DiagnosticLog.Info($"Deck: '{deck.Name}' summoned at ({at.X},{at.Y}){(mouseOff ? ", keys only" : "")}{(held ? " (the cursor is held)" : "")}");
+        }
+
+        private static DeckNative.POINT Centre(DeckNative.RECT r) => new(r.Left + r.Width / 2, r.Top + r.Height / 2);
+
+        /// <summary>The summoned deck goes. fromHook: the hook already knows; otherwise it is told, and stops reading keys for it.</summary>
+        internal static void CloseSummon(string why, bool fromHook)
+        {
+            if (_summoned == null) return;
+            // Only that deck: the hook may already have another one open (a second hotkey right after the first).
+            if (!fromHook) InputHookManager.DeckSummonEnded(_summoned);
+            _summoned = null;
+            RefreshVisibility();
+            DiagnosticLog.Info($"Deck: the summoned deck closed ({why})");
         }
 
         // ── What the buttons show ──
@@ -764,7 +837,12 @@ namespace TrueReplayer.Services
         {
             try
             {
-                if (ReadForeground(hwnd)) RefreshVisibility();
+                if (ReadForeground(hwnd))
+                {
+                    // Another app came to the front: a summoned deck was for the one it was called over.
+                    if (_summoned != null) CloseSummon("front", fromHook: false);
+                    RefreshVisibility();
+                }
                 foreach (var w in _windows.Values) w.KeepOnTop();
             }
             catch (Exception ex) { DiagnosticLog.Warn($"Deck: reading the window in front failed: {ex.GetType().Name}: {ex.Message}"); }

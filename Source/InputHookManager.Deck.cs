@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using TrueReplayer.Helpers;
 using TrueReplayer.Interop;
+using TrueReplayer.Models;
 using TrueReplayer.Services;
 
 namespace TrueReplayer
@@ -32,7 +33,7 @@ namespace TrueReplayer
         /// <summary>The decks on screen as the hook sees them: published whole by the Deck's thread (DeckHost).</summary>
         internal sealed class DeckHits
         {
-            public static readonly DeckHits None = new(IntPtr.Zero, false, Array.Empty<IntPtr>(), Array.Empty<DeckNative.RECT>());
+            public static readonly DeckHits None = new(IntPtr.Zero, false, Array.Empty<IntPtr>(), Array.Empty<DeckNative.RECT>(), null);
 
             /// <summary>The Deck thread's hidden window, where the routed mouse goes.</summary>
             public readonly IntPtr Mailbox;
@@ -40,13 +41,16 @@ namespace TrueReplayer
             public readonly bool Pass;
             public readonly IntPtr[] Hwnds;
             public readonly DeckNative.RECT[] Rects;
+            /// <summary>The summoned deck on screen (Fase 4), mouse or not: a press outside it closes it.</summary>
+            public readonly DeckNative.RECT? Summoned;
 
-            public DeckHits(IntPtr mailbox, bool pass, IntPtr[] hwnds, DeckNative.RECT[] rects)
+            public DeckHits(IntPtr mailbox, bool pass, IntPtr[] hwnds, DeckNative.RECT[] rects, DeckNative.RECT? summoned)
             {
                 Mailbox = mailbox;
                 Pass = pass;
                 Hwnds = hwnds;
                 Rects = rects;
+                Summoned = summoned;
             }
 
             /// <summary>Is the point on a deck at all (no look at what covers it: the moves' cheap test).</summary>
@@ -229,6 +233,178 @@ namespace TrueReplayer
         }
 
         private static IntPtr DeckPoint(int x, int y) => (IntPtr)(((y & 0xFFFF) << 16) | (x & 0xFFFF));
+
+        // ── The summoned decks (Fase 4) ──
+        //
+        // A summon hotkey is answered here, in the keyboard callback, ahead of the Teclado and of every hotkey: the
+        // deck is "open" for the hook from that press on, so a 3 typed right after the hotkey is the deck's even before
+        // its window shows. While a deck is summoned, the keys that pick on it (1–9 and 0, the numpad's, the arrows,
+        // Enter, Page Up and Page Down, Esc) are swallowed and posted to the Deck's thread — the game in front reads
+        // none of them, Raw Input included (a key a low-level keyboard hook swallows never reaches it). Any other key
+        // closes the deck and goes on. A key whose press the deck took always has its release taken too, whatever
+        // happened since: the hotkey's own (whose release, held, picks), and a 3 whose press closed the deck.
+
+        /// <summary>A summon hotkey: the deck it calls, and whether it shows only while the hotkey is held.</summary>
+        internal sealed record DeckSummonKey(string DeckId, bool Hold);
+
+        private static volatile IReadOnlyDictionary<string, DeckSummonKey> _deckSummons = new Dictionary<string, DeckSummonKey>(StringComparer.Ordinal);
+
+        /// <summary>The summon hotkeys (DeckService, at every load and save), swapped whole.</summary>
+        internal static void SetDeckSummons(IReadOnlyDictionary<string, DeckSummonKey> map) => _deckSummons = map;
+
+        // The hook thread's own: the deck summoned (null: none), and the hotkey's key while it is held (its release
+        // picks, for a deck that shows while the hotkey is held).
+        private static string? _summonOpen;
+        private static int _summonVk;
+        private static bool _summonHold;
+        // A key whose press the deck took (by VK): its release is the deck's too. Counted, so the callback asks nothing
+        // when none is owed.
+        private static readonly bool[] _deckKeyOwed = new bool[256];
+        private static int _deckKeysOwed;
+        // The modifiers held by keys marked TEST (the test switch only): the combo of a test press is read with them.
+        private static readonly HashSet<int> _deckTestMods = new();
+
+        /// <summary>
+        /// The Deck's thread closed a summoned deck itself (a pick, the window in front changed, the config): the hook stops
+        /// reading keys for it — only for that deck, since another hotkey may have called the next one meanwhile.
+        /// </summary>
+        internal static void DeckSummonEnded(string deckId) => QueueOnHookThread(() =>
+        {
+            if (_summonOpen != deckId) return;
+            _summonOpen = null;
+            _summonHold = false;
+            _summonVk = 0;
+        });
+
+        private static void OweDeckKey(int vk)
+        {
+            if (_deckKeyOwed[vk]) return;
+            _deckKeyOwed[vk] = true;
+            _deckKeysOwed++;
+        }
+
+        private static void CloseDeckSummon(string why)
+        {
+            _summonOpen = null;
+            _summonHold = false;
+            _summonVk = 0;
+            DeckHost.SummonClose(why);
+        }
+
+        private static bool IsDeckModifier(int vk) =>
+            vk is 0x10 or 0x11 or 0x12 or (>= 0xA0 and <= 0xA5) or 0x5B or 0x5C or 0x14;
+
+        // 1–9 and 0, the numpad's, the arrows, Enter, Page Up and Page Down, Esc: the keys that pick on a summoned deck.
+        private static bool IsDeckPickKey(int vk) =>
+            vk is (>= 0x30 and <= 0x39) or (>= 0x60 and <= 0x69) or (>= 0x25 and <= 0x28) or 0x0D or 0x21 or 0x22 or 0x1B;
+
+        /// <summary>The combo of a press, for the summon table: the hook's own (its held keys), plus the TEST modifiers under the test switch.</summary>
+        private static string ComposeDeckKey(int vk)
+        {
+            string combo = BuildComposedKey(vk);
+            if (_deckTestMods.Count == 0) return combo;
+            // Under the test switch the modifiers came marked TEST, and the hook's set never saw them: added in the same order.
+            var parts = new List<string>();
+            if (_deckTestMods.Contains(0x5B) || _deckTestMods.Contains(0x5C) || combo.StartsWith("Win+", StringComparison.Ordinal)) parts.Add("Win");
+            if (_deckTestMods.Contains(0xA2) || _deckTestMods.Contains(0xA3) || _deckTestMods.Contains(0x11) || combo.Contains("Ctrl+")) parts.Add("Ctrl");
+            if (_deckTestMods.Contains(0xA4) || _deckTestMods.Contains(0xA5) || _deckTestMods.Contains(0x12) || combo.Contains("Alt+")) parts.Add("Alt");
+            if (_deckTestMods.Contains(0xA0) || _deckTestMods.Contains(0xA1) || _deckTestMods.Contains(0x10) || combo.Contains("Shift+")) parts.Add("Shift");
+            string? main = GetKeyName(vk);
+            if (!string.IsNullOrEmpty(main) && !parts.Contains(main)) parts.Add(main);
+            return string.Join("+", parts);
+        }
+
+        /// <summary>
+        /// The keyboard's entry for the summoned decks: the release of a key the deck took (before every gate, as the
+        /// Teclado's and the remaps'), a summon hotkey, and the keys that pick on a summoned deck. True to swallow.
+        /// </summary>
+        private static bool DeckKey(IntPtr wParam, IntPtr lParam)
+        {
+            int vk = Marshal.ReadInt32(lParam) & 0xFF;
+            uint flags = (uint)Marshal.ReadInt32(lParam, 8);
+            bool injected = (flags & LLKHF_INJECTED) != 0;
+            if (injected && !(DeckTestPhysical && Marshal.ReadIntPtr(lParam, 16) == DeckTestMark)) return false;
+            if (IsAltGrPhantomCtrl(vk, lParam)) return false;
+            bool down = wParam == (IntPtr)NativeMethods.WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN;
+            if (injected && IsDeckModifier(vk))
+            {
+                if (down) _deckTestMods.Add(vk);
+                else _deckTestMods.Remove(vk);
+            }
+
+            if (!down)
+            {
+                if (!_deckKeyOwed[vk]) return false;
+                _deckKeyOwed[vk] = false;
+                _deckKeysOwed--;
+                if (_summonHold && vk == _summonVk && _summonOpen != null)
+                {
+                    // The held hotkey let go: the button under the mouse (or the selected one) runs, and the deck goes.
+                    _summonOpen = null;
+                    _summonHold = false;
+                    _summonVk = 0;
+                    DeckHost.SummonRelease();
+                }
+                return true;
+            }
+
+            // A press of a key the deck already took: its auto-repeat, the deck's as well.
+            if (_deckKeyOwed[vk]) return true;
+            // The app's hotkey being typed into its capture box: no deck is called, nothing is read.
+            if (CaptureHotkeyMode) return false;
+
+            string? combo = null;
+            if (_summonOpen != null)
+            {
+                // A modifier alone changes nothing (Shift with a digit still picks the digit's button).
+                if (IsDeckModifier(vk)) return false;
+                if (IsDeckPickKey(vk))
+                {
+                    OweDeckKey(vk);
+                    if (vk == 0x1B) CloseDeckSummon("Esc");
+                    else DeckHost.SummonKey(vk);
+                    return true;
+                }
+                combo = ComposeDeckKey(vk);
+                // The same hotkey again closes the deck it called (a held one closes when it is let go).
+                if (_deckSummons.TryGetValue(combo, out var again) && again.DeckId == _summonOpen)
+                {
+                    OweDeckKey(vk);
+                    CloseDeckSummon("hotkey");
+                    return true;
+                }
+                // Any other key closes the deck and goes on to the app — or calls another deck, below.
+                CloseDeckSummon("key");
+            }
+
+            if (_deckSummons.Count == 0 || IsDeckModifier(vk)) return false;
+            combo ??= ComposeDeckKey(vk);
+            if (!_deckSummons.TryGetValue(combo, out var summon)) return false;
+            // The gates of the app's hotkeys: a dialog of the app's up, a recording's gate, the general pause.
+            if (SuppressAllHotkeys || IgnoreProfileHotkeys || !UserProfile.Current.ProfileKeyEnabled) return false;
+            OweDeckKey(vk);
+            _summonOpen = summon.DeckId;
+            _summonHold = summon.Hold;
+            _summonVk = vk;
+            if (ShouldCancelMenuFor(combo)) InjectMenuCancelKey();
+            DeckHost.Summon(summon.DeckId);
+            return true;
+        }
+
+        /// <summary>
+        /// A press of a mouse button with a deck summoned (any button, the user's): outside the deck — or anywhere, when it
+        /// lets the mouse through — it closes the deck, and the press goes on to where it was going.
+        /// </summary>
+        private static void DeckSummonClick(int msg, in NativeMethods.MSLLHOOKSTRUCT m)
+        {
+            if (_summonOpen == null) return;
+            if (msg is not (NativeMethods.WM_LBUTTONDOWN or NativeMethods.WM_RBUTTONDOWN or NativeMethods.WM_MBUTTONDOWN or NativeMethods.WM_XBUTTONDOWN)) return;
+            if (!DeckPhysical(m.flags, m.dwExtraInfo)) return;
+            var hits = _deckHits;
+            // Inside a deck that takes the mouse, the press is the deck's (a button, its header).
+            if (hits.Summoned is { } r && r.Contains(m.pt.x, m.pt.y) && hits.Touches(m.pt.x, m.pt.y)) return;
+            CloseDeckSummon("click");
+        }
 
         // ── The Deck's keys (DeckActions, on the Deck's worker thread) ──
 

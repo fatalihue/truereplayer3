@@ -55,6 +55,12 @@ namespace TrueReplayer.Services
         // (Routed*); a press it brought stays the window's until its release comes the same way.
         private bool _routed, _routedPress;
 
+        // A summoned deck (Fase 4): where it was called (its centre), whether it lets the mouse through ("keys only",
+        // or a game holding the cursor), and the button the arrows select (-1: none yet).
+        private DeckNative.POINT? _summonAt;
+        private bool _mouseOff;
+        private int _selected = -1;
+
         // The folder open in the deck's place (null: the pages).
         private string? _folder;
         // The labels cut short at the last frame, by slot: the tip says them whole.
@@ -83,6 +89,10 @@ namespace TrueReplayer.Services
         public DeckNative.RECT ScreenRect => new(_x, _y, _x + _w, _y + _h);
         public bool Shown => _shown;
         public bool RoutedPress => _routedPress;
+        /// <summary>A deck the hotkey calls (Fase 4): no window at rest, no place of its own, no dragging.</summary>
+        public bool IsSummonDeck => _deck.Mode == "summon";
+        /// <summary>It lets the mouse through: picked by keys only. The hook leaves it out of its picture.</summary>
+        public bool MouseOff => _mouseOff;
 
         /// <summary>Does a button of this deck run that macro (its ring and its bar follow the run)?</summary>
         public bool RunsMacro(string name) =>
@@ -98,8 +108,9 @@ namespace TrueReplayer.Services
             if (_page >= deck.Pages.Count) _page = 0;
             if (_folder != null && !deck.Folders.Any(f => f.Id == _folder)) _folder = null;
             // A switch that changed while the mouse is away takes effect now; with the mouse on the deck, when it leaves.
-            _collapsedNow = deck.Look.Collapse && (_collapsedNow || !_inside);
-            _edgeHiddenNow = deck.Look.EdgeHide && (_edgeHiddenNow || !_inside);
+            // A summoned deck never folds nor hides at an edge: it is there because it was called.
+            _collapsedNow = !IsSummonDeck && deck.Look.Collapse && (_collapsedNow || !_inside);
+            _edgeHiddenNow = !IsSummonDeck && deck.Look.EdgeHide && (_edgeHiddenNow || !_inside);
             if (!_inside && !_dragging && _animStart < 0) _alpha = _alphaTo = RestAlpha;
             DeckNative.SetWindowDisplayAffinity(Hwnd, excludeFromCapture ? DeckNative.WDA_EXCLUDEFROMCAPTURE : DeckNative.WDA_NONE);
             Layout();
@@ -121,7 +132,7 @@ namespace TrueReplayer.Services
             {
                 StopTimers();
                 _inside = _tracking = _dragArmed = _dragging = false;
-                _hover = _pressed = -1;
+                _hover = _pressed = _selected = -1;
                 // Back at its pages the next time it shows.
                 _folder = null;
                 DeckHost.HideTip(this);
@@ -158,9 +169,7 @@ namespace TrueReplayer.Services
         {
             if (on == _routed) return;
             _routed = on;
-            long ex = DeckNative.GetWindowLongPtrW(Hwnd, DeckNative.GWL_EXSTYLE).ToInt64();
-            ex = on ? ex | DeckNative.WS_EX_TRANSPARENT : ex & ~(long)DeckNative.WS_EX_TRANSPARENT;
-            DeckNative.SetWindowLongPtrW(Hwnd, DeckNative.GWL_EXSTYLE, (IntPtr)ex);
+            ApplyClickThrough();
             // A press the window had the usual way ends here (its WM_CAPTURECHANGED clears it).
             if (on && DeckNative.GetCapture() == Hwnd) DeckNative.ReleaseCapture();
             _tracking = false;
@@ -169,6 +178,105 @@ namespace TrueReplayer.Services
             // it as the mouse's (until the next move), and would say "left" at once — a press brought by the hook,
             // still waiting for its release, would lose its button.
             if (!on && _inside && _shown) DeckNative.SetTimer(Hwnd, TimerWatch, 100, IntPtr.Zero);
+        }
+
+        /// <summary>WS_EX_TRANSPARENT while the engine clicks (the passthrough) or while the deck lets the mouse through (keys only).</summary>
+        private void ApplyClickThrough()
+        {
+            bool through = _routed || _mouseOff;
+            long ex = DeckNative.GetWindowLongPtrW(Hwnd, DeckNative.GWL_EXSTYLE).ToInt64();
+            long next = through ? ex | DeckNative.WS_EX_TRANSPARENT : ex & ~(long)DeckNative.WS_EX_TRANSPARENT;
+            if (next != ex) DeckNative.SetWindowLongPtrW(Hwnd, DeckNative.GWL_EXSTYLE, (IntPtr)next);
+        }
+
+        // ── Summoned (Fase 4) ──
+
+        /// <summary>
+        /// The hotkey called this deck: centred on a point (the cursor, a monitor's centre, the middle of the area a game
+        /// holds the cursor in), at its first page, nothing selected yet. Keys only: it lets the mouse through. Shown by
+        /// DeckHost right after.
+        /// </summary>
+        public void PrepareSummon(int x, int y, bool mouseOff)
+        {
+            _summonAt = new DeckNative.POINT(x, y);
+            _mouseOff = mouseOff;
+            ApplyClickThrough();
+            _page = 0;
+            _folder = null;
+            _selected = -1;
+            _hover = _pressed = -1;
+            _collapsedNow = _edgeHiddenNow = false;
+            _animStart = -1;
+            _alpha = _alphaFrom = _alphaTo = 255;
+            Layout();
+            Render();
+        }
+
+        /// <summary>
+        /// A key the hook took while this deck is summoned: 1–9 and 0 (the numpad's too) press that button, the arrows
+        /// move the selection, Enter presses the selected one, Page Up and Page Down turn the page.
+        /// </summary>
+        public void SummonKey(int vk)
+        {
+            if (!_shown) return;
+            int slots = _deck.Grid.Cols * _deck.Grid.Rows;
+            int digit = vk is >= 0x30 and <= 0x39 ? vk - 0x30 : vk is >= 0x60 and <= 0x69 ? vk - 0x60 : -1;
+            if (digit >= 0)
+            {
+                int slot = digit == 0 ? 9 : digit - 1;
+                if (slot < slots)
+                {
+                    _selected = slot;
+                    Render();
+                    Press(slot);
+                }
+                return;
+            }
+            switch (vk)
+            {
+                case 0x25: case 0x26: case 0x27: case 0x28:
+                {
+                    int cols = _deck.Grid.Cols, rows = _deck.Grid.Rows;
+                    int at = _selected >= 0 ? _selected : _hover >= 0 ? _hover : -1;
+                    if (at < 0) at = 0;
+                    else
+                    {
+                        int c = at % cols, r = at / cols;
+                        if (vk == 0x25) c = (c + cols - 1) % cols;
+                        else if (vk == 0x27) c = (c + 1) % cols;
+                        else if (vk == 0x26) r = (r + rows - 1) % rows;
+                        else r = (r + 1) % rows;
+                        at = r * cols + c;
+                    }
+                    _selected = at;
+                    Render();
+                    return;
+                }
+                case 0x0D:
+                    if (_selected >= 0) Press(_selected);
+                    return;
+                case 0x21: case 0x22:
+                {
+                    int pages = _deck.Pages.Count;
+                    if (pages <= 1 || _folder != null) return;
+                    _page = (_page + (vk == 0x22 ? 1 : pages - 1)) % pages;
+                    _selected = -1;
+                    Render();
+                    return;
+                }
+            }
+        }
+
+        /// <summary>
+        /// The held hotkey was let go ("Hold the hotkey"): the button under the mouse runs (the arrows' one when the mouse
+        /// is not on a button, or with the mouse let through), and the deck goes.
+        /// </summary>
+        public void SummonRelease()
+        {
+            if (!_shown) return;
+            int slot = !_mouseOff && _hover >= 0 ? _hover : _selected;
+            if (slot >= 0) Press(slot, closing: true);
+            DeckHost.CloseSummon("release", fromHook: false);
         }
 
         /// <summary>After the passthrough: the mouse left without a move of the window's own — it is a leave.</summary>
@@ -195,12 +303,14 @@ namespace TrueReplayer.Services
         private float PillWDip => 2 + 10 + 16 + 6 + Math.Min(220f, DeckPainter.Measure(Name, _painter.Format("Segoe UI Variable Small", 11f, false, true))) + 12;
         private string Name => _deck.Name.Length > 0 ? _deck.Name : "Deck";
 
-        private byte RestAlpha => _deck.Look.RestOpacity <= 0 ? (byte)1 : (byte)Math.Round(255 * _deck.Look.RestOpacity / 100.0);
+        // A summoned deck is opaque: it shows because it was called.
+        private byte RestAlpha => IsSummonDeck ? (byte)255 : _deck.Look.RestOpacity <= 0 ? (byte)1 : (byte)Math.Round(255 * _deck.Look.RestOpacity / 100.0);
 
-        /// <summary>The monitor, the scale, the size and the place at rest (and past the edge), from the deck's Place.</summary>
+        /// <summary>The monitor, the scale, the size and the place at rest (and past the edge), from the deck's Place — or, summoned, centred where it was called.</summary>
         private void Layout()
         {
-            var monitor = DeckHost.MonitorFor(_deck.Place.Monitor);
+            bool summoned = IsSummonDeck && _summonAt is not null;
+            var monitor = summoned ? DeckHost.MonitorAt(_summonAt!.Value.X, _summonAt.Value.Y) : DeckHost.MonitorFor(_deck.Place.Monitor);
             _work = monitor.Work;
             _monitorRect = monitor.Bounds;
             _scale = monitor.Scale;
@@ -210,14 +320,23 @@ namespace TrueReplayer.Services
             _w = (int)Math.Ceiling(wDip * _scale);
             _h = (int)Math.Ceiling(hDip * _scale);
 
-            var (fx, fy) = AnchorFactors(_deck.Place.Anchor);
-            double ax = _work.Left + fx * _work.Width, ay = _work.Top + fy * _work.Height;
-            int x = (int)Math.Round(ax + _deck.Place.Dx * _scale - fx * _w);
-            int y = (int)Math.Round(ay + _deck.Place.Dy * _scale - fy * _h);
+            int x, y;
+            if (summoned)
+            {
+                x = _summonAt!.Value.X - _w / 2;
+                y = _summonAt.Value.Y - _h / 2;
+            }
+            else
+            {
+                var (fx, fy) = AnchorFactors(_deck.Place.Anchor);
+                double ax = _work.Left + fx * _work.Width, ay = _work.Top + fy * _work.Height;
+                x = (int)Math.Round(ax + _deck.Place.Dx * _scale - fx * _w);
+                y = (int)Math.Round(ay + _deck.Place.Dy * _scale - fy * _h);
+            }
             _homeX = Math.Clamp(x, _work.Left, Math.Max(_work.Left, _work.Right - _w));
             _homeY = Math.Clamp(y, _work.Top, Math.Max(_work.Top, _work.Bottom - _h));
 
-            _edge = _deck.Look.EdgeHide ? DeckHost.EdgeFor(_deck.Place.Anchor, monitor) : null;
+            _edge = !IsSummonDeck && _deck.Look.EdgeHide ? DeckHost.EdgeFor(_deck.Place.Anchor, monitor) : null;
             int strip = (int)Math.Ceiling(Strip * _scale);
             (_hideX, _hideY) = _edge switch
             {
@@ -330,18 +449,28 @@ namespace TrueReplayer.Services
             {
                 var (x, y) = TileOrigin(slot);
                 if (folder != null && slot == 0)
-                {
                     DrawBack(t, x, y, slot == _hover, slot == _pressed);
-                    continue;
-                }
-                if (!bySlot.TryGetValue(slot, out var tile))
+                else if (!bySlot.TryGetValue(slot, out var tile))
                 {
                     // An empty place: only its outline, so the grid reads as a grid.
                     _painter.StrokeRound(x, y, Tile, Tile, TileRadius, t.BorderSubtle);
-                    continue;
                 }
-                DrawTile(t, tile, slot, x, y, slot == _hover, slot == _pressed);
+                else DrawTile(t, tile, slot, x, y, slot == _hover, slot == _pressed);
+
+                if (!IsSummonDeck) continue;
+                // Summoned: the key that picks each of the first ten (1–9, then 0), and the arrows' selection, outside the face.
+                if (slot < 10) DrawKeyBadge(t, slot == 9 ? "0" : (slot + 1).ToString(), x, y);
+                if (slot == _selected) _painter.StrokeRound(x - 3, y - 3, Tile + 6, Tile + 6, TileRadius + 3, t.Text, 2f);
             }
+        }
+
+        /// <summary>The pick key in the button's top-left corner: the panel's colour, its border, the text's ink (the label's contrast).</summary>
+        private void DrawKeyBadge(DeckTheme t, string key, float x, float y)
+        {
+            float k = Tile / 64f, s = 15f * k, bx = x + 4 * k, by = y + 4 * k;
+            _painter.FillRound(bx, by, s, s, 4 * k, t.Surface);
+            _painter.StrokeRound(bx, by, s, s, 4 * k, t.BorderStrong);
+            _painter.Text(key, _painter.Format("Segoe UI Variable Small", Math.Max(9f, 10f * k), true, false), bx, by, s, s, t.Text);
         }
 
         private (float x, float y) TileOrigin(int slot)
@@ -748,8 +877,8 @@ namespace TrueReplayer.Services
             _pressedHeader = _collapsedNow || (_deck.Look.Header && dy < 1 + HeaderH);
             if (_pressedHeader)
             {
-                // The header (or the pill) moves the deck, unless it is locked.
-                if (!_deck.Look.Locked && DeckNative.GetCursorPos(out var cur))
+                // The header (or the pill) moves the deck, unless it is locked — or summoned: it has no place to keep.
+                if (!_deck.Look.Locked && !IsSummonDeck && DeckNative.GetCursorPos(out var cur))
                 {
                     _dragArmed = true;
                     _dragStart = cur;
@@ -791,12 +920,17 @@ namespace TrueReplayer.Services
             if (slot >= 0 && slot == pressed) Press(slot);
         }
 
-        /// <summary>A button pressed and let go on it: Back, a folder, or its action (DeckHost).</summary>
-        private void Press(int slot)
+        /// <summary>
+        /// A button pressed and let go on it (or picked by its key): Back, a folder, or its action (DeckHost). A summoned
+        /// deck goes after its action when it closes after a pick — Back and a folder keep it open. closing: the caller
+        /// closes it itself (the held hotkey let go).
+        /// </summary>
+        private void Press(int slot, bool closing = false)
         {
             if (_folder != null && slot == 0)
             {
                 _folder = null;
+                _selected = -1;
                 Render();
                 ArmTip();
                 return;
@@ -812,6 +946,7 @@ namespace TrueReplayer.Services
                 if (tile.Action.Folder != null && _deck.Folders.Any(f => f.Id == tile.Action.Folder))
                 {
                     _folder = tile.Action.Folder;
+                    _selected = -1;
                     DiagnosticLog.Info($"Deck: '{Id}' opened the folder '{_folder}'");
                     Render();
                     ArmTip();
@@ -819,6 +954,11 @@ namespace TrueReplayer.Services
                 return;
             }
             DeckHost.TileClick(Id, _folder ?? "page " + _page, slot, tile);
+            if (IsSummonDeck && !closing && _deck.Summon.CloseAfterPick)
+            {
+                DeckHost.CloseSummon("pick", fromHook: false);
+                return;
+            }
             ArmTip();
         }
 

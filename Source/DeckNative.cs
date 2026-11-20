@@ -138,6 +138,9 @@ namespace TrueReplayer.Services
         [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
         [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int attribute, out int value, int size);
         [DllImport("dwmapi.dll")] public static extern int DwmFlush();
+        [DllImport("user32.dll")] public static extern bool GetClipCursor(out RECT r);
+        [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
+        public const int SM_XVIRTUALSCREEN = 76, SM_YVIRTUALSCREEN = 77, SM_CXVIRTUALSCREEN = 78, SM_CYVIRTUALSCREEN = 79;
 
         [DllImport("gdi32.dll")] public static extern IntPtr CreateCompatibleDC(IntPtr dc);
         [DllImport("gdi32.dll")] public static extern bool DeleteDC(IntPtr dc);

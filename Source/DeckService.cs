@@ -774,22 +774,37 @@ namespace TrueReplayer.Services
 
         private static void Raise()
         {
-            // The hook's table of the decks' hotkeys, compiled here (off the hook thread) and swapped whole.
-            try { InputHookManager.SetDeckHotkeys(HotkeyTable(Current)); }
+            // The hook's tables of the decks' hotkeys, compiled here (off the hook thread) and swapped whole.
+            try
+            {
+                var (toggles, summons) = HotkeyTables(Current);
+                InputHookManager.SetDeckHotkeys(toggles);
+                InputHookManager.SetDeckSummons(summons);
+            }
             catch (Exception ex) { DiagnosticLog.Error("Deck: compiling the hotkeys failed", ex); }
             try { Changed?.Invoke(); }
             catch (Exception ex) { DiagnosticLog.Warn($"Deck: a Changed handler failed: {ex.GetType().Name}: {ex.Message}"); }
         }
 
-        /// <summary>Combo → command for the hook: "DECK_ALL" for the one that shows and hides every deck, "DECK::id" for a deck's own. The first to name a combo keeps it.</summary>
-        private static IReadOnlyDictionary<string, string> HotkeyTable(Config config)
+        /// <summary>
+        /// The hook's two tables. Combo → command for the dispatcher: "DECK_ALL" for the one that shows and hides every
+        /// deck, "DECK::id" for a fixed deck's own. Combo → the summoned deck it calls (the hook calls it itself, Fase 4).
+        /// The first to name a combo keeps it, across both.
+        /// </summary>
+        private static (IReadOnlyDictionary<string, string> Toggles, IReadOnlyDictionary<string, InputHookManager.DeckSummonKey> Summons) HotkeyTables(Config config)
         {
-            var map = new Dictionary<string, string>(StringComparer.Ordinal);
-            if (!config.Enabled) return map;
-            if (config.ToggleAllHotkey != null) map.TryAdd(config.ToggleAllHotkey, "DECK_ALL");
+            var toggles = new Dictionary<string, string>(StringComparer.Ordinal);
+            var summons = new Dictionary<string, InputHookManager.DeckSummonKey>(StringComparer.Ordinal);
+            if (!config.Enabled) return (toggles, summons);
+            var taken = new HashSet<string>(StringComparer.Ordinal);
+            if (config.ToggleAllHotkey != null && taken.Add(config.ToggleAllHotkey)) toggles[config.ToggleAllHotkey] = "DECK_ALL";
             foreach (var deck in config.Decks)
-                if (deck.On && deck.Mode == "fixed" && deck.Hotkey != null) map.TryAdd(deck.Hotkey, "DECK::" + deck.Id);
-            return map;
+            {
+                if (!deck.On || deck.Hotkey == null || !taken.Add(deck.Hotkey)) continue;
+                if (deck.Mode == "summon") summons[deck.Hotkey] = new InputHookManager.DeckSummonKey(deck.Id, deck.Summon.Hold);
+                else toggles[deck.Hotkey] = "DECK::" + deck.Id;
+            }
+            return (toggles, summons);
         }
 
         private static bool TryReadText(string path, out string text, out Exception? error, int attempts = ReadRetryAttempts)

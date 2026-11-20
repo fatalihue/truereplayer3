@@ -290,6 +290,8 @@ namespace TrueReplayer
             else if (key == p.RecordingHotkey || key == p.ReplayHotkey) return true;
             if (key == p.ProfileKeyToggleHotkey || key == p.ForegroundHotkey || key == p.ModeToggleHotkey) return true;
             if (key == p.CaptureSlotHotkey || key == p.CopyScreenTextHotkey) return true;
+            // Deck (branch deck): a deck's hotkey too — show/hide, or the one that calls it.
+            if (_deckHotkeys.ContainsKey(key) || _deckSummons.ContainsKey(key)) return true;
             return key == _pauseResumeHotkey;
         }
 
