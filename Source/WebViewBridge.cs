@@ -14962,6 +14962,24 @@ namespace TrueReplayer
                 if (string.Equals(read(k), hotkey, StringComparison.OrdinalIgnoreCase))
                     return HotkeyName(k);
             }
+            return DeckHotkeyConflict(hotkey);
+        }
+
+        /// <summary>
+        /// Deck (branch deck, Fase 5): whose deck hotkey a combo is, or null. A deck's hotkey has no window target and
+        /// no mode: the one that brings a summoned deck is answered before every hotkey, and a show/hide one before
+        /// the macros', so a hotkey of the app, of the Clicker or of a macro on the same key would never fire. The
+        /// Deck page refuses the other way round.
+        /// </summary>
+        private static string? DeckHotkeyConflict(string hotkey)
+        {
+            var decks = DeckService.Current;
+            if (string.Equals(decks.ToggleAllHotkey, hotkey, StringComparison.OrdinalIgnoreCase)) return S.BridgeAlertHotkeyByDeckAll;
+            foreach (var deck in decks.Decks)
+            {
+                if (string.Equals(deck.Hotkey, hotkey, StringComparison.OrdinalIgnoreCase))
+                    return S.BridgeAlertHotkeyByDeck(deck.Name);
+            }
             return null;
         }
 
@@ -15053,7 +15071,7 @@ namespace TrueReplayer
                     return S.BridgeAlertHotkeyByMacro(entry.Name);
             }
 
-            return null;
+            return DeckHotkeyConflict(hotkey);
         }
 
         // hotkeys:useSuggested — Settings › Hotkeys' "Use the suggested keys": each hotkey named in

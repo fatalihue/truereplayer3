@@ -422,6 +422,10 @@ namespace TrueReplayer.Services
         public static string BridgeAlertHotkeyByClickerStart => IsPt ? "hotkey “Iniciar/parar” do Clicker" : "the Clicker’s “Start and stop”";
         /// <summary>engine-bridge.alert.hotkey.by.clickerPause · the Clicker’s “Pause”</summary>
         public static string BridgeAlertHotkeyByClickerPause => IsPt ? "hotkey “Pausar” do Clicker" : "the Clicker’s “Pause”";
+        /// <summary>engine-bridge.alert.hotkey.by.deck · the deck "{{deck}}"</summary>
+        public static string BridgeAlertHotkeyByDeck(string deck) => IsPt ? $"hotkey do deck \"{deck}\"" : $"the deck \"{deck}\"";
+        /// <summary>engine-bridge.alert.hotkey.by.deckAll · “Show and hide every deck”</summary>
+        public static string BridgeAlertHotkeyByDeckAll => IsPt ? "hotkey “Mostrar e esconder todos os decks”" : "“Show and hide every deck”";
         /// <summary>engine-bridge.alert.window.fillOne · Please specify at least a process name or window title.</summary>
         public static string BridgeAlertWindowFillOne => IsPt ? "Informe pelo menos o nome de um processo ou o título de uma janela." : "Please specify at least a process name or window title.";
         /// <summary>engine-bridge.alert.window.regexInvalid · Invalid regex pattern.</summary>
@@ -1074,6 +1078,20 @@ namespace TrueReplayer.Services
         public static string DeckCommandShow => IsPt ? "Mostrar o TR3" : "Show TR3";
         /// <summary>engine-deck.back · Back</summary>
         public static string DeckBack => IsPt ? "Voltar" : "Back";
+        /// <summary>engine-deck.keyNames.MediaPlayPause · Play/pause</summary>
+        public static string DeckKeyNamesMediaPlayPause => IsPt ? "Tocar/pausar" : "Play/pause";
+        /// <summary>engine-deck.keyNames.MediaNextTrack · Next</summary>
+        public static string DeckKeyNamesMediaNextTrack => IsPt ? "Próxima" : "Next";
+        /// <summary>engine-deck.keyNames.MediaPrevTrack · Previous</summary>
+        public static string DeckKeyNamesMediaPrevTrack => IsPt ? "Anterior" : "Previous";
+        /// <summary>engine-deck.keyNames.MediaStop · Stop</summary>
+        public static string DeckKeyNamesMediaStop => IsPt ? "Parar" : "Stop";
+        /// <summary>engine-deck.keyNames.VolumeUp · Volume +</summary>
+        public static string DeckKeyNamesVolumeUp => IsPt ? "Volume +" : "Volume +";
+        /// <summary>engine-deck.keyNames.VolumeDown · Volume −</summary>
+        public static string DeckKeyNamesVolumeDown => IsPt ? "Volume −" : "Volume −";
+        /// <summary>engine-deck.keyNames.VolumeMute · Mute</summary>
+        public static string DeckKeyNamesVolumeMute => IsPt ? "Sem som" : "Mute";
         /// <summary>engine-deck.tip.missing · The macro {{name}} does not exist.</summary>
         public static string DeckTipMissing(string name) => IsPt ? $"A macro {name} não existe." : $"The macro {name} does not exist.";
         /// <summary>engine-deck.tip.clicker · TR3 is in Clicker mode: macros wait.</summary>
@@ -1638,6 +1656,10 @@ namespace TrueReplayer.Services
         public static string TrayPanelTecladoLocked(string game) => IsPt ? $"· {game} travado" : $"· locked to {game}";
         /// <summary>engine-tray.panel.tecladoUnlock · Unlock {{game}}</summary>
         public static string TrayPanelTecladoUnlock(string game) => IsPt ? $"Destravar o {game}" : $"Unlock {game}";
+        /// <summary>engine-tray.panel.deck · Deck</summary>
+        public static string TrayPanelDeck => IsPt ? "Deck" : "Deck";
+        /// <summary>engine-tray.panel.deckCount · · {{n}} deck</summary>
+        public static string TrayPanelDeckCount(string n, int count) => IsPt ? (count == 0 ? $"· {n} decks" : (count < 2 ? $"· {n} deck" : $"· {n} decks")) : (count == 1 ? $"· {n} deck" : $"· {n} decks");
         /// <summary>engine-tray.panel.armed · · {{n}} armed</summary>
         public static string TrayPanelArmed(string n, int count) => IsPt ? (count == 0 ? $"· {n} armadas" : (count < 2 ? $"· {n} armada" : $"· {n} armadas")) : $"· {n} armed";
         /// <summary>engine-tray.panel.active · · {{n}} active</summary>

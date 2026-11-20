@@ -738,6 +738,13 @@ namespace TrueReplayer
             };
             // "Lock to this game" lifted from the tray (phase 7): the page hears it from teclado:live.
             TrayPanel.OnUnlockTeclado = () => TecladoFront.Lock(null);
+            // Deck (branch deck, Fase 5): the Deck page's "Decks on"; the decks on screen follow DeckService.Changed.
+            TrayPanel.OnSetDeck = on =>
+            {
+                if (on == DeckService.Current.Enabled) return;
+                DeckService.SetEnabled(on);
+                bridge?.PushDeckState();
+            };
             TrayPanel.OnOpenClicker = () => TrayIconService.OnOpenClicker?.Invoke();
             TrayPanel.OnOpenSettings = () => TrayIconService.OnOpenSettings?.Invoke();
             TrayPanel.OnQuit = () => _ = TrayIconService.QuitAsync();
@@ -1985,7 +1992,8 @@ namespace TrueReplayer
                 UserProfile.Current.ProfileKeyEnabled, settings.AutomationEnabled, triggerService?.ConfiguredArmedCount ?? 0,
                 RemapService.Current.Enabled, RemapService.Current.Remaps.Count(r => r.Enabled), clicker,
                 bridge?.PendingNotices ?? Array.Empty<(string, DateTime)>(),
-                TecladoService.Current.Enabled, TecladoService.Current.Games.Count(g => g.On), TecladoFront.LockedName);
+                TecladoService.Current.Enabled, TecladoService.Current.Games.Count(g => g.On), TecladoFront.LockedName,
+                DeckService.Current.Enabled, DeckService.Current.Decks.Count(d => d.On));
         }
 
         /// <summary>

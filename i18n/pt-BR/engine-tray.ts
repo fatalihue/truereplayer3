@@ -74,6 +74,8 @@ export default {
     // O jogo travado na página Teclado ("Travar neste jogo"), e o link que o destrava daqui.
     tecladoLocked: '· {{game}} travado',
     tecladoUnlock: 'Destravar o {{game}}',
+    deck: 'Deck',
+    deckCount: { zero: '· {{n}} decks', one: '· {{n}} deck', other: '· {{n}} decks' },
     armed: { zero: '· {{n}} armadas', one: '· {{n}} armada', other: '· {{n}} armadas' },
     active: { zero: '· {{n}} ativos', one: '· {{n}} ativo', other: '· {{n}} ativos' },
     clicker: 'Clicker',

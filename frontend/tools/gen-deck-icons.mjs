@@ -15,8 +15,9 @@ const iconsDir = path.join(front, 'node_modules', 'lucide-react', 'dist', 'esm',
 const out = path.join(front, '..', 'Source', 'DeckIcons.g.cs');
 
 const NAMES = [
-  // An action's default (DeckRenderer.DefaultIcon).
+  // An action's default (DeckRenderer.DefaultIcon), and a media or volume key's (Fase 5).
   'play', 'keyboard', 'type', 'external-link', 'folder', 'plus',
+  'skip-forward', 'skip-back', 'volume-2', 'volume-1', 'volume-x',
   // A TR3 command's.
   'circle', 'square', 'mouse-pointer-click', 'arrow-right-left', 'zap', 'command', 'app-window',
   // The states and the window's own.

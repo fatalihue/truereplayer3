@@ -64,8 +64,11 @@ interface ShellUi {
 
 export type SettingsSection = 'hotkey' | 'hotstring' | 'target' | 'info';
 export type MacroTab = 'steps' | 'data';
-/** The rail's destinations ('teclado': TrueReplayerMK as a mode of TR3, branch teclado). */
-export type Page = 'macros' | 'clicker' | 'automations' | 'teclado' | 'remaps' | 'settings';
+/**
+ * The rail's destinations ('teclado': TrueReplayerMK as a mode of TR3, branch teclado; 'deck': the on-screen
+ * decks of buttons, branch deck).
+ */
+export type Page = 'macros' | 'clicker' | 'automations' | 'deck' | 'teclado' | 'remaps' | 'settings';
 export type SettingsCategory = 'general' | 'hotkeys' | 'appearance' | 'recording' | 'screen' | 'browser' | 'diagnostics';
 
 // After a change of language the engine loads the other build of the page back in Settings › General
@@ -110,6 +113,7 @@ export const PAGE_CHUNKS: Record<Exclude<Page, 'macros'>, () => Promise<{ defaul
   settings: () => import('./pages/settings/SettingsPage'),
   remaps: () => import('./pages/remaps/RemapsPage'),
   teclado: () => import('./pages/teclado/TecladoPage'),
+  deck: () => import('./pages/deck/DeckPage'),
 };
 export const loadSettingsPage = PAGE_CHUNKS.settings;
 

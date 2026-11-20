@@ -76,6 +76,9 @@ export default {
     // O jogo travado na página Teclado ("Travar neste jogo"), e o link que o destrava daqui.
     tecladoLocked: '· locked to {{game}}',
     tecladoUnlock: 'Unlock {{game}}',
+    // A chave do Deck (branch deck), e quantos decks ele tem ativados.
+    deck: 'Deck',
+    deckCount: { one: '· {{n}} deck', other: '· {{n}} decks' },
     armed: { one: '· {{n}} armed', other: '· {{n}} armed' },     // as automações armadas
     active: { one: '· {{n}} active', other: '· {{n}} active' },  // os remaps ativados
     clicker: 'Clicker',               // botão: abre a página do Clicker

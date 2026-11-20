@@ -629,11 +629,21 @@ namespace TrueReplayer.Services
             _painter.Svg(svg, Hex(ink), iconX, iconY, iconBox);
         }
 
-        /// <summary>The icon of a button that has none of its own: its action's.</summary>
+        /// <summary>The icon of a button that has none of its own: its action's (a media or volume key has its own).</summary>
         private static string DefaultIcon(DeckService.Action a) => a.Kind switch
         {
             "macro" => "play",
-            "keys" => "keyboard",
+            "keys" => a.Combo switch
+            {
+                "MediaPlayPause" => "play",
+                "MediaNextTrack" => "skip-forward",
+                "MediaPrevTrack" => "skip-back",
+                "MediaStop" => "square",
+                "VolumeUp" => "volume-2",
+                "VolumeDown" => "volume-1",
+                "VolumeMute" => "volume-x",
+                _ => "keyboard",
+            },
             "text" => "type",
             "open" => "external-link",
             "folder" => "folder",
@@ -659,7 +669,18 @@ namespace TrueReplayer.Services
             return a.Kind switch
             {
                 "macro" => a.Macro,
-                "keys" => a.Combo,
+                // A media or volume key by its name (the page writes the engine's, "MediaPlayPause"), the rest as they are.
+                "keys" => a.Combo switch
+                {
+                    "MediaPlayPause" => S.DeckKeyNamesMediaPlayPause,
+                    "MediaNextTrack" => S.DeckKeyNamesMediaNextTrack,
+                    "MediaPrevTrack" => S.DeckKeyNamesMediaPrevTrack,
+                    "MediaStop" => S.DeckKeyNamesMediaStop,
+                    "VolumeUp" => S.DeckKeyNamesVolumeUp,
+                    "VolumeDown" => S.DeckKeyNamesVolumeDown,
+                    "VolumeMute" => S.DeckKeyNamesVolumeMute,
+                    _ => a.Combo,
+                },
                 "text" => a.Text is { Length: > 0 } s ? s.Replace('\n', ' ').Replace('\r', ' ') : null,
                 "open" => a.Target is { } target ? OpenLabel(target) : null,
                 "folder" => _deck.Folders.FirstOrDefault(f => f.Id == a.Folder)?.Name,

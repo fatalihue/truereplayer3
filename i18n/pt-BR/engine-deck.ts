@@ -34,6 +34,16 @@ export default {
 
   back: 'Voltar',
 
+  keyNames: {
+    MediaPlayPause: 'Tocar/pausar',
+    MediaNextTrack: 'Próxima',
+    MediaPrevTrack: 'Anterior',
+    MediaStop: 'Parar',
+    VolumeUp: 'Volume +',
+    VolumeDown: 'Volume −',
+    VolumeMute: 'Sem som',
+  },
+
   tip: {
     missing: 'A macro {{name}} não existe.',
     clicker: 'O TR3 está no modo Clicker: as macros esperam.',

@@ -5,6 +5,7 @@ import { useUi } from '../../ui';
 import { AutomationSection } from './AutomationSection';
 import { macroFacts } from './facts';
 import { TecladoSection } from '../../mk/TecladoSection';
+import { DeckSection } from '../../deck/DeckSection';
 import { InfoSection } from './InfoSection';
 import { TriggerSection } from './TriggerSection';
 import { WindowTargetSection } from './WindowTargetSection';
@@ -45,6 +46,9 @@ export default function MacroSettings({ name: opened, locked }: { name: string; 
       <div className="insp-rule" />
       {/* Teclado (branch teclado): the game keys that use this macro. */}
       <TecladoSection name={name} />
+      <div className="insp-rule" />
+      {/* Deck (branch deck): the deck buttons that run this macro. */}
+      <DeckSection name={name} />
       <div className="insp-rule" />
       <InfoSection facts={facts} locked={locked} focus={want?.section === 'info' ? want : null} />
     </div>

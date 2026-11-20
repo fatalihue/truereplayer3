@@ -41,6 +41,18 @@ export default {
   // The first button of a folder open in the deck's place (DeckWindow): it goes back to the pages. Short.
   back: 'Back',
 
+  // The media and volume keys a Keys button sends, as the label under its icon (DeckWindow.LabelOf) and on the
+  // Deck page (deck.keys.names cites these). Short: they fit a 64 DIP button.
+  keyNames: {
+    MediaPlayPause: 'Play/pause',
+    MediaNextTrack: 'Next',
+    MediaPrevTrack: 'Previous',
+    MediaStop: 'Stop',
+    VolumeUp: 'Volume +',
+    VolumeDown: 'Volume −',
+    VolumeMute: 'Mute',
+  },
+
   // The deck's tip (DeckTip): over a button under the mouse, or for a moment after a press that could not do
   // what the button says. One short sentence. name = a macro's name as the user wrote it; combo = the keys
   // as the button has them ("Ctrl+Shift+K"); reason = the engine's sentence for the error (S.Reason).

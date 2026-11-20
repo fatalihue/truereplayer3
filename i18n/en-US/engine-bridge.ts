@@ -235,6 +235,9 @@ export default {
         screenText: '“Copy text from the screen”',
         clickerStart: 'the Clicker’s “Start and stop”',
         clickerPause: 'the Clicker’s “Pause”',
+        // Deck (branch deck): a deck's hotkey (show and hide, or bring it), and the one for every deck.
+        deck: 'the deck "{{deck}}"',
+        deckAll: '“{{>deck.general.toggleAll}}”',
       },
     },
 

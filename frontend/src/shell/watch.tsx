@@ -62,6 +62,8 @@ function hearTray(message: IncomingMessage, record: () => boolean, openMacro: (n
   else if (command === 'remaps') openPage('remaps');
   // Teclado (branch teclado): the notification of an unreadable teclado.json.
   else if (command === 'teclado') openPage('teclado');
+  // Deck (branch deck): the notification of an unreadable deck.json.
+  else if (command === 'deck') openPage('deck');
   else {
     openPage('macros');
     if (command === 'dataLoop' && name) { openMacro(name); showMacroTab('data'); }

@@ -38,7 +38,9 @@ namespace TrueReplayer.Services
             bool Shortcuts, bool Automations, int Armed, bool Remaps, int ActiveRemaps, bool Clicker,
             IReadOnlyList<(string Message, DateTime At)> Notices,
             // Teclado (branch teclado): the master switch, how many of its games are on, and the game locked.
-            bool Teclado = false, int TecladoGames = 0, string? TecladoLocked = null);
+            bool Teclado = false, int TecladoGames = 0, string? TecladoLocked = null,
+            // Deck (branch deck): the master switch, and how many decks are on.
+            bool Deck = false, int DeckCount = 0);
 
         // Wired by MainWindow: where the panel reads from and what its buttons do.
         public static Func<Snapshot>? Read { get; set; }
@@ -51,6 +53,7 @@ namespace TrueReplayer.Services
         public static Action<bool>? OnSetRemaps { get; set; }
         public static Action<bool>? OnSetTeclado { get; set; }
         public static Action? OnUnlockTeclado { get; set; }
+        public static Action<bool>? OnSetDeck { get; set; }
         public static Action? OnOpenClicker { get; set; }
         public static Action? OnOpenSettings { get; set; }
         public static Action? OnQuit { get; set; }
@@ -82,8 +85,8 @@ namespace TrueReplayer.Services
         private static TextBlock _macroActionText = null!;
         private static TextBlock _macroActionKey = null!;
         private static StackPanel _macroList = null!;
-        private static ToggleSwitch _shortcuts = null!, _automations = null!, _remaps = null!, _teclado = null!;
-        private static TextBlock _automationsText = null!, _remapsText = null!, _tecladoText = null!, _tecladoLabel = null!;
+        private static ToggleSwitch _shortcuts = null!, _automations = null!, _remaps = null!, _teclado = null!, _deck = null!;
+        private static TextBlock _automationsText = null!, _remapsText = null!, _tecladoText = null!, _tecladoLabel = null!, _deckText = null!, _deckLabel = null!;
         private static TextBlock _clickerText = null!;
         // The fixed labels, written in the interface's language when it changes (ApplyLabels): the
         // panel is made once, and the language can change while the app runs.
@@ -287,6 +290,8 @@ namespace TrueReplayer.Services
             _tecladoUnlock = new HyperlinkButton { Padding = new Thickness(8, 0, 6, 2), Visibility = Visibility.Collapsed };
             _tecladoUnlock.Click += (_, _) => OnUnlockTeclado?.Invoke();
             stack.Children.Add(_tecladoUnlock);
+            // Deck (branch deck): every deck on screen, or none.
+            _deck = AddSwitch(stack, out _deckLabel, out _deckText, on => OnSetDeck?.Invoke(on));
             _clicker = new Button { HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(8, 6, 8, 6), Background = new SolidColorBrush(Colors.Transparent), BorderThickness = new Thickness(0) };
             var clickerGrid = new Grid();
             clickerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -332,6 +337,7 @@ namespace TrueReplayer.Services
             SetLabel(_automations, _automationsLabel, S.TrayPanelAutomations);
             SetLabel(_remaps, _remapsLabel, S.TrayPanelRemaps);
             SetLabel(_teclado, _tecladoLabel, S.TrayPanelTeclado);
+            SetLabel(_deck, _deckLabel, S.TrayPanelDeck);
             AutomationProperties.SetName(_clicker, S.TrayPanelClicker);
             SetLabel(_settings, _settingsLabel, S.TrayPanelSettings);
             // Only the verb on the button, as in the right-click menu: "Sair do TrueReplayer 3" beside it
@@ -392,6 +398,7 @@ namespace TrueReplayer.Services
             _automationsText.Foreground = muted;
             _remapsText.Foreground = muted;
             _tecladoText.Foreground = muted;
+            _deckText.Foreground = muted;
             // The name and the notices' title in the theme's text color; the rest of the labels keep the
             // light or dark theme's own, so the rows read alike.
             if (_text is { } fg)
@@ -480,6 +487,8 @@ namespace TrueReplayer.Services
                 _tecladoUnlock.Visibility = s.TecladoLocked != null ? Visibility.Visible : Visibility.Collapsed;
                 _tecladoUnlock.Content = s.TecladoLocked != null ? S.TrayPanelTecladoUnlock(s.TecladoLocked) : "";
                 AutomationProperties.SetName(_tecladoUnlock, s.TecladoLocked != null ? S.TrayPanelTecladoUnlock(s.TecladoLocked) : "");
+                _deck.IsOn = s.Deck;
+                _deckText.Text = s.DeckCount > 0 ? S.TrayPanelDeckCount(n: S.Num(s.DeckCount), count: s.DeckCount) : "";
                 _clickerText.Text = s.Clicker ? S.TrayPanelClickerOpen : S.TrayPanelClicker;
             }
             finally { _refreshing = false; }

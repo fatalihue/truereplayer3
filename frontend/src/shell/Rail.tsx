@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { ArrowRightLeft, Keyboard, ListChecks, MousePointerClick, Settings, Zap } from 'lucide-react';
+import { ArrowRightLeft, Keyboard, LayoutGrid, ListChecks, MousePointerClick, Settings, Zap } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
 import { t } from '../i18n';
 import { preload } from './lazyModule';
@@ -8,11 +8,13 @@ import { useApp } from './store';
 import { openPage, PAGE_CHUNKS, setLibraryPeek, useUi } from './ui';
 import { useShellBand } from './useShellBand';
 
-// ② The rail: the five destinations, and the Keyboard (branch teclado) beside the Key Remaps.
+// ② The rail: the five destinations, the Keyboard (branch teclado) beside the Key Remaps, and the Deck
+// (branch deck) between Automations and the Keyboard: the ways to fire macros together.
 const DESTINATIONS = [
   { id: 'macros', label: t('common.pages.macros'), Icon: ListChecks },
   { id: 'clicker', label: t('common.pages.clicker'), Icon: MousePointerClick },
   { id: 'automations', label: t('common.pages.automations'), Icon: Zap },
+  { id: 'deck', label: t('deck.page'), Icon: LayoutGrid },
   { id: 'teclado', label: t('teclado.page'), Icon: Keyboard },
   { id: 'remaps', label: t('common.pages.remaps'), Icon: ArrowRightLeft },
   { id: 'settings', label: t('common.pages.settings'), Icon: Settings },

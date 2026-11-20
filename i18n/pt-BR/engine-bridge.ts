@@ -212,6 +212,8 @@ export default {
         screenText: 'hotkey “Copiar texto da tela”',
         clickerStart: 'hotkey “Iniciar/parar” do Clicker',
         clickerPause: 'hotkey “Pausar” do Clicker',
+        deck: 'hotkey do deck "{{deck}}"',
+        deckAll: 'hotkey “{{>deck.general.toggleAll}}”',
       },
     },
 
