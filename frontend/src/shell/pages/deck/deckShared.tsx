@@ -1,6 +1,6 @@
 // Deck page (branch deck, Fase 5): what the page's grid and its panel both draw and read — the deck and the
 // grid shown, a button's label and face as the native window draws them (DeckWindow.DrawTile, LabelOf).
-import { useRef, useState, type CSSProperties } from 'react';
+import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   AppWindow, ArrowRightLeft, ChevronLeft, Circle, Command, ExternalLink, Folder, Keyboard, LayoutGrid, MousePointerClick, Play, Plus,
   SkipBack, SkipForward, Square, TriangleAlert, Type, Volume1, Volume2, VolumeX, Zap, type LucideIcon,
@@ -74,16 +74,28 @@ const KNOWN: Record<string, LucideIcon> = {
   'skip-forward': SkipForward, 'skip-back': SkipBack, 'volume-2': Volume2, 'volume-1': Volume1, 'volume-x': VolumeX,
 };
 
+/** A picture the engine keeps for a button (Deck\images, Fase 6), as the page reads it (MainWindow.MapDeckImages). */
+export const deckImageUrl = (file: string) => `https://deck.local/${encodeURIComponent(file)}`;
+
+/** A picture of Deck\images; one that cannot load shows `fallback`, as the window falls back to the kind's icon. */
+function DeckImage({ file, className, fallback }: { file: string; className: string; fallback: ReactNode }) {
+  const [failed, setFailed] = useState<string | null>(null);
+  if (failed === file) return <>{fallback}</>;
+  return <img className={className} src={deckImageUrl(file)} alt="" draggable={false} aria-hidden="true" onError={() => setFailed(file)} />;
+}
+
 /**
  * An icon of the deck's: a chosen lucide icon as a mask of the SVG deck.json keeps (the same the native
- * window draws), one the page knows by name, or the default it falls back to.
+ * window draws), a picture of Deck\images, one the page knows by name, or the default it falls back to.
  */
 export function IconGlyph({ icon, fallback, className }: { icon?: DeckIcon; fallback: string; className?: string }) {
+  const Known = (icon?.kind === 'lucide' && icon.name && KNOWN[icon.name]) || KNOWN[fallback] || Plus;
+  if (icon?.kind === 'image' && icon.path)
+    return <DeckImage file={icon.path} className={className ? `dk-glyph-img ${className}` : 'dk-glyph-img'} fallback={<Known className={className} aria-hidden="true" />} />;
   if (icon?.kind === 'lucide' && icon.svg) {
     const style = { '--dk-mask': `url("data:image/svg+xml,${encodeURIComponent(icon.svg)}")` } as CSSProperties;
     return <span className={className ? `dk-mask ${className}` : 'dk-mask'} style={style} aria-hidden="true" />;
   }
-  const Known = (icon?.kind === 'lucide' && icon.name && KNOWN[icon.name]) || KNOWN[fallback] || Plus;
   return <Known className={className} aria-hidden="true" />;
 }
 
@@ -110,17 +122,20 @@ export function TileFace({ tile, label }: { tile: DeckTile; label: string }) {
   const on = useSwitchState(tile);
   const emoji = tile.icon?.kind === 'emoji' ? tile.icon.value : emojiOfMacro;
   const fallback = defaultIconName(a);
+  // The window's order (DeckWindow.DrawIcon): the alert, the emoji, a picture, the chip of the colour, the icon.
+  const image = tile.icon?.kind === 'image' ? tile.icon.path : undefined;
+  const glyph = image ? undefined : tile.icon;
+  const ink = tile.color ? (lightSwatch(tile.color) ? SWATCH_CHECK_INK.onLight : SWATCH_CHECK_INK.onDark) : '';
+  const plain = tile.color ? (
+    <span className="dk-chip" style={{ '--swatch': tile.color, '--swatch-ink': ink } as CSSProperties} aria-hidden="true">
+      <IconGlyph icon={glyph} fallback={fallback} className="dk-chip-icon" />
+    </span>
+  ) : <IconGlyph icon={glyph} fallback={fallback} className="dk-icon" />;
   let picture;
   if (missing) picture = <TriangleAlert className="dk-icon" data-missing="" aria-hidden="true" />;
   else if (emoji) picture = <span className="dk-emoji" aria-hidden="true">{emoji}</span>;
-  else if (tile.color) {
-    const ink = lightSwatch(tile.color) ? SWATCH_CHECK_INK.onLight : SWATCH_CHECK_INK.onDark;
-    picture = (
-      <span className="dk-chip" style={{ '--swatch': tile.color, '--swatch-ink': ink } as CSSProperties} aria-hidden="true">
-        <IconGlyph icon={tile.icon} fallback={fallback} className="dk-chip-icon" />
-      </span>
-    );
-  } else picture = <IconGlyph icon={tile.icon} fallback={fallback} className="dk-icon" />;
+  else if (image) picture = <DeckImage file={image} className="dk-img" fallback={plain} />;
+  else picture = plain;
   return (
     <>
       {picture}
@@ -135,7 +150,11 @@ export function TileFace({ tile, label }: { tile: DeckTile; label: string }) {
 function useRing(tile: DeckTile): 'replay' | 'record' | null {
   const a = tile.action;
   return useApp((s) => {
-    if (a.kind === 'macro') return s.status === 'replaying' && !s.settings.useCursorClick && !!a.macro && s.activeProfile === a.macro ? 'replay' : null;
+    // A macro's own run, or its recording (Record here, Fase 6: the macro being recorded is the open one).
+    if (a.kind === 'macro') {
+      if (!a.macro || s.activeProfile !== a.macro) return null;
+      return s.status === 'replaying' && !s.settings.useCursorClick ? 'replay' : s.status === 'recording' ? 'record' : null;
+    }
     if (a.kind === 'tr3' && a.command === 'record') return s.status === 'recording' ? 'record' : null;
     if (a.kind === 'tr3' && a.command === 'clicker') return s.status === 'replaying' && s.settings.useCursorClick ? 'replay' : null;
     return null;

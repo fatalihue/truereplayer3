@@ -1149,6 +1149,9 @@ export type Chaves = {
   'deck.head.copyName': { deck: string | number };
   'deck.head.deleted': { deck: string | number };
   'deck.head.duplicated': { deck: string | number };
+  'deck.head.edit': never;
+  'deck.head.editTip': never;
+  'deck.head.editing': never;
   'deck.head.sub.fixedAlways': { place: string | number };
   'deck.head.sub.fixedApps': { apps: string | number; place: string | number };
   'deck.head.sub.summonCursor': { key: string | number };
@@ -1302,12 +1305,18 @@ export type Chaves = {
   'deck.look.iconDefault': never;
   'deck.look.lucide': never;
   'deck.look.emoji': never;
+  'deck.look.image': never;
   'deck.look.useDefault': never;
   'deck.look.color': never;
   'deck.look.noColor': never;
   'deck.look.colorEmoji': never;
   'deck.icons.icons': never;
   'deck.icons.emoji': never;
+  'deck.icons.picture': never;
+  'deck.icons.fromApp': never;
+  'deck.icons.fromFile': never;
+  'deck.icons.fromScreen': never;
+  'deck.icons.pictureHint': never;
   'deck.icons.groups.media': never;
   'deck.icons.groups.system': never;
   'deck.icons.groups.files': never;
@@ -1408,6 +1417,10 @@ export type Chaves = {
   'deck.section.folder': { folder: string | number };
   'deck.section.sub': { n: string | number };
   'deck.section.subLabel': { label: string | number; n: string | number };
+  'deck.section.add': never;
+  'deck.section.newDeck': never;
+  'deck.section.full': never;
+  'deck.section.added': { deck: string | number; n: string | number };
   'dialogs.file.macros': { count: number };
   'dialogs.security.title': never;
   'dialogs.security.intro': never;
@@ -3759,7 +3772,7 @@ export type Tabelas = {
   'deck.open': 'label' | 'placeholder' | 'browse' | 'browseTip' | 'args' | 'argsPlaceholder' | 'focus' | 'hint';
   'deck.tr3.commands': 'record' | 'stopAll' | 'clicker' | 'teclado' | 'remaps' | 'automations' | 'shortcuts' | 'show';
   'deck.tr3.hints': 'record' | 'stopAll' | 'clicker' | 'teclado' | 'remaps' | 'automations' | 'shortcuts' | 'show';
-  'deck.look': 'label' | 'text' | 'textPlaceholder' | 'icon' | 'chooseIcon' | 'iconDefault' | 'lucide' | 'emoji' | 'useDefault' | 'color' | 'noColor' | 'colorEmoji';
+  'deck.look': 'label' | 'text' | 'textPlaceholder' | 'icon' | 'chooseIcon' | 'iconDefault' | 'lucide' | 'emoji' | 'image' | 'useDefault' | 'color' | 'noColor' | 'colorEmoji';
   'deck.icons.groups': 'media' | 'system' | 'files' | 'games' | 'arrows' | 'edit';
   'deck.settings.sizes': 's' | 'm' | 'l';
   'deck.settings.opacities': 'o100' | 'o85' | 'o70' | 'o50' | 'o0';

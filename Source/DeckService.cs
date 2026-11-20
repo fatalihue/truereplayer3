@@ -236,6 +236,8 @@ namespace TrueReplayer.Services
         private static HashSet<string> _library = new(StringComparer.Ordinal);
         private static Dictionary<string, string> _emoji = new(StringComparer.Ordinal);
         private static bool _libraryKnown;
+        // The library's names, the most recently changed first (Fase 6: the button's menu).
+        private static List<string> _recent = new();
 
         /// <summary>Raised after an edit made on the decks themselves (a deck dragged to a new place): the page's state is stale.</summary>
         public static event System.Action? EditedOnScreen;
@@ -400,18 +402,21 @@ namespace TrueReplayer.Services
         /// watcher). A button whose macro came back is found again; one whose macro left shows as missing.
         /// Raised only when a name the buttons use changed sides, so a save of an unrelated macro is quiet.
         /// </summary>
-        public static void LibraryChanged(IEnumerable<(string Name, string? Emoji)> entries)
+        public static void LibraryChanged(IEnumerable<(string Name, string? Emoji, DateTime? Updated)> entries)
         {
             bool raise;
             lock (_lock)
             {
                 var next = new HashSet<string>(StringComparer.Ordinal);
                 var emoji = new Dictionary<string, string>(StringComparer.Ordinal);
-                foreach (var (name, e) in entries)
+                var dated = new List<(string Name, DateTime Updated)>();
+                foreach (var (name, e, updated) in entries)
                 {
                     if (!next.Add(name)) continue;
                     if (!string.IsNullOrWhiteSpace(e)) emoji[name] = e.Trim();
+                    dated.Add((name, updated ?? DateTime.MinValue));
                 }
+                _recent = dated.OrderByDescending(d => d.Updated).ThenBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase).Select(d => d.Name).ToList();
                 var named = MacrosNamed(Current);
                 // A name the buttons use came or went, or its emoji changed (the deck draws it).
                 raise = !_libraryKnown || named.Any(n => _library.Contains(n) != next.Contains(n)
@@ -451,6 +456,183 @@ namespace TrueReplayer.Services
             Save(next);
             try { EditedOnScreen?.Invoke(); }
             catch (Exception ex) { DiagnosticLog.Warn($"Deck: an EditedOnScreen handler failed: {ex.GetType().Name}: {ex.Message}"); }
+        }
+
+        // ── Fase 6: edits made on the decks themselves (the edit mode, the button's menu, a file dropped) ──
+
+        /// <summary>
+        /// An edit made on screen: applied to a copy of the deck, saved (the windows follow Changed), and the page told.
+        /// False when the deck is gone or nothing changed.
+        /// </summary>
+        public static bool EditDeck(string deckId, Func<Deck, bool> change)
+        {
+            Config next;
+            lock (_lock)
+            {
+                next = Clone(Current);
+                var deck = next.Decks.FirstOrDefault(d => d.Id == deckId);
+                if (deck == null || !change(deck)) return false;
+            }
+            Save(next);
+            try { EditedOnScreen?.Invoke(); }
+            catch (Exception ex) { DiagnosticLog.Warn($"Deck: an EditedOnScreen handler failed: {ex.GetType().Name}: {ex.Message}"); }
+            return true;
+        }
+
+        /// <summary>The buttons of a page (folder null) or of a folder of a deck — the list itself, to change in an edit; null when there is no such place.</summary>
+        public static List<Tile>? TilesAt(Deck deck, string? folder, int page) =>
+            folder != null ? deck.Folders.FirstOrDefault(f => f.Id == folder)?.Tiles
+            : page >= 0 && page < deck.Pages.Count ? deck.Pages[page].Tiles : null;
+
+        /// <summary>Puts a button in a place (replacing the one there), or clears the place (null). A folder's first place is its Back.</summary>
+        public static bool SetTile(string deckId, string? folder, int page, int slot, Tile? tile) => EditDeck(deckId, deck =>
+        {
+            var tiles = TilesAt(deck, folder, page);
+            if (tiles == null || slot < 0 || slot >= MaxSlots || (folder != null && slot == 0)) return false;
+            int removed = tiles.RemoveAll(t => t.Slot == slot);
+            if (tile == null) return removed > 0;
+            tile.Slot = slot;
+            tiles.Add(tile);
+            tiles.Sort((a, b) => a.Slot.CompareTo(b.Slot));
+            return true;
+        });
+
+        /// <summary>Changes the button in a place (its action, its icon, its colour); false when the place is empty.</summary>
+        public static bool ChangeTile(string deckId, string? folder, int page, int slot, System.Action<Tile> change) => EditDeck(deckId, deck =>
+        {
+            var tile = TilesAt(deck, folder, page)?.FirstOrDefault(t => t.Slot == slot);
+            if (tile == null) return false;
+            change(tile);
+            return true;
+        });
+
+        /// <summary>A button moved to another place of its grid; a button there takes the place it left.</summary>
+        public static bool MoveTile(string deckId, string? folder, int page, int from, int to) => EditDeck(deckId, deck =>
+        {
+            var tiles = TilesAt(deck, folder, page);
+            int slots = deck.Grid.Cols * deck.Grid.Rows;
+            if (tiles == null || from == to || to < 0 || to >= slots || (folder != null && (to == 0 || from == 0))) return false;
+            var moving = tiles.FirstOrDefault(t => t.Slot == from);
+            if (moving == null) return false;
+            var there = tiles.FirstOrDefault(t => t.Slot == to);
+            if (there != null) there.Slot = from;
+            moving.Slot = to;
+            tiles.Sort((a, b) => a.Slot.CompareTo(b.Slot));
+            return true;
+        });
+
+        /// <summary>A button moved from a page to the first free place of another page. False when that page has none.</summary>
+        public static bool MoveTileToPage(string deckId, int page, int slot, int toPage) => EditDeck(deckId, deck =>
+        {
+            if (page == toPage || page < 0 || toPage < 0 || page >= deck.Pages.Count || toPage >= deck.Pages.Count) return false;
+            var from = deck.Pages[page].Tiles;
+            var moving = from.FirstOrDefault(t => t.Slot == slot);
+            if (moving == null) return false;
+            int free = FreeSlot(deck, null, toPage);
+            if (free < 0) return false;
+            from.Remove(moving);
+            moving.Slot = free;
+            deck.Pages[toPage].Tiles.Add(moving);
+            deck.Pages[toPage].Tiles.Sort((a, b) => a.Slot.CompareTo(b.Slot));
+            return true;
+        });
+
+        /// <summary>The first free place a grid shows, from <paramref name="after"/> on (round); -1 when every place is taken.</summary>
+        public static int FreeSlot(Deck deck, string? folder, int page, int after = -1)
+        {
+            var tiles = TilesAt(deck, folder, page);
+            if (tiles == null) return -1;
+            int slots = deck.Grid.Cols * deck.Grid.Rows;
+            var taken = new HashSet<int>(tiles.Select(t => t.Slot));
+            for (int i = 1; i <= slots; i++)
+            {
+                int slot = (after + i) % slots;
+                if (slot < 0) slot += slots;
+                if (!taken.Contains(slot) && !(folder != null && slot == 0)) return slot;
+            }
+            return -1;
+        }
+
+        /// <summary>A copy of a button in the first free place after it: that place, or -1 when there is none.</summary>
+        public static int DuplicateTile(string deckId, string? folder, int page, int slot)
+        {
+            int at = -1;
+            EditDeck(deckId, deck =>
+            {
+                var tiles = TilesAt(deck, folder, page);
+                var tile = tiles?.FirstOrDefault(t => t.Slot == slot);
+                if (tiles == null || tile == null) return false;
+                at = FreeSlot(deck, folder, page, slot);
+                if (at < 0) return false;
+                var copy = JsonSerializer.Deserialize<Tile>(JsonSerializer.Serialize(tile, WriteOptions), ReadOptions)!;
+                copy.Slot = at;
+                tiles.Add(copy);
+                tiles.Sort((a, b) => a.Slot.CompareTo(b.Slot));
+                return true;
+            });
+            return at;
+        }
+
+        /// <summary>The grid's columns and rows (the edit mode's corner). Buttons past a smaller grid are kept, out of sight.</summary>
+        public static bool SetGrid(string deckId, int cols, int rows) => EditDeck(deckId, deck =>
+        {
+            cols = Math.Clamp(cols, 1, MaxGrid);
+            rows = Math.Clamp(rows, 1, MaxGrid);
+            if (deck.Grid.Cols == cols && deck.Grid.Rows == rows) return false;
+            deck.Grid.Cols = cols;
+            deck.Grid.Rows = rows;
+            return true;
+        });
+
+        /// <summary>A new folder in a deck, named as the deck's next one ("Pasta", "Pasta 2"); its id, or null when the deck has as many as it can hold.</summary>
+        public static string? AddFolder(Deck deck, string baseName)
+        {
+            if (deck.Folders.Count >= MaxFolders) return null;
+            var names = new HashSet<string>(deck.Folders.Select(f => f.Name), StringComparer.CurrentCultureIgnoreCase);
+            string name = baseName;
+            for (int n = 2; names.Contains(name); n++) name = $"{baseName} {n}";
+            var ids = new HashSet<string>(deck.Folders.Select(f => f.Id), StringComparer.Ordinal);
+            string id;
+            do { id = "f-" + Guid.NewGuid().ToString("N")[..10]; } while (ids.Contains(id));
+            deck.Folders.Add(new Folder { Id = id, Name = name });
+            return id;
+        }
+
+        /// <summary>The library's macros, the most recently changed first (the button's menu offers the first twelve).</summary>
+        public static List<string> RecentMacros(int count)
+        {
+            lock (_lock) return _recent.Take(count).ToList();
+        }
+
+        /// <summary>
+        /// The first macro name of a series the library does not have yet ("Geral 1", "Geral 2"…): what "Record here"
+        /// creates. Macros are files, so a name that differs only in case is taken too.
+        /// </summary>
+        public static string FreeMacroName(Func<int, string> nameOf)
+        {
+            lock (_lock)
+            {
+                var taken = new HashSet<string>(_library, StringComparer.OrdinalIgnoreCase);
+                for (int n = 1; n < 100000; n++)
+                {
+                    string name = nameOf(n);
+                    if (!taken.Contains(name)) return name;
+                }
+                return nameOf(100000);
+            }
+        }
+
+        /// <summary>
+        /// A deck's name as the start of a macro's name: a macro is a file, so what a file name cannot hold becomes a
+        /// space, and the ends lose the spaces and dots Windows drops. "Deck" when nothing is left.
+        /// </summary>
+        public static string MacroSafe(string name)
+        {
+            var bad = System.IO.Path.GetInvalidFileNameChars();
+            var chars = (name ?? "").Select(c => Array.IndexOf(bad, c) >= 0 ? ' ' : c).ToArray();
+            string safe = string.Join(" ", new string(chars).Split(' ', StringSplitOptions.RemoveEmptyEntries)).Trim(' ', '.');
+            if (safe.Length > 60) safe = safe[..60].TrimEnd(' ', '.');
+            return safe.Length > 0 ? safe : "Deck";
         }
 
         /// <summary>A macro renamed in the library: every button that runs it follows. True when the config changed (and was saved).</summary>

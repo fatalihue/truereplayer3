@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import {
-  Ellipsis, ExternalLink, Folder, FolderOpen, Keyboard, LayoutGrid, ListChecks, Plus, Settings, Smile, Type, X, Zap, type LucideIcon,
+  AppWindow, Crop, Ellipsis, ExternalLink, Folder, FolderOpen, Image as ImageIcon, Keyboard, LayoutGrid, ListChecks, Plus, Settings, Smile, Type, X, Zap,
+  type LucideIcon,
 } from 'lucide-react';
 import { useBridge } from '../../../bridge/BridgeContext';
 import type {
@@ -31,8 +32,8 @@ import {
 import {
   ACTION_KINDS, DECK_COMMANDS, DECK_LIMITS, defaultIconName, isBackSlot, SPECIAL_KEYS, tilesOf, type ActionKind, type DeckView,
 } from '../../deck/deckModel';
-import { useDeck } from '../../deck/deckStore';
-import { askSettings, pickSlot, showGeneral, showView, useDeckUi } from '../../deck/deckUi';
+import { postToEngine, useDeck } from '../../deck/deckStore';
+import { askSettings, pickSlot, showGeneral, showView, useDeckUi, useFocusAsk } from '../../deck/deckUi';
 import { hotkeysOf } from '../remaps/remapModel';
 import { closeSlot, defaultLabel, IconGlyph, labelOf, TileIcon, useShownDeck, useShownView, viewKey } from './deckShared';
 
@@ -292,10 +293,16 @@ function MacroOptions({ deck, view, tile, setAction }: OptionsProps) {
   const folder = order.folders.find(f => f.items.includes(name ?? ''))?.name;
   const [picking, setPicking] = useState(false);
   const swapRef = useRef<HTMLButtonElement>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
   const stopPicking = () => {
     setPicking(false);
     setTimeout(() => swapRef.current?.focus({ preventScroll: true }), 0);
   };
+  // A deck's "All macros…" (Fase 6): the picker, open and in the focus.
+  useFocusAsk('macro', () => {
+    if (chosen && !picking) setPicking(true);
+    else pickerRef.current?.querySelector<HTMLElement>('input, button')?.focus();
+  });
   const openInEditor = () => {
     if (!chosen) return;
     send({ type: 'profile:open', payload: { name: chosen.name } });
@@ -337,7 +344,7 @@ function MacroOptions({ deck, view, tile, setAction }: OptionsProps) {
           <button ref={swapRef} type="button" className="insp-button dk-macro-swap" onClick={() => setPicking(true)}>{t('deck.macro.swap')}</button>
         </div>
       ) : (
-        <div onKeyDown={(e) => { if (e.key === 'Escape' && chosen) { e.preventDefault(); e.stopPropagation(); stopPicking(); } }}>
+        <div ref={pickerRef} onKeyDown={(e) => { if (e.key === 'Escape' && chosen) { e.preventDefault(); e.stopPropagation(); stopPicking(); } }}>
           <MacroPicker names={names} value={name} label={t('deck.macro.label')} autoFocus={picking || !name}
             onPick={(macro) => { setAction({ macro }); if (picking) stopPicking(); }} />
           {chosen && <button type="button" className="insp-link dk-picker-cancel" onClick={stopPicking}>{t('common.actions.cancel')}</button>}
@@ -380,6 +387,13 @@ function KeysOptions({ tile, setAction }: Pick<OptionsProps, 'tile' | 'setAction
   const [menu, setMenu] = useState<{ anchor: MenuAnchor; button: HTMLButtonElement } | null>(null);
   const setRef = useRef(setAction);
   useEffect(() => { setRef.current = setAction; });
+  const boxRef = useRef<HTMLButtonElement>(null);
+  // A deck's "Keys…" (Fase 6): the box in the focus, listening.
+  useFocusAsk('keys', () => {
+    boxRef.current?.focus();
+    setHeld(null);
+    setListening(true);
+  });
   useEffect(() => {
     if (!listening) return;
     capture.arm(owner);
@@ -407,7 +421,7 @@ function KeysOptions({ tile, setAction }: Pick<OptionsProps, 'tile' | 'setAction
   return (
     <section className="rm-sec" aria-label={t('deck.keys.label')}>
       <span className="rm-label">{t('deck.keys.label')}</span>
-      <button type="button" className="insp-capture rm-capture dk-capture" aria-pressed={listening} data-listening={listening || undefined}
+      <button ref={boxRef} type="button" className="insp-capture rm-capture dk-capture" aria-pressed={listening} data-listening={listening || undefined}
         aria-label={t('deck.keys.label')}
         onClick={() => {
           if (listening && held) {
@@ -449,8 +463,11 @@ function KeysOptions({ tile, setAction }: Pick<OptionsProps, 'tile' | 'setAction
 /** Text: what goes out, typed letter by letter (what a game reads) or pasted (fast, the clipboard put back). */
 function TextOptions({ deck, view, tile, setAction }: OptionsProps) {
   const send = tile.action.send ?? 'type';
+  const ref = useRef<HTMLElement>(null);
+  // A deck's "Text…" (Fase 6): the text in the focus.
+  useFocusAsk('text', () => ref.current?.querySelector<HTMLElement>('textarea, input')?.focus());
   return (
-    <section className="rm-sec" aria-label={t('deck.text.label')}>
+    <section ref={ref} className="rm-sec" aria-label={t('deck.text.label')}>
       <span className="rm-label">{t('deck.text.label')}</span>
       <DraftField stepId={`deck:${deck.id}:${viewKey(view)}:${tile.slot}`} field="text" label={t('deck.text.label')} kind="text" multiline empty="clear"
         maxLength={DECK_LIMITS.text} placeholder={t('deck.text.placeholder')} stored={tile.action.text ?? ''} onApply={(text) => setAction({ text })} />
@@ -467,8 +484,11 @@ function OpenOptions({ deck, view, tile, setAction }: OptionsProps) {
   const tools = useEditorTools();
   const id = `deck:${deck.id}:${viewKey(view)}:${tile.slot}`;
   const browse = useAsk('dialog:pickFileResult', (r) => { if (r.path) setAction({ target: r.path }); });
+  const ref = useRef<HTMLElement>(null);
+  // A deck's "Open…" (Fase 6): the target in the focus.
+  useFocusAsk('open', () => ref.current?.querySelector<HTMLElement>('input, textarea')?.focus());
   return (
-    <section className="rm-sec" aria-label={t('deck.open.label')}>
+    <section ref={ref} className="rm-sec" aria-label={t('deck.open.label')}>
       <span className="rm-label">{t('deck.open.label')}</span>
       <div className="insp-line">
         <DraftField stepId={id} field="target" label={t('deck.open.label')} kind="mono" empty="clear" maxLength={DECK_LIMITS.target}
@@ -554,6 +574,24 @@ function Tr3Options({ tile, setAction }: Pick<OptionsProps, 'tile' | 'setAction'
 function LookSection({ deck, view, tile, patch }: { deck: DeckDeck; view: DeckView; tile: DeckTile; patch: (p: Partial<DeckTile>) => void }) {
   const [picker, setPicker] = useState<{ anchor: MenuAnchor; button: HTMLButtonElement; keyboard: boolean } | null>(null);
   const emoji = tile.icon?.kind === 'emoji';
+  const pickRef = useRef<HTMLButtonElement>(null);
+  const openPicker = (button: HTMLButtonElement, keyboard: boolean) =>
+    void preload(loadIconSet).then(() => setPicker({ anchor: anchorBelow(button, 'start'), button, keyboard }));
+  // A deck's "From the list…" (Fase 6): the picker, open.
+  useFocusAsk('icon', () => {
+    const button = pickRef.current;
+    if (!button) return;
+    button.scrollIntoView({ block: 'nearest' });
+    button.focus({ preventScroll: true });
+    openPicker(button, true);
+  });
+  // A picture the engine keeps (Deck\images): it opens the dialog or the capture, sets it, and deck:state brings it.
+  const fromSource = (source: 'app' | 'picture' | 'capture') => postToEngine({
+    type: 'deck:iconFrom',
+    payload: { deckId: deck.id, folder: view.kind === 'folder' ? view.id : null, page: view.kind === 'page' ? view.index : 0, slot: tile.slot, source },
+  });
+  const iconName = !tile.icon ? t('deck.look.iconDefault')
+    : emoji ? t('deck.look.emoji') : tile.icon.kind === 'image' ? t('deck.look.image') : t('deck.look.lucide');
   return (
     <section className="rm-sec" aria-label={t('deck.look.label')}>
       <span className="rm-label">{t('deck.look.label')}</span>
@@ -563,23 +601,22 @@ function LookSection({ deck, view, tile, patch }: { deck: DeckDeck; view: DeckVi
         onApply={(label) => patch({ label: label.trim() || undefined })} />
       <span className="dk-field-label">{t('deck.look.icon')}</span>
       <div className="dk-icon-row">
-        <button type="button" className="dk-icon-pick" aria-label={t('deck.look.chooseIcon')} aria-haspopup="dialog" aria-expanded={!!picker}
+        <button ref={pickRef} type="button" className="dk-icon-pick" aria-label={t('deck.look.chooseIcon')} aria-haspopup="dialog" aria-expanded={!!picker}
           data-tip={t('deck.look.chooseIcon')}
           onPointerEnter={() => { void preload(loadIconSet); }}
           onClick={(e) => {
             if (picker) { setPicker(null); return; }
-            const button = e.currentTarget;
-            const keyboard = e.detail === 0;
-            void preload(loadIconSet).then(() => setPicker({ anchor: anchorBelow(button, 'start'), button, keyboard }));
+            openPicker(e.currentTarget, e.detail === 0);
           }}>
           {emoji ? <span className="dk-emoji-small">{tile.icon?.value}</span> : <IconGlyph icon={tile.icon} fallback={defaultIconName(tile.action)} />}
         </button>
-        <span className="dk-icon-name">{tile.icon ? (emoji ? t('deck.look.emoji') : t('deck.look.lucide')) : t('deck.look.iconDefault')}</span>
+        <span className="dk-icon-name">{iconName}</span>
         {tile.icon && <button type="button" className="insp-link" onClick={() => patch({ icon: undefined })}>{t('deck.look.useDefault')}</button>}
       </div>
       {picker && (
         <IconPicker anchor={picker.anchor} toggle={picker.button} keyboard={picker.keyboard}
           onPick={(icon) => { patch({ icon }); setPicker(null); picker.button.focus(); }}
+          onSource={(source) => { setPicker(null); picker.button.focus(); fromSource(source); }}
           onClose={() => setPicker(null)} />
       )}
       <span className="dk-field-label">{t('deck.look.color')}</span>
@@ -592,16 +629,24 @@ function LookSection({ deck, view, tile, patch }: { deck: DeckDeck; view: DeckVi
   );
 }
 
+type PictureSource = 'app' | 'picture' | 'capture';
+const SOURCES: readonly (readonly [PictureSource, LucideIcon])[] = [['app', AppWindow], ['picture', ImageIcon], ['capture', Crop]];
+const sourceLabel = (source: PictureSource) =>
+  source === 'app' ? t('deck.icons.fromApp') : source === 'picture' ? t('deck.icons.fromFile') : t('deck.icons.fromScreen');
+
 /**
- * The icon picker: the lucide icons by group (the Icons tab) and the emoji picker of the macros' icon (the
- * Emoji tab). The picker keeps Esc for its own search, so it is caught first here and closes it.
+ * The icon picker: the lucide icons by group (the Icons tab), the emoji picker of the macros' icon (the
+ * Emoji tab) and, for a button (`onSource`), a picture — a program's icon, a picture file, a cut of the
+ * screen — that the engine makes and keeps (the Picture tab, Fase 6). The emoji picker keeps Esc for its
+ * own search, so it is caught first here and closes it.
  */
-function IconPicker({ anchor, toggle, keyboard, onPick, onClose }: {
-  anchor: MenuAnchor; toggle: HTMLButtonElement; keyboard: boolean; onPick: (icon: DeckIcon) => void; onClose: () => void;
+function IconPicker({ anchor, toggle, keyboard, onPick, onSource, onClose }: {
+  anchor: MenuAnchor; toggle: HTMLButtonElement; keyboard: boolean; onPick: (icon: DeckIcon) => void;
+  onSource?: (source: PictureSource) => void; onClose: () => void;
 }) {
   const set = useLoaded(loadIconSet);
   const emojiLoaded = useLoaded(loadEmojiPicker);
-  const [tab, setTab] = useState<'icons' | 'emoji'>('icons');
+  const [tab, setTab] = useState<'icons' | 'emoji' | 'picture'>('icons');
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
@@ -618,10 +663,26 @@ function IconPicker({ anchor, toggle, keyboard, onPick, onClose }: {
   return (
     <Popover anchor={anchor} label={t('deck.look.chooseIcon')} toggle={toggle} focusFirst={keyboard} onClose={onClose}>
       <div className="dk-picker">
-        <Segmented<'icons' | 'emoji'> label={t('deck.look.chooseIcon')} value={tab}
-          options={[{ value: 'icons', label: t('deck.icons.icons') }, { value: 'emoji', label: t('deck.icons.emoji') }]}
+        <Segmented<'icons' | 'emoji' | 'picture'> label={t('deck.look.chooseIcon')} value={tab}
+          options={[
+            { value: 'icons', label: t('deck.icons.icons') },
+            { value: 'emoji', label: t('deck.icons.emoji') },
+            ...(onSource ? [{ value: 'picture' as const, label: t('deck.icons.picture') }] : []),
+          ]}
           onChange={(v) => { setTab(v); if (v === 'emoji') void preload(loadEmojiPicker); }} />
-        {tab === 'icons' ? (
+        {tab === 'picture' && onSource ? (
+          <>
+            <div className="dk-picker-sources" role="group" aria-label={t('deck.icons.picture')}>
+              {SOURCES.map(([source, Icon]) => (
+                <button key={source} type="button" className="dk-picker-source" onClick={() => onSource(source)}>
+                  <Icon aria-hidden="true" />
+                  {sourceLabel(source)}
+                </button>
+              ))}
+            </div>
+            <p className="rm-hint">{t('deck.icons.pictureHint')}</p>
+          </>
+        ) : tab === 'icons' ? (
           <div className="dk-picker-groups">
             {set?.ICON_GROUPS.map(g => (
               <div key={g.id} className="dk-picker-group" role="group" aria-label={groups[g.id]}>

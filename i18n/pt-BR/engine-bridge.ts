@@ -380,6 +380,7 @@ export default {
       position: 'a escolha da posição',
       colour: 'a escolha da cor',
       region: 'a escolha da região',
+      buttonIcon: 'a captura do ícone do botão',
     },
     title: {
       referenceImage: 'Capture a imagem de referência',
@@ -391,6 +392,7 @@ export default {
       clickPoint: 'Escolha o ponto do clique',
       color: 'Escolha a cor',
       aColor: 'Escolha uma cor',
+      buttonIcon: 'Recorte o ícone do botão',
     },
     for: {
       automation: 'para a automação de {{name}}',
@@ -399,6 +401,7 @@ export default {
       copyHotkey: 'para a hotkey Copiar texto da tela',
       copyText: 'para Copiar texto da tela',
       clicker: 'para o Clicker',
+      deck: 'para um botão do deck {{name}}',
     },
     hint: {
       automationWaits: 'Arraste em volta do que a automação espera',
@@ -406,6 +409,7 @@ export default {
       smallerFaster: 'Regiões menores são lidas mais rápido',
       insideOnly: 'A imagem é procurada só dentro dela',
       toClipboard: 'O texto lido vai para o clipboard',
+      buttonIcon: 'Arraste em volta da imagem que o botão vai mostrar',
     },
   },
 

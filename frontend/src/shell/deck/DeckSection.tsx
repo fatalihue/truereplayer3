@@ -1,10 +1,17 @@
 // Deck (branch deck, Fase 5): what only the unified path gives. The macro open in TR3's editor says which
 // deck buttons run it, beside its Trigger, its Automation and its Teclado keys, and leads to the button on
-// the Deck page (the Teclado's section does the same for game keys).
-import { LayoutGrid } from 'lucide-react';
+// the Deck page (the Teclado's section does the same for game keys). Fase 6: "Add to a deck" puts a button
+// for it on a deck, at the first free place.
+import { useState } from 'react';
+import { LayoutGrid, Plus } from 'lucide-react';
 import { t } from '../../i18n';
+import { useToast } from '../../state/ToastContext';
+import { freeName } from '../library/model';
+import { Menu, type MenuEntry } from '../Menu';
+import { anchorBelow, type MenuAnchor } from '../menuAnchor';
 import { openPage } from '../ui';
-import type { DeckView } from './deckModel';
+import { addMacroTile, createDeck, hasRoom } from './deckEdit';
+import { DECK_LIMITS, type DeckView } from './deckModel';
 import { useDeck, useDeckSync } from './deckStore';
 import { goToTile } from './deckUi';
 
@@ -14,6 +21,9 @@ export function DeckSection({ name }: { name: string }) {
   // The decks come only where they are shown (rule 6): this section asks for them as it mounts.
   useDeckSync();
   const decks = useDeck(s => s.config.decks);
+  const loaded = useDeck(s => s.loaded);
+  const { showToast } = useToast();
+  const [menu, setMenu] = useState<{ anchor: MenuAnchor; button: HTMLButtonElement } | null>(null);
   const uses: Use[] = [];
   for (const d of decks) {
     d.pages.forEach((p, i) => {
@@ -33,6 +43,31 @@ export function DeckSection({ name }: { name: string }) {
     if (u) goToTile(u.deckId, u.view, u.slot);
     openPage('deck');
   };
+  // A button for this macro at the deck's first free place; the toast leads to it.
+  const add = (deckId: string) => {
+    const deck = useDeck.getState().config.decks.find(d => d.id === deckId);
+    const at = addMacroTile(deckId, name);
+    if (!deck || !at) return;
+    showToast(t('deck.section.added', { deck: deck.name, n: at.page + 1 }), {
+      type: 'success', duration: 8000,
+      action: { label: t('common.actions.open'), onClick: () => go({ deckId, deck: deck.name, view: { kind: 'page', index: at.page }, where: '', slot: at.slot }) },
+    });
+  };
+  const addToNew = () => {
+    const deck = createDeck(freeName(t('deck.list.newName'), useDeck.getState().config.decks.map(d => d.name)));
+    if (deck) add(deck.id);
+  };
+  const entries: MenuEntry[] = [
+    ...decks.map((d): MenuEntry => {
+      const full = !hasRoom(d);
+      return { label: d.name, disabled: full, tip: full ? t('deck.section.full') : undefined, onSelect: () => add(d.id) };
+    }),
+    ...(decks.length > 0 ? ['separator' as const] : []),
+    {
+      label: t('deck.section.newDeck'), icon: Plus, disabled: decks.length >= DECK_LIMITS.decks,
+      tip: decks.length >= DECK_LIMITS.decks ? t('deck.list.full', { max: DECK_LIMITS.decks }) : undefined, onSelect: addToNew,
+    },
+  ];
   return (
     <div className="mset-group">
       <span className="mset-title">{t('deck.section.title')}</span>
@@ -54,6 +89,14 @@ export function DeckSection({ name }: { name: string }) {
           <button type="button" className="insp-link" onClick={() => go(u)}>{t('common.actions.open')}</button>
         </div>
       ))}
+      <div className="insp-line">
+        <button type="button" className="insp-button mset-add" disabled={!loaded} aria-haspopup="menu" aria-expanded={!!menu}
+          onClick={(e) => setMenu(menu ? null : { anchor: anchorBelow(e.currentTarget, 'start'), button: e.currentTarget })}>
+          <Plus aria-hidden="true" />
+          {t('deck.section.add')}
+        </button>
+      </div>
+      {menu && <Menu anchor={menu.anchor} label={t('deck.section.add')} toggle={menu.button} onClose={() => setMenu(null)} entries={entries} />}
     </div>
   );
 }

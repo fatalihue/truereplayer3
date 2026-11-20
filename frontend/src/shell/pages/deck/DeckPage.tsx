@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { ArrowLeft, ChevronLeft, Ellipsis, Folder, LayoutGrid, MousePointerClick, Plus, Settings, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, Check, ChevronLeft, Ellipsis, Folder, LayoutGrid, MousePointerClick, Pencil, Plus, Settings, TriangleAlert } from 'lucide-react';
 import { create } from 'zustand';
 import type { DeckDeck, DeckTile } from '../../../bridge/messageTypes';
 import { t, tn } from '../../../i18n';
@@ -15,7 +15,7 @@ import {
   renameFolder, setEnabled, shiftPage, updateDeck,
 } from '../../deck/deckEdit';
 import { DECK_LIMITS, DECK_SIZES, hiddenTiles, isBackSlot, slotsOf, tilesOf, type DeckView } from '../../deck/deckModel';
-import { useDeck, useDeckSync } from '../../deck/deckStore';
+import { editOnScreen, useDeck, useDeckSync } from '../../deck/deckStore';
 import { askSettings, openDeck, pickSlot, showGeneral, showView, useDeckUi } from '../../deck/deckUi';
 import { DeckPanel } from './DeckPanels';
 import { appsText, closeSlot, IconGlyph, labelOf, RenameField, TileFace, useShownDeck, useShownView } from './deckShared';
@@ -246,6 +246,8 @@ function Head({ deck }: { deck: DeckDeck }) {
     showToast(t('deck.head.duplicated', { deck: copy.name }), { type: 'info', duration: 6000 });
   };
   const summon = deck.mode === 'summon';
+  // Fase 6: the deck edited in its own place on screen (a called deck is edited here only).
+  const editing = useDeck(s => s.editing === deck.id);
   return (
     <header className="dk-head">
       <div className="dk-titles">
@@ -262,6 +264,13 @@ function Head({ deck }: { deck: DeckDeck }) {
         <p className="dk-sub">{headSub(deck)}</p>
       </div>
       <div className="dk-head-end">
+        {!summon && (
+          <button type="button" className="insp-button dk-edit" aria-pressed={editing} data-tip={editing ? undefined : t('deck.head.editTip')}
+            onClick={() => editOnScreen(editing ? null : deck.id)}>
+            {editing ? <Check aria-hidden="true" /> : <Pencil aria-hidden="true" />}
+            {editing ? t('deck.head.editing') : t('deck.head.edit')}
+          </button>
+        )}
         <span className="dk-use">
           {t('deck.head.show')}
           <Switch label={t('deck.head.showLabel', { deck: deck.name })} checked={deck.on} onChange={(on) => updateDeck(deck.id, { on })} />

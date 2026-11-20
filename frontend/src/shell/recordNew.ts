@@ -22,12 +22,13 @@ export function whenOpen(name: string, record: boolean, then: () => void) {
 /**
  * "Record a new macro" from the tray (Tray board): an Untitled macro, recording from its first step
  * once the engine opens it — what the first use's Record it does. Nothing while something runs or in
- * Clicker mode, where the engine would refuse the recording; false then.
+ * Clicker mode, where the engine would refuse the recording; false then. A deck's "Record here" (Deck,
+ * Fase 6) names the macro itself: the engine has linked the button to that name already.
  */
-export function recordNewMacro(send: (message: OutgoingMessage) => void, create: (name: string) => void): boolean {
+export function recordNewMacro(send: (message: OutgoingMessage) => void, create: (name: string) => void, named?: string): boolean {
   const app = useShell.getState().app;
   if (app.status !== 'ready' || app.settings.useCursorClick) return false;
-  const name = freeName(UNTITLED_MACRO, app.profiles.map(p => p.name));
+  const name = named || freeName(UNTITLED_MACRO, app.profiles.map(p => p.name));
   whenOpen(name, true, () => send({ type: 'recording:toggle', payload: { insertIndex: 0 } }));
   create(name);
   return true;

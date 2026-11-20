@@ -22,6 +22,8 @@ export interface DeckStoreState {
   pendingFile: string;
   /** The macros the buttons name, as the library has them (absent before the library loads). */
   macros: Record<string, DeckMacroReport>;
+  /** The deck edited on screen (deck:editing, Fase 6), or null. */
+  editing: string | null;
 }
 
 export const EMPTY_DECK_CONFIG: DeckConfig = { version: 1, enabled: true, showInCaptures: false, busyPress: 'swap', decks: [] };
@@ -34,7 +36,11 @@ export const useDeck = create<DeckStoreState>(() => ({
   loadFailureDetail: null,
   pendingFile: 'deck.pending.json',
   macros: {},
+  editing: null,
 }));
+
+/** A deck edited on screen, or none (the engine answers with deck:editing). */
+export const editOnScreen = (deckId: string | null) => postToEngine({ type: 'deck:edit', payload: { deckId } });
 
 let send: ((message: OutgoingMessage) => void) | null = null;
 let mounts = 0;
@@ -53,6 +59,8 @@ export function useDeckSync() {
     mounts++;
     const off = bridge.subscribe((message) => {
       if (message.type === 'deck:state') receive(message.payload);
+      // None edited comes without the field (the bridge leaves nulls out).
+      else if (message.type === 'deck:editing') useDeck.setState({ editing: message.payload.deckId ?? null });
     });
     bridge.send({ type: 'deck:get', payload: {} });
     return () => {

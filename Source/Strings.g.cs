@@ -618,6 +618,8 @@ namespace TrueReplayer.Services
         public static string BridgeCaptureWhatColour => IsPt ? "a escolha da cor" : "the colour pick";
         /// <summary>engine-bridge.capture.what.region · the region picker</summary>
         public static string BridgeCaptureWhatRegion => IsPt ? "a escolha da região" : "the region picker";
+        /// <summary>engine-bridge.capture.what.buttonIcon · the button icon capture</summary>
+        public static string BridgeCaptureWhatButtonIcon => IsPt ? "a captura do ícone do botão" : "the button icon capture";
         /// <summary>engine-bridge.capture.title.referenceImage · Capture the reference image</summary>
         public static string BridgeCaptureTitleReferenceImage => IsPt ? "Capture a imagem de referência" : "Capture the reference image";
         /// <summary>engine-bridge.capture.title.regionToRead · Draw the region to read</summary>
@@ -636,6 +638,8 @@ namespace TrueReplayer.Services
         public static string BridgeCaptureTitleColor => IsPt ? "Escolha a cor" : "Pick the color";
         /// <summary>engine-bridge.capture.title.aColor · Pick a color</summary>
         public static string BridgeCaptureTitleAColor => IsPt ? "Escolha uma cor" : "Pick a color";
+        /// <summary>engine-bridge.capture.title.buttonIcon · Cut out the button icon</summary>
+        public static string BridgeCaptureTitleButtonIcon => IsPt ? "Recorte o ícone do botão" : "Cut out the button icon";
         /// <summary>engine-bridge.capture.for.automation · for the {{name}} automation</summary>
         public static string BridgeCaptureForAutomation(string name) => IsPt ? $"para a automação de {name}" : $"for the {name} automation";
         /// <summary>engine-bridge.capture.for.step · for step {{n}}, {{name}}</summary>
@@ -648,6 +652,8 @@ namespace TrueReplayer.Services
         public static string BridgeCaptureForCopyText => IsPt ? "para Copiar texto da tela" : "for Copy text from the screen";
         /// <summary>engine-bridge.capture.for.clicker · for Clicker</summary>
         public static string BridgeCaptureForClicker => IsPt ? "para o Clicker" : "for Clicker";
+        /// <summary>engine-bridge.capture.for.deck · for a button of the deck {{name}}</summary>
+        public static string BridgeCaptureForDeck(string name) => IsPt ? $"para um botão do deck {name}" : $"for a button of the deck {name}";
         /// <summary>engine-bridge.capture.hint.automationWaits · Drag around what the automation waits for</summary>
         public static string BridgeCaptureHintAutomationWaits => IsPt ? "Arraste em volta do que a automação espera" : "Drag around what the automation waits for";
         /// <summary>engine-bridge.capture.hint.stepWaits · Drag around what the step waits for</summary>
@@ -658,6 +664,8 @@ namespace TrueReplayer.Services
         public static string BridgeCaptureHintInsideOnly => IsPt ? "A imagem é procurada só dentro dela" : "The image is looked for only inside it";
         /// <summary>engine-bridge.capture.hint.toClipboard · The text it reads goes to the clipboard</summary>
         public static string BridgeCaptureHintToClipboard => IsPt ? "O texto lido vai para o clipboard" : "The text it reads goes to the clipboard";
+        /// <summary>engine-bridge.capture.hint.buttonIcon · Drag around the picture the button will show</summary>
+        public static string BridgeCaptureHintButtonIcon => IsPt ? "Arraste em volta da imagem que o botão vai mostrar" : "Drag around the picture the button will show";
         /// <summary>engine-bridge.dialog.cancel · Cancel</summary>
         public static string BridgeDialogCancel => IsPt ? "Cancelar" : "Cancel";
         /// <summary>engine-bridge.dialog.deleteFolder.title · Delete Folder</summary>
@@ -1112,6 +1120,68 @@ namespace TrueReplayer.Services
         public static string DeckTipOpenFailed(string reason) => IsPt ? $"Não foi possível abrir: {reason}" : $"Could not open: {reason}";
         /// <summary>engine-deck.tip.keysInvalid · These keys cannot be sent: {{combo}}</summary>
         public static string DeckTipKeysInvalid(string combo) => IsPt ? $"Estas teclas não podem ser enviadas: {combo}" : $"These keys cannot be sent: {combo}";
+        /// <summary>engine-deck.tip.noRoom · There is no free place here.</summary>
+        public static string DeckTipNoRoom => IsPt ? "Não há lugar livre aqui." : "There is no free place here.";
+        /// <summary>engine-deck.tip.iconFailed · Could not take an icon from this file.</summary>
+        public static string DeckTipIconFailed => IsPt ? "Não foi possível tirar um ícone deste arquivo." : "Could not take an icon from this file.";
+        /// <summary>engine-deck.tip.imageFailed · Could not read this picture.</summary>
+        public static string DeckTipImageFailed => IsPt ? "Não foi possível ler esta imagem." : "Could not read this picture.";
+        /// <summary>engine-deck.editDone · Done</summary>
+        public static string DeckEditDone => IsPt ? "Concluir" : "Done";
+        /// <summary>engine-deck.menu.openFolder · Open the folder</summary>
+        public static string DeckMenuOpenFolder => IsPt ? "Abrir a pasta" : "Open the folder";
+        /// <summary>engine-deck.menu.recordHere · Record here</summary>
+        public static string DeckMenuRecordHere => IsPt ? "Gravar aqui" : "Record here";
+        /// <summary>engine-deck.menu.macro · Macro</summary>
+        public static string DeckMenuMacro => IsPt ? "Macro" : "Macro";
+        /// <summary>engine-deck.menu.noMacros · No macros yet</summary>
+        public static string DeckMenuNoMacros => IsPt ? "Nenhuma macro ainda" : "No macros yet";
+        /// <summary>engine-deck.menu.allMacros · All macros…</summary>
+        public static string DeckMenuAllMacros => IsPt ? "Todas as macros…" : "All macros…";
+        /// <summary>engine-deck.menu.keys · Keys…</summary>
+        public static string DeckMenuKeys => IsPt ? "Teclas…" : "Keys…";
+        /// <summary>engine-deck.menu.text · Text…</summary>
+        public static string DeckMenuText => IsPt ? "Texto…" : "Text…";
+        /// <summary>engine-deck.menu.open · Open…</summary>
+        public static string DeckMenuOpen => IsPt ? "Abrir…" : "Open…";
+        /// <summary>engine-deck.menu.folder · Folder</summary>
+        public static string DeckMenuFolder => IsPt ? "Pasta" : "Folder";
+        /// <summary>engine-deck.menu.folderName · Folder</summary>
+        public static string DeckMenuFolderName => IsPt ? "Pasta" : "Folder";
+        /// <summary>engine-deck.menu.command · TR3 command</summary>
+        public static string DeckMenuCommand => IsPt ? "Comando do TR3" : "TR3 command";
+        /// <summary>engine-deck.menu.icon · Icon</summary>
+        public static string DeckMenuIcon => IsPt ? "Ícone" : "Icon";
+        /// <summary>engine-deck.menu.iconList · From the list…</summary>
+        public static string DeckMenuIconList => IsPt ? "Da lista…" : "From the list…";
+        /// <summary>engine-deck.menu.iconApp · From a program…</summary>
+        public static string DeckMenuIconApp => IsPt ? "De um programa…" : "From a program…";
+        /// <summary>engine-deck.menu.iconCapture · Cut from the screen</summary>
+        public static string DeckMenuIconCapture => IsPt ? "Recortar da tela" : "Cut from the screen";
+        /// <summary>engine-deck.menu.iconPicture · Picture file…</summary>
+        public static string DeckMenuIconPicture => IsPt ? "Arquivo de imagem…" : "Picture file…";
+        /// <summary>engine-deck.menu.iconDefault · Use the default</summary>
+        public static string DeckMenuIconDefault => IsPt ? "Usar o padrão" : "Use the default";
+        /// <summary>engine-deck.menu.color · Color</summary>
+        public static string DeckMenuColor => IsPt ? "Cor" : "Color";
+        /// <summary>engine-deck.menu.noColor · No color</summary>
+        public static string DeckMenuNoColor => IsPt ? "Sem cor" : "No color";
+        /// <summary>engine-deck.menu.duplicate · Duplicate</summary>
+        public static string DeckMenuDuplicate => IsPt ? "Duplicar" : "Duplicate";
+        /// <summary>engine-deck.menu.delete · Delete the button</summary>
+        public static string DeckMenuDelete => IsPt ? "Excluir o botão" : "Delete the button";
+        /// <summary>engine-deck.menu.editInTr3 · Edit in TR3</summary>
+        public static string DeckMenuEditInTr3 => IsPt ? "Editar no TR3" : "Edit in TR3";
+        /// <summary>engine-deck.menu.editOnScreen · Edit on screen</summary>
+        public static string DeckMenuEditOnScreen => IsPt ? "Editar na tela" : "Edit on screen";
+        /// <summary>engine-deck.menu.doneEditing · Done editing</summary>
+        public static string DeckMenuDoneEditing => IsPt ? "Concluir a edição" : "Done editing";
+        /// <summary>engine-deck.menu.openInTr3 · Open in TR3</summary>
+        public static string DeckMenuOpenInTr3 => IsPt ? "Abrir no TR3" : "Open in TR3";
+        /// <summary>engine-deck.menu.hide · Hide for now</summary>
+        public static string DeckMenuHide => IsPt ? "Esconder por agora" : "Hide for now";
+        /// <summary>engine-deck.recordName · {{deck}} {{n}}</summary>
+        public static string DeckRecordName(string deck, string n) => IsPt ? $"{deck} {n}" : $"{deck} {n}";
         /// <summary>engine-errors.fileInUse · the file is in use by another program</summary>
         public static string ErrorsFileInUse => IsPt ? "o arquivo está em uso por outro programa" : "the file is in use by another program";
         /// <summary>engine-errors.accessDenied · Windows denied access to the file or folder</summary>

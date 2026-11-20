@@ -2295,6 +2295,8 @@ namespace TrueReplayer
             if (_deckOwedAny && DeckReleaseOwed((int)wParam, hookStruct0)) return (IntPtr)1;
             // Deck (Fase 4): a press outside a summoned deck closes it, and goes on (DeckSummonClick).
             if (_summonOpen != null) DeckSummonClick((int)wParam, hookStruct0);
+            // Deck (Fase 6): a press outside a deck's open menu closes it, and goes on (DeckMenuClick).
+            if (_deckHits.Menus.Length > 0) DeckMenuClick((int)wParam, hookStruct0);
 
             // X-button remap pairing release runs BEFORE the capture/suppress gates — same
             // stuck-injected-key hazard as the keyboard hoist above it. Physical ups only.
@@ -3255,7 +3257,7 @@ namespace TrueReplayer
                 // Deck (branch deck, Fase 4): the summoned decks' keys (DeckKey). The release of a key a deck took
                 // comes here before every gate; a summon hotkey, and the keys that pick on a summoned deck, ahead of
                 // the Teclado and of every hotkey (the app's hotkeys win over a game's keys).
-                if ((_deckSummons.Count > 0 || _deckKeysOwed > 0 || _summonOpen != null) && DeckKey(wParam, lParam)) return (IntPtr)1;
+                if ((_deckSummons.Count > 0 || _deckKeysOwed > 0 || _summonOpen != null || _deckEscWanted) && DeckKey(wParam, lParam)) return (IntPtr)1;
 
                 // Capture mode handled first: composes the combo via BuildComposedKey, emits
                 // it through OnHotkeyCaptured, then swallows the event so the Shell never sees

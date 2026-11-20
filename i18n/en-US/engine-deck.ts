@@ -67,5 +67,49 @@ export default {
     couldNotStart: '{{name}} could not start.',
     openFailed: 'Could not open: {{reason}}',
     keysInvalid: 'These keys cannot be sent: {{combo}}',
+    // Fase 6, the edit mode: a button moved, duplicated or dropped where every place is taken.
+    noRoom: 'There is no free place here.',
+    // A program or a shortcut gave no icon; a picture file could not be read.
+    iconFailed: 'Could not take an icon from this file.',
+    imageFailed: 'Could not read this picture.',
   },
+
+  // Fase 6, the edit mode on screen: the button that ends it, in the deck's header (DeckWindow). Short.
+  editDone: 'Done',
+
+  // The menus of a deck on screen (DeckMenus.cs): a button's (its right button, or a click while the deck is
+  // edited), an empty place's, and the deck's own (its header). Rows of 180–300 DIP at 12 px, so short. "…" =
+  // it opens the Deck page at that button, where it is typed or picked.
+  menu: {
+    openFolder: 'Open the folder',
+    recordHere: 'Record here',
+    macro: 'Macro',
+    noMacros: 'No macros yet',
+    allMacros: 'All macros…',
+    keys: 'Keys…',
+    text: 'Text…',
+    open: 'Open…',
+    folder: 'Folder',
+    // The name of a new folder ("Folder", then "Folder 2"…).
+    folderName: 'Folder',
+    command: 'TR3 command',
+    icon: 'Icon',
+    iconList: 'From the list…',
+    iconApp: 'From a program…',
+    iconCapture: 'Cut from the screen',
+    iconPicture: 'Picture file…',
+    iconDefault: 'Use the default',
+    color: 'Color',
+    noColor: 'No color',
+    duplicate: 'Duplicate',
+    delete: 'Delete the button',
+    editInTr3: 'Edit in TR3',
+    editOnScreen: 'Edit on screen',
+    doneEditing: 'Done editing',
+    openInTr3: 'Open in TR3',
+    hide: 'Hide for now',
+  },
+
+  // The name of the macro "Record here" makes: the deck's name and the first free number ("General 1").
+  recordName: '{{deck}} {{n}}',
 } as const;

@@ -190,5 +190,7 @@
 .mset-auto-icon[data-tone='ok'] { background: color-mix(in srgb, var(--color-replay) 12%, transparent); color: var(--color-replay-fg); }
 .mset-auto-icon[data-tone='warn'] { background: color-mix(in srgb, var(--color-warning) 12%, transparent); color: var(--color-warning-ink); }
 .mset-auto-icon svg { width: 0.9375rem; height: 0.9375rem; }
+/* Deck, Fase 6: "Add to a deck", the section's own button. */
+.mset-add svg { width: 0.875rem; height: 0.875rem; }
 .mset-auto-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.25rem; color: var(--color-text-primary); }
 .mset-target-sub[data-tone='warn'] { color: var(--color-warning-ink); }

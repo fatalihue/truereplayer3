@@ -57,6 +57,9 @@ export default {
     copyName: '{{deck}} cópia',
     deleted: '{{deck}} excluído',
     duplicated: '{{deck}} é uma cópia, desativada até você ativar.',
+    edit: 'Editar na tela',
+    editTip: 'Mova o deck, mude a grade e arraste os botões no próprio deck. Esc termina.',
+    editing: 'Concluir a edição',
     sub: {
       fixedAlways: '{{place}} · sempre na tela',
       fixedApps: '{{place}} · com {{apps}} na frente',
@@ -261,6 +264,7 @@ export default {
     iconDefault: 'O ícone da ação',
     lucide: 'Ícone da lista',
     emoji: 'Emoji',
+    image: 'Imagem',
     useDefault: 'Usar o padrão',
     color: 'Cor',
     noColor: 'Sem cor',
@@ -270,6 +274,11 @@ export default {
   icons: {
     icons: 'Ícones',
     emoji: 'Emoji',
+    picture: 'Imagem',
+    fromApp: 'De um programa…',
+    fromFile: 'Arquivo de imagem…',
+    fromScreen: 'Recortar da tela',
+    pictureHint: 'O TR3 guarda uma cópia: o botão mantém a imagem se o arquivo mudar de lugar.',
     groups: {
       media: 'Mídia',
       system: 'Sistema',
@@ -376,5 +385,9 @@ export default {
     folder: 'pasta {{folder}}',
     sub: 'Lugar {{n}}',
     subLabel: '{{label}} · lugar {{n}}',
+    add: 'Adicionar a um deck',
+    newDeck: 'Novo deck',
+    full: 'Não há lugar livre neste deck',
+    added: 'Adicionada ao {{deck}}, página {{n}}.',
   },
 } as const satisfies Catalogo<typeof en>;

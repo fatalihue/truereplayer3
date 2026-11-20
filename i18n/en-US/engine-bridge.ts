@@ -410,6 +410,7 @@ export default {
       position: 'the position pick',
       colour: 'the colour pick',
       region: 'the region picker',
+      buttonIcon: 'the button icon capture',  // Deck: a button's icon cut from the screen
     },
     // O título da barra, em cima da captura: o que fazer · verbo no imperativo.
     title: {
@@ -422,6 +423,7 @@ export default {
       clickPoint: 'Pick the click point',
       color: 'Pick the color',
       aColor: 'Pick a color',                // só a cor, sem guardar o ponto
+      buttonIcon: 'Cut out the button icon', // Deck: a picture of the screen becomes a button's icon
     },
     // A linha "para quem" da barra (encolhe quando falta largura). name = a macro da automação.
     for: {
@@ -433,6 +435,7 @@ export default {
       copyHotkey: 'for the Copy text from the screen hotkey',  // o rótulo da hotkey (settings.hotkeys.screenText.label)
       copyText: 'for Copy text from the screen',
       clicker: 'for Clicker',
+      deck: 'for a button of the deck {{name}}',  // name = o nome do deck (cada painel é "um deck", minúscula)
     },
     // A dica da barra, embaixo.
     hint: {
@@ -441,6 +444,7 @@ export default {
       smallerFaster: 'Smaller regions read faster',
       insideOnly: 'The image is looked for only inside it',
       toClipboard: 'The text it reads goes to the clipboard',
+      buttonIcon: 'Drag around the picture the button will show',
     },
   },
 

@@ -40,7 +40,7 @@ namespace TrueReplayer.Services
         }
 
         /// <summary>What the buttons show of the app: the macro a run runs, the Clicker clicking, a recording, and the TR3 switches.</summary>
-        internal sealed record LiveState(string? RunningMacro, bool Clicking, bool Recording, bool ClickerMode, bool Shortcuts, bool Automations, bool Remaps, bool Teclado);
+        internal sealed record LiveState(string? RunningMacro, bool Clicking, bool Recording, bool ClickerMode, bool Shortcuts, bool Automations, bool Remaps, bool Teclado, string? RecordingMacro = null);
 
         private const string OwnerClass = AppIdentity.Id + "DeckOwner";
         private const uint WM_RUN = DeckNative.WM_APP + 1;
@@ -172,6 +172,7 @@ namespace TrueReplayer.Services
                 Register(OwnerClass);
                 Register(DeckWindow.ClassName);
                 Register(DeckTip.ClassName);
+                Register(DeckMenu.ClassName);
                 _owner = DeckNative.CreateWindowExW(DeckNative.WS_EX_TOOLWINDOW, OwnerClass, AppIdentity.DisplayName + " · Deck", DeckNative.WS_POPUP,
                     0, 0, 0, 0, IntPtr.Zero, IntPtr.Zero, DeckNative.GetModuleHandleW(null), IntPtr.Zero);
                 if (_owner == IntPtr.Zero) throw new InvalidOperationException($"CreateWindowEx(owner): {Marshal.GetLastWin32Error()}");
@@ -215,6 +216,10 @@ namespace TrueReplayer.Services
                 InputHookManager.SetDeckHits(_hits);
                 _passReady.Set();
                 if (_fgHook != IntPtr.Zero) DeckNative.UnhookWinEvent(_fgHook);
+                try { _menu?.Dispose(); } catch { }
+                _menu = null;
+                _menus.Clear();
+                InputHookManager.SetDeckEscape(false);
                 foreach (var w in _windows.Values) { try { w.Dispose(); } catch { } }
                 _windows.Clear();
                 _byHwnd.Clear();
@@ -260,6 +265,14 @@ namespace TrueReplayer.Services
                         case InputHookManager.WM_DECK_WHEEL:
                             if (_byHwnd.TryGetValue(w, out var wheeled)) wheeled.RoutedWheel((int)(long)l);
                             return IntPtr.Zero;
+                        // Fase 6: Esc closes the menu, or ends the edit; a press outside the menus closes them.
+                        case InputHookManager.WM_DECK_ESCAPE:
+                            if (_menu != null) CloseMenus();
+                            else if (_editing != null) Edit(null);
+                            return IntPtr.Zero;
+                        case InputHookManager.WM_DECK_MENU_OUT:
+                            CloseMenus();
+                            return IntPtr.Zero;
                         case DeckNative.WM_TIMER:
                             OnOwnerTimer(w);
                             return IntPtr.Zero;
@@ -283,6 +296,7 @@ namespace TrueReplayer.Services
                     if (m == DeckNative.WM_DPICHANGED) ReadMonitors();
                     return deck.Proc(m, w, l);
                 }
+                else if (_menus.TryGetValue(h, out var menu)) return menu.Proc(m, w, l);
             }
             catch (Exception ex)
             {
@@ -349,6 +363,8 @@ namespace TrueReplayer.Services
                     _windows[deck.Id] = window;
                     _byHwnd[window.Hwnd] = window;
                 }
+                // Turned on again (the page's Show): a deck hidden for now (its menu, its hotkey) shows again too.
+                else if (!window.Deck.On && deck.On) _hidden.Remove(deck.Id);
                 window.Update(deck, _exclude);
                 window.SetPassthrough(_passApplied);
             }
@@ -358,6 +374,7 @@ namespace TrueReplayer.Services
             {
                 var window = _windows[id];
                 if (_routedOver == window) _routedOver = null;
+                if (_editing == id) Edit(null);
                 HideTip(window);
                 _byHwnd.Remove(window.Hwnd);
                 window.Dispose();
@@ -373,9 +390,10 @@ namespace TrueReplayer.Services
             foreach (var deck in config.Decks)
             {
                 if (!_windows.TryGetValue(deck.Id, out var window)) continue;
-                // A summoned deck shows while it is called, whatever hides the fixed ones (the hotkey is a request).
+                // A summoned deck shows while it is called, whatever hides the fixed ones (the hotkey is a request); a deck
+                // edited on screen shows until the edit ends (Fase 6).
                 bool show = (window.IsSummonDeck ? _summoned == deck.Id
-                        : !_allHidden && !_hidden.Contains(deck.Id) && AppsLetShow(deck))
+                        : _editing == deck.Id || (!_allHidden && !_hidden.Contains(deck.Id) && AppsLetShow(deck)))
                     && config.Enabled && deck.On && _overlays == 0 && !_captureHidden;
                 bool was = window.Shown;
                 window.SetShown(show);
@@ -385,6 +403,8 @@ namespace TrueReplayer.Services
                     DiagnosticLog.Info($"Deck: '{deck.Name}' shown at ({r.Left},{r.Top}) {r.Width}×{r.Height}");
                 }
             }
+            // A deck edited on screen that went away (off, the Deck off, a capture overlay): the edit ends with it.
+            if (_editing != null && (!_windows.TryGetValue(_editing, out var edited) || !edited.Shown) && _overlays == 0 && !_captureHidden) Edit(null);
             PublishHits();
         }
 
@@ -414,7 +434,8 @@ namespace TrueReplayer.Services
             // A deck that lets the mouse through (keys only) is not the hook's to route to, nor the recorder's to leave out.
             var mouse = shown.Where(w => !w.MouseOff).ToList();
             DeckNative.RECT? summoned = _summoned != null && _windows.TryGetValue(_summoned, out var s) && s.Shown ? s.ScreenRect : null;
-            var hits = new InputHookManager.DeckHits(_owner, _passApplied, mouse.Select(w => w.Hwnd).ToArray(), mouse.Select(w => w.ScreenRect).ToArray(), summoned);
+            var menus = _menu?.Chain().Select(m => m.ScreenRect).ToArray() ?? Array.Empty<DeckNative.RECT>();
+            var hits = new InputHookManager.DeckHits(_owner, _passApplied, mouse.Select(w => w.Hwnd).ToArray(), mouse.Select(w => w.ScreenRect).ToArray(), summoned, menus);
             _hits = hits;
             _shownIds = shown.Select(w => w.Id).ToArray();
             InputHookManager.SetDeckHits(hits);
@@ -474,6 +495,8 @@ namespace TrueReplayer.Services
             {
                 if (want)
                 {
+                    // A menu open goes: the engine's clicks would land on it (it never lets clicks through).
+                    CloseMenus();
                     // The hook takes the user's clicks first, then the windows let the engine's through…
                     _passApplied = true;
                     PublishHits();
@@ -654,7 +677,7 @@ namespace TrueReplayer.Services
                     if (said) _windows[errorRun!.DeckId].Flash(errorRun.Slot, message);
                 }
                 _runMacro = null;
-                _live = live with { RunningMacro = null, Clicking = false };
+                _live = live with { RunningMacro = null, Clicking = false, Recording = false, RecordingMacro = null };
             }
             else if (status == "replaying")
             {
@@ -662,13 +685,14 @@ namespace TrueReplayer.Services
                 if (_runMacro != null) _failures.Remove("macro:" + _runMacro);
                 _progress = 0;
                 _progressDrawn = 0;
-                _live = live with { RunningMacro = _runMacro, Clicking = clicker, Recording = false };
+                _live = live with { RunningMacro = _runMacro, Clicking = clicker, Recording = false, RecordingMacro = null };
             }
-            else if (status == "recording") _live = live with { Recording = true };
+            // The macro being recorded is the open one: its buttons show the recording (Record here, Fase 6).
+            else if (status == "recording") _live = live with { Recording = true, RecordingMacro = macro };
             else
             {
                 _runMacro = null;
-                _live = live with { RunningMacro = null, Clicking = false, Recording = false };
+                _live = live with { RunningMacro = null, Clicking = false, Recording = false, RecordingMacro = null };
             }
             if (_live.RunningMacro != null) DeckNative.SetTimer(_owner, TimerProgress, 100, IntPtr.Zero);
             else DeckNative.KillTimer(_owner, TimerProgress);
@@ -977,6 +1001,170 @@ namespace TrueReplayer.Services
             if (KeyOf(tile.Action) is { } key && _failures.Remove(key)) RedrawAll();
             try { TileClicked?.Invoke(id, slot, tile); }
             catch (Exception ex) { DiagnosticLog.Warn($"Deck: a TileClicked handler failed: {ex.GetType().Name}: {ex.Message}"); }
+        }
+
+        // ── Fase 6: the edit mode on screen, the menus, and what the decks ask of the app ──
+
+        /// <summary>
+        /// What a deck's menu asks of the app, done on the UI thread (MainWindow): "record" (Record here), "page" (the Deck
+        /// page at that button, Focus naming what to open there), "iconApp", "iconPicture", "iconCapture" (a picture for
+        /// the button). Folder is the folder open in the deck's place (null: the page Page); Slot -1 is the deck itself.
+        /// </summary>
+        public sealed record DeckRequest(string Kind, string DeckId, string? Folder, int Page, int Slot, string? Focus = null);
+
+        public static event System.Action<DeckRequest>? Requested;
+        /// <summary>The deck edited on screen changed (its id, or null): the page's "Edit on screen" follows.</summary>
+        public static event System.Action<string?>? EditingChanged;
+
+        private static string? _editing;
+        private static DeckMenu? _menu;
+        private static readonly Dictionary<IntPtr, DeckMenu> _menus = new();
+
+        /// <summary>The page's "Edit on screen" (deck:edit): that deck edited on screen, or none.</summary>
+        public static void SetEditing(string? deckId) => Post(() => Edit(deckId));
+
+        /// <summary>The deck edited on screen now (the Deck's thread).</summary>
+        internal static string? Editing => _editing;
+
+        /// <summary>One deck edited at a time: the one before ends, a summoned deck never is (the page edits it).</summary>
+        internal static void Edit(string? deckId)
+        {
+            if (deckId == _editing) return;
+            CloseMenus();
+            if (_editing != null && _windows.TryGetValue(_editing, out var was)) was.SetEditing(false);
+            bool ended = _editing != null;
+            _editing = null;
+            if (deckId != null && _windows.TryGetValue(deckId, out var w) && !w.IsSummonDeck)
+            {
+                // Edited on screen, it is wanted on screen: hidden for now, it stays shown after the edit.
+                _hidden.Remove(deckId);
+                _editing = deckId;
+                w.SetEditing(true);
+                DiagnosticLog.Info($"Deck: '{w.Deck.Name}' edited on screen");
+            }
+            else if (ended) DiagnosticLog.Info("Deck: the edit on screen ended");
+            UpdateEscape();
+            RefreshVisibility();
+            try { EditingChanged?.Invoke(_editing); }
+            catch (Exception ex) { DiagnosticLog.Warn($"Deck: an EditingChanged handler failed: {ex.GetType().Name}: {ex.Message}"); }
+        }
+
+        private static void UpdateEscape() => InputHookManager.SetDeckEscape(_editing != null || _menu != null);
+
+        /// <summary>The menu of a button, or of an empty place, of a deck (its right button, or a click while edited).</summary>
+        internal static void OpenTileMenu(DeckWindow from, int slot, DeckService.Tile? tile, DeckNative.POINT at) =>
+            OpenMenu(DeckMenus.ForTile(from, slot, tile, _editing == from.Id), at);
+
+        /// <summary>The deck's own menu (its header's right button).</summary>
+        internal static void OpenDeckMenu(DeckWindow from, DeckNative.POINT at) => OpenMenu(DeckMenus.ForDeck(from, _editing == from.Id), at);
+
+        private static void OpenMenu(List<DeckMenu.Item> items, DeckNative.POINT at)
+        {
+            CloseMenus();
+            try
+            {
+                _menu = DeckMenu.Open(_owner, items, at, MonitorAt(at.X, at.Y), _theme, _exclude);
+                MenuOpened(_menu);
+            }
+            catch (Exception ex) { DiagnosticLog.Warn($"Deck: the menu could not open: {ex.GetType().Name}: {ex.Message}"); }
+        }
+
+        internal static void MenuOpened(DeckMenu menu)
+        {
+            _menus[menu.Hwnd] = menu;
+            PublishHits();
+            UpdateEscape();
+        }
+
+        internal static void MenuClosed(DeckMenu menu) => _menus.Remove(menu.Hwnd);
+
+        /// <summary>A submenu opened or closed: the hook's picture of the menus follows.</summary>
+        internal static void MenusChanged() => PublishHits();
+
+        /// <summary>Every open menu closes (a pick, Esc, a press outside, the passthrough).</summary>
+        public static void CloseMenus()
+        {
+            if (_thread != null && Thread.CurrentThread != _thread) { Post(CloseMenus); return; }
+            var menu = _menu;
+            _menu = null;
+            if (menu == null) return;
+            menu.Dispose();
+            PublishHits();
+            UpdateEscape();
+        }
+
+        /// <summary>A request of a deck's menu to the app (MainWindow, on its thread).</summary>
+        internal static void Request(DeckRequest request)
+        {
+            DiagnosticLog.Info($"Deck: '{request.DeckId}' asks {request.Kind}{(request.Focus != null ? " " + request.Focus : "")} for slot {request.Slot}");
+            try { Requested?.Invoke(request); }
+            catch (Exception ex) { DiagnosticLog.Warn($"Deck: a Requested handler failed: {ex.GetType().Name}: {ex.Message}"); }
+        }
+
+        /// <summary>The grid changed by the edit mode's corner, with the place the deck now has (one save).</summary>
+        internal static void SaveGrid(string id, int cols, int rows, DeckService.Place place)
+        {
+            DiagnosticLog.Info($"Deck: '{id}' grid {cols}×{rows}, at {place.Anchor} {place.Dx:0.#},{place.Dy:0.#}");
+            DeckService.EditDeck(id, d =>
+            {
+                d.Grid.Cols = Math.Clamp(cols, 1, DeckService.MaxGrid);
+                d.Grid.Rows = Math.Clamp(rows, 1, DeckService.MaxGrid);
+                d.Place = place;
+                return true;
+            });
+        }
+
+        /// <summary>A button dragged to another place of what the deck shows (a button there takes its place).</summary>
+        internal static void MoveTile(DeckWindow w, int from, int to)
+        {
+            DiagnosticLog.Info($"Deck: '{w.Id}' button {from} → {to}");
+            DeckService.MoveTile(w.Id, w.FolderOpen, Math.Max(0, w.Page), from, to);
+        }
+
+        /// <summary>A button dragged onto a page's dot: to that page's first free place.</summary>
+        internal static void MoveTileToPage(DeckWindow w, int from, int page)
+        {
+            DiagnosticLog.Info($"Deck: '{w.Id}' button {from} → page {page + 1}");
+            if (!DeckService.MoveTileToPage(w.Id, Math.Max(0, w.Page), from, page)) w.Flash(from, S.DeckTipNoRoom);
+        }
+
+        /// <summary>
+        /// Files dropped on a deck: an Open button for each, with the file's own icon (a program's, a shortcut's, a
+        /// document's), at the place under the drop when it is free, and at the free places after it.
+        /// </summary>
+        internal static void DropFiles(DeckWindow w, List<string> files, int slot)
+        {
+            string? folder = w.FolderOpen;
+            int page = Math.Max(0, w.Page), placed = 0;
+            foreach (var file in files)
+            {
+                string? image = DeckImages.FromProgram(file);
+                int at = -1;
+                bool ok = DeckService.EditDeck(w.Id, d =>
+                {
+                    var tiles = DeckService.TilesAt(d, folder, page);
+                    if (tiles == null) return false;
+                    bool here = slot >= 0 && slot < d.Grid.Cols * d.Grid.Rows && !(folder != null && slot == 0) && !tiles.Any(t => t.Slot == slot);
+                    at = here ? slot : DeckService.FreeSlot(d, folder, page, slot);
+                    if (at < 0) return false;
+                    tiles.Add(new DeckService.Tile
+                    {
+                        Slot = at,
+                        Icon = image != null ? new DeckService.Icon { Kind = "image", Path = image } : null,
+                        Action = new DeckService.Action { Kind = "open", Target = file },
+                    });
+                    tiles.Sort((a, b) => a.Slot.CompareTo(b.Slot));
+                    return true;
+                });
+                if (!ok)
+                {
+                    w.Flash(Math.Max(0, slot), S.DeckTipNoRoom);
+                    break;
+                }
+                placed++;
+                slot = at;
+            }
+            DiagnosticLog.Info($"Deck: {placed} of {files.Count} file(s) dropped on '{w.Id}' became buttons");
         }
     }
 }

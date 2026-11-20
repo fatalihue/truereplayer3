@@ -157,6 +157,37 @@ namespace TrueReplayer.Services
         [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h);
         [DllImport("shlwapi.dll")] public static extern IntPtr SHCreateMemStream(byte[] p, uint cb);
 
+        // ── Fase 6: the right button, files dropped on a deck, and the icons of programs ──
+
+        public const uint WM_RBUTTONDOWN = 0x204, WM_DROPFILES = 0x233, WM_COPYDATA = 0x4A, WM_COPYGLOBALDATA = 0x49;
+        public const uint MSGFLT_ALLOW = 1;
+        public const uint SHGFI_ICONLOCATION = 0x1000, SHGFI_ICON = 0x100, SHGFI_LARGEICON = 0x0;
+
+        [DllImport("shell32.dll")] public static extern void DragAcceptFiles(IntPtr hwnd, bool accept);
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode)] public static extern uint DragQueryFileW(IntPtr drop, uint index, char[]? file, uint cch);
+        [DllImport("shell32.dll")] public static extern bool DragQueryPoint(IntPtr drop, out POINT pt);
+        [DllImport("shell32.dll")] public static extern void DragFinish(IntPtr drop);
+        // An elevated TR3 still takes a drop from Explorer: these three messages pass the UIPI filter, for this window only.
+        [DllImport("user32.dll")] public static extern bool ChangeWindowMessageFilterEx(IntPtr hwnd, uint msg, uint action, IntPtr changeInfo);
+        [DllImport("user32.dll")] public static extern bool ScreenToClient(IntPtr hwnd, ref POINT pt);
+        [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hwnd, ref POINT pt);
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct SHFILEINFOW
+        {
+            public IntPtr hIcon;
+            public int iIcon;
+            public uint dwAttributes;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string szDisplayName;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 80)] public string szTypeName;
+        }
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+        public static extern IntPtr SHGetFileInfoW(string path, uint attributes, ref SHFILEINFOW info, uint size, uint flags);
+        // An icon of a file at a size: the high word of size is the small one, the low word the large one.
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+        public static extern int SHDefExtractIconW(string iconFile, int index, uint flags, out IntPtr large, out IntPtr small, uint size);
+        [DllImport("user32.dll")] public static extern bool DestroyIcon(IntPtr icon);
+
         public static int LoX(IntPtr l) => (short)((long)l & 0xFFFF);
         public static int HiY(IntPtr l) => (short)(((long)l >> 16) & 0xFFFF);
     }

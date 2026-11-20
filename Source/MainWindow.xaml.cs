@@ -324,6 +324,10 @@ namespace TrueReplayer
                 // pressed runs here, on this thread.
                 DeckHost.SetSwitches(deckSettings.UseCursorClick, deckSettings.ProfileKeyEnabled, deckSettings.AutomationEnabled, RemapService.Current.Enabled);
                 DeckHost.TileClicked += (deckId, slot, tile) => DispatcherQueue.TryEnqueue(() => RunDeckTile(deckId, slot, tile));
+                // Fase 6: what a deck's menu asks of the app (Record here, the Deck page at a button, a picture for
+                // one), here too; and the deck edited on screen, which the page's "Edit on screen" follows.
+                DeckHost.Requested += request => DispatcherQueue.TryEnqueue(() => OnDeckRequest(request));
+                DeckHost.EditingChanged += id => bridge?.SendMessage("deck:editing", new { deckId = id });
             }
 
             // Run cursors (data-loop row position, SetVariable cycle position) — loaded here for
@@ -553,6 +557,21 @@ namespace TrueReplayer
                 WebView.CoreWebView2.Reload();
             }
             catch (Exception ex) { Services.DiagnosticLog.Warn($"[Interface] could not check the page's script: {ex.Message}"); }
+        }
+
+        // Deck (branch deck, Fase 6): the pictures the buttons show (DeckImages: a program's icon, a picture file, a
+        // cut of the screen) reach the Deck page as https://deck.local/<file>. As images only: DenyCors lets an
+        // <img> load them and nothing read them. Mapped before the page loads, so the folder is made here: WebView2
+        // maps only a folder that exists, and a mapping made after the page loaded does not reach it (deck-captura-real).
+        private void MapDeckImages()
+        {
+            try
+            {
+                WebView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    "deck.local", DeckImages.Dir,
+                    Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.DenyCors);
+            }
+            catch (Exception ex) { Services.DiagnosticLog.Warn($"Deck: the pictures' folder could not be mapped for the page: {ex.Message}"); }
         }
 
         private async void InitializeWebView()
@@ -917,6 +936,7 @@ namespace TrueReplayer
             _interfaceScript = RegisterInterfaceScriptAsync();
 
 #if DEBUG
+            MapDeckImages();
             WebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
             _targetUrl = "http://localhost:5173";
             StartupClock.Mark("navigate");
@@ -933,6 +953,7 @@ namespace TrueReplayer
             WebView.CoreWebView2.SetVirtualHostNameToFolderMapping(
                 "app.local", wwwrootPath,
                 Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
+            MapDeckImages();
             // One build of the page per language (wwwroot/<language>/index.html, plan of languages §3.3).
             _targetUrl = $"https://app.local/{Services.S.Language}/index.html";
             StartupClock.Mark("navigate");
@@ -2116,7 +2137,18 @@ namespace TrueReplayer
             {
                 if (bridge == null) return;
                 if (!DeckService.IsMacroFound(name)) { DeckHost.Flash(deckId, slot, S.DeckTipMissing(name: name)); return; }
-                if (mainController.IsRecording()) { DeckHost.Flash(deckId, slot, S.DeckTipRecording); return; }
+                if (mainController.IsRecording())
+                {
+                    // Record here (Fase 6): the button of the macro being recorded stops the recording.
+                    if (bridge.CurrentProfileName == name)
+                    {
+                        Services.DiagnosticLog.Info($"Deck: stop recording '{name}'");
+                        mainController.ToggleRecording();
+                        return;
+                    }
+                    DeckHost.Flash(deckId, slot, S.DeckTipRecording);
+                    return;
+                }
                 if (bridge.UseCursorClick) { DeckHost.Flash(deckId, slot, S.DeckTipClicker); return; }
                 if (mainController.IsReplayInProgress())
                 {
@@ -2180,6 +2212,74 @@ namespace TrueReplayer
 
         private string DeckBusyTip() =>
             bridge?.CurrentProfileName is { Length: > 0 } open && open != "No Profile" ? S.DeckTipBusy(name: open) : S.DeckTipRunning;
+
+        // ── Deck (branch deck, Fase 6): what a deck's menu asks of the app ──
+
+        /// <summary>
+        /// A deck's menu asked for the app (DeckHost.Requested, queued here from the Deck's thread): Record here, the
+        /// Deck page at a button (what is typed or picked from a long list — a macro, keys, a text, a target, an
+        /// icon — is done there), or a picture for a button (a program's icon, a picture file, a cut of the screen).
+        /// </summary>
+        private void OnDeckRequest(DeckHost.DeckRequest request)
+        {
+            try
+            {
+                switch (request.Kind)
+                {
+                    case "record":
+                        DeckRecordHere(request);
+                        break;
+                    case "page":
+                        // The menu's click gave this process the right to come forward (the last input was its own).
+                        windowEventManager?.BringToForeground();
+                        bridge?.SendMessage("deck:show", new { deckId = request.DeckId, folder = request.Folder, page = request.Page, slot = request.Slot, focus = request.Focus });
+                        break;
+                    case "iconApp":
+                    case "iconPicture":
+                    case "iconCapture":
+                        if (bridge != null) _ = bridge.DeckIconAsync(request, fromPage: false);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Services.DiagnosticLog.Error($"Deck: the request {request.Kind} of '{request.DeckId}' failed", ex);
+            }
+        }
+
+        /// <summary>
+        /// Record here: a new macro named after the deck ("Geral 1", the first number free), the button running it,
+        /// and a recording into it — with TR3 left where it is: the page makes the macro and records into it, as the
+        /// tray's "Record a new macro" does. The button shows the recording (its ring); pressed, it stops it.
+        /// Refused, with the deck saying why, while TR3 records, runs or is in Clicker mode.
+        /// </summary>
+        private void DeckRecordHere(DeckHost.DeckRequest r)
+        {
+            if (bridge == null) return;
+            if (mainController.IsRecording()) { DeckHost.Flash(r.DeckId, r.Slot, S.DeckTipRecording); return; }
+            if (bridge.UseCursorClick) { DeckHost.Flash(r.DeckId, r.Slot, S.DeckTipClicker); return; }
+            if (mainController.IsReplayInProgress()) { DeckHost.Flash(r.DeckId, r.Slot, DeckBusyTip()); return; }
+            var deck = DeckService.Current.Decks.FirstOrDefault(d => d.Id == r.DeckId);
+            if (deck == null) return;
+            string name = DeckService.FreeMacroName(n => S.DeckRecordName(deck: DeckService.MacroSafe(deck.Name), n: S.Num(n)));
+            bool linked = DeckService.EditDeck(r.DeckId, d =>
+            {
+                var tiles = DeckService.TilesAt(d, r.Folder, r.Page);
+                if (tiles == null || r.Slot < 0 || r.Slot >= d.Grid.Cols * d.Grid.Rows || (r.Folder != null && r.Slot == 0)) return false;
+                var tile = tiles.FirstOrDefault(t => t.Slot == r.Slot);
+                if (tile == null)
+                {
+                    tile = new DeckService.Tile { Slot = r.Slot };
+                    tiles.Add(tile);
+                    tiles.Sort((a, b) => a.Slot.CompareTo(b.Slot));
+                }
+                tile.Action = new DeckService.Action { Kind = "macro", Macro = name };
+                return true;
+            });
+            if (!linked) return;
+            Services.DiagnosticLog.Info($"Deck: record here → '{name}' ('{r.DeckId}' slot {r.Slot})");
+            bridge.SendMessage("tray:command", new { command = "recordNew", name });
+        }
 
         /// <summary>A TR3 button: the same commands as the tray's switches and the hotkeys.</summary>
         private void RunDeckCommand(string deckId, int slot, string? command)

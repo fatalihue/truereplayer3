@@ -33,7 +33,7 @@ namespace TrueReplayer
         /// <summary>The decks on screen as the hook sees them: published whole by the Deck's thread (DeckHost).</summary>
         internal sealed class DeckHits
         {
-            public static readonly DeckHits None = new(IntPtr.Zero, false, Array.Empty<IntPtr>(), Array.Empty<DeckNative.RECT>(), null);
+            public static readonly DeckHits None = new(IntPtr.Zero, false, Array.Empty<IntPtr>(), Array.Empty<DeckNative.RECT>(), null, Array.Empty<DeckNative.RECT>());
 
             /// <summary>The Deck thread's hidden window, where the routed mouse goes.</summary>
             public readonly IntPtr Mailbox;
@@ -43,14 +43,17 @@ namespace TrueReplayer
             public readonly DeckNative.RECT[] Rects;
             /// <summary>The summoned deck on screen (Fase 4), mouse or not: a press outside it closes it.</summary>
             public readonly DeckNative.RECT? Summoned;
+            /// <summary>The decks' menus open now (Fase 6): a press outside all of them closes them, and goes on.</summary>
+            public readonly DeckNative.RECT[] Menus;
 
-            public DeckHits(IntPtr mailbox, bool pass, IntPtr[] hwnds, DeckNative.RECT[] rects, DeckNative.RECT? summoned)
+            public DeckHits(IntPtr mailbox, bool pass, IntPtr[] hwnds, DeckNative.RECT[] rects, DeckNative.RECT? summoned, DeckNative.RECT[] menus)
             {
                 Mailbox = mailbox;
                 Pass = pass;
                 Hwnds = hwnds;
                 Rects = rects;
                 Summoned = summoned;
+                Menus = menus;
             }
 
             /// <summary>Is the point on a deck at all (no look at what covers it: the moves' cheap test).</summary>
@@ -353,6 +356,15 @@ namespace TrueReplayer
             // The app's hotkey being typed into its capture box: no deck is called, nothing is read.
             if (CaptureHotkeyMode) return false;
 
+            // A deck edited on screen, or a deck's menu open (Fase 6): Esc is theirs — the menu closes, or the edit ends.
+            if (_deckEscWanted && vk == 0x1B && _summonOpen == null)
+            {
+                OweDeckKey(vk);
+                var mailbox = _deckHits.Mailbox;
+                if (mailbox != IntPtr.Zero) DeckNative.PostMessageW(mailbox, WM_DECK_ESCAPE, IntPtr.Zero, IntPtr.Zero);
+                return true;
+            }
+
             string? combo = null;
             if (_summonOpen != null)
             {
@@ -404,6 +416,29 @@ namespace TrueReplayer
             // Inside a deck that takes the mouse, the press is the deck's (a button, its header).
             if (hits.Summoned is { } r && r.Contains(m.pt.x, m.pt.y) && hits.Touches(m.pt.x, m.pt.y)) return;
             CloseDeckSummon("click");
+        }
+
+        // ── The edit mode and the decks' menus (Fase 6) ──
+        //
+        // While a deck is edited on screen, or one of the decks' menus is open, Esc is theirs (DeckKey, above): it closes the
+        // menu, or ends the edit. A press of the mouse outside every open menu closes them, and goes on to where it was going.
+
+        internal const uint WM_DECK_ESCAPE = DeckNative.WM_APP + 8, WM_DECK_MENU_OUT = DeckNative.WM_APP + 9;
+
+        private static volatile bool _deckEscWanted;
+
+        /// <summary>The Deck's thread: a deck is edited on screen, or a menu is open (Esc is theirs), or neither.</summary>
+        internal static void SetDeckEscape(bool wanted) => _deckEscWanted = wanted;
+
+        /// <summary>A press of a mouse button (the user's) with a deck's menu open: outside every menu, the menus close.</summary>
+        private static void DeckMenuClick(int msg, in NativeMethods.MSLLHOOKSTRUCT m)
+        {
+            var hits = _deckHits;
+            if (hits.Menus.Length == 0 || hits.Mailbox == IntPtr.Zero) return;
+            if (msg is not (NativeMethods.WM_LBUTTONDOWN or NativeMethods.WM_RBUTTONDOWN or NativeMethods.WM_MBUTTONDOWN or NativeMethods.WM_XBUTTONDOWN)) return;
+            if (!DeckPhysical(m.flags, m.dwExtraInfo)) return;
+            foreach (var r in hits.Menus) if (r.Contains(m.pt.x, m.pt.y)) return;
+            DeckNative.PostMessageW(hits.Mailbox, WM_DECK_MENU_OUT, IntPtr.Zero, IntPtr.Zero);
         }
 
         // ── The Deck's keys (DeckActions, on the Deck's worker thread) ──

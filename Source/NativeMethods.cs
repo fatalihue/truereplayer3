@@ -465,6 +465,9 @@ namespace TrueReplayer.Interop
         // Window management
         public const int SW_MINIMIZE = 6;
         public const int SW_RESTORE = 9;
+        // Deck (Fase 6): put away and brought back without taking the foreground from the app in front.
+        public const int SW_SHOWMINNOACTIVE = 7;
+        public const int SW_SHOWNOACTIVATE = 4;
         public const int SW_MAXIMIZE = 3; // == SW_SHOWMAXIMIZED
         public const int SW_SHOW = 5;     // show in current size/state (un-hides without un-maximizing)
 

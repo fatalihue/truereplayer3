@@ -251,6 +251,17 @@
   color: var(--swatch-ink);
 }
 .dk-chip-icon { width: 66.67%; height: 66.67%; }
+/* A picture of Deck\images (Fase 6): where the window draws it, 30/64 of the side from 8/64 down (DeckWindow.DrawIcon). */
+.dk-img {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--dk-tile) * 8 / 64);
+  width: calc(var(--dk-tile) * 30 / 64);
+  height: calc(var(--dk-tile) * 30 / 64);
+  translate: -50% 0;
+  object-fit: contain;
+}
+.dk-glyph-img { display: inline-block; width: 1rem; height: 1rem; object-fit: contain; }
 .dk-label {
   position: absolute;
   left: 5px;
@@ -391,7 +402,7 @@
 }
 .dk-icon-pick:hover { border-color: var(--color-border-strong); }
 .dk-icon-pick:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 2px; }
-.dk-icon-pick svg, .dk-icon-pick .dk-mask { width: 1.25rem; height: 1.25rem; }
+.dk-icon-pick svg, .dk-icon-pick .dk-mask, .dk-icon-pick .dk-glyph-img { width: 1.25rem; height: 1.25rem; }
 .dk-icon-row { display: flex; align-items: center; gap: 0.625rem; }
 .dk-icon-name { flex: 1; min-width: 0; font-size: var(--text-minor); color: var(--color-text-secondary); }
 .dk-emoji-small { font-size: 1.125rem; line-height: 1; }
@@ -465,6 +476,30 @@
 .dk-picker-icon:hover { background: var(--color-wash-hover); border-color: var(--color-border-subtle); }
 .dk-picker-icon:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: -1px; }
 .dk-picker-wait { display: grid; place-items: center; height: 20rem; color: var(--color-text-tertiary); }
+/* The Picture tab (Fase 6): where a picture comes from — the engine opens the dialog or the capture. */
+.dk-picker-sources { display: flex; flex-direction: column; gap: 0.125rem; padding: 0.25rem; border: 1px solid var(--color-border-subtle); border-radius: 0.375rem; background: var(--color-bg-elevated); }
+.dk-picker-source {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: 2rem;
+  padding: 0 0.625rem;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--text-body);
+  text-align: left;
+  cursor: pointer;
+}
+.dk-picker-source svg { width: 1rem; height: 1rem; color: var(--color-text-secondary); }
+.dk-picker-source:hover { background: var(--color-wash-hover); }
+.dk-picker-source:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: -1px; }
+.dk-picker .rm-hint { margin: 0; }
+/* The deck edited on screen: the head's button stays pressed until Done or Esc. */
+.dk .dk-edit { gap: 0.375rem; }
+.dk .dk-edit[aria-pressed='true'] { border-color: var(--color-accent-solid); background: color-mix(in srgb, var(--color-accent) 12%, var(--color-bg-card)); }
 
 /* 1024–1279: the decks fold into avatars, as the library does. */
 @container shell (max-width: 79.99rem) {

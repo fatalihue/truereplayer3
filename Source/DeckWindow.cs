@@ -63,6 +63,14 @@ namespace TrueReplayer.Services
 
         // The folder open in the deck's place (null: the pages).
         private string? _folder;
+
+        // The edit mode on screen (Fase 6): the deck stays whole and opaque, with "Done" in its header; a press on a button
+        // or an empty place opens its menu, a drag carries a button to another place (or onto a page's dot), and the
+        // corner changes the grid — kept at its top-left while it changes (the preview), then saved with its new place.
+        private bool _editing, _resizing, _tileDragging, _hoverPencil;
+        private int _previewCols = -1, _previewRows = -1, _resizeLeft, _resizeTop;
+        private int _tileFrom = -1, _tileTarget = -1, _pageTarget = -1;
+        private DeckNative.POINT _tileStart;
         // The labels cut short at the last frame, by slot: the tip says them whole.
         private readonly HashSet<int> _cut = new();
 
@@ -84,7 +92,54 @@ namespace TrueReplayer.Services
             _collapsedNow = deck.Look.Collapse;
             _edgeHiddenNow = deck.Look.EdgeHide;
             _alpha = _alphaTo = RestAlpha;
+            // Files dropped on a deck make Open buttons (Fase 6) — from Explorer even with TR3 elevated: the three
+            // messages a drop is made of pass the UIPI filter, for this window only (OLE's RegisterDragDrop cannot).
+            DeckNative.DragAcceptFiles(Hwnd, true);
+            foreach (var m in new[] { DeckNative.WM_DROPFILES, DeckNative.WM_COPYDATA, DeckNative.WM_COPYGLOBALDATA })
+                DeckNative.ChangeWindowMessageFilterEx(Hwnd, m, DeckNative.MSGFLT_ALLOW, IntPtr.Zero);
         }
+
+        /// <summary>The deck as it is now (its menu reads it).</summary>
+        public DeckService.Deck Deck => _deck;
+        /// <summary>Edited on screen (Fase 6).</summary>
+        public bool Editing => _editing;
+
+        /// <summary>
+        /// The edit mode on (the pencil, the menu, the page) or off (Done, Esc, the page). On, the deck is whole and opaque
+        /// whatever its look says, with its header even when it has none, and its page's buttons as they are.
+        /// </summary>
+        public void SetEditing(bool on)
+        {
+            if (on == _editing) return;
+            _editing = on;
+            _resizing = _tileDragging = false;
+            _previewCols = _previewRows = -1;
+            _tileFrom = _tileTarget = _pageTarget = -1;
+            if (on)
+            {
+                _collapsedNow = _edgeHiddenNow = false;
+                _animStart = -1;
+                DeckNative.KillTimer(Hwnd, TimerAnim);
+                DeckNative.KillTimer(Hwnd, TimerLeave);
+                _alpha = _alphaTo = 255;
+            }
+            Layout();
+            Render();
+            if (!on && !_inside) OnLeave();
+        }
+
+        /// <summary>A folder of the deck opened in its place (its menu's "Open the folder").</summary>
+        public void ShowFolder(string id)
+        {
+            if (!_deck.Folders.Any(f => f.Id == id)) return;
+            _folder = id;
+            _selected = -1;
+            Render();
+        }
+
+        /// <summary>The page shown (its menu reads it), or -1 while a folder is open.</summary>
+        public int Page => _folder == null ? _page : -1;
+        public string? FolderOpen => _folder;
 
         public DeckNative.RECT ScreenRect => new(_x, _y, _x + _w, _y + _h);
         public bool Shown => _shown;
@@ -109,9 +164,11 @@ namespace TrueReplayer.Services
             if (_folder != null && !deck.Folders.Any(f => f.Id == _folder)) _folder = null;
             // A switch that changed while the mouse is away takes effect now; with the mouse on the deck, when it leaves.
             // A summoned deck never folds nor hides at an edge: it is there because it was called.
-            _collapsedNow = !IsSummonDeck && deck.Look.Collapse && (_collapsedNow || !_inside);
-            _edgeHiddenNow = !IsSummonDeck && deck.Look.EdgeHide && (_edgeHiddenNow || !_inside);
+            _collapsedNow = !IsSummonDeck && !_editing && deck.Look.Collapse && (_collapsedNow || !_inside);
+            _edgeHiddenNow = !IsSummonDeck && !_editing && deck.Look.EdgeHide && (_edgeHiddenNow || !_inside);
             if (!_inside && !_dragging && _animStart < 0) _alpha = _alphaTo = RestAlpha;
+            // A save during a resize (another edit) ends the preview: the grid is the file's again.
+            if (!_resizing) _previewCols = _previewRows = -1;
             DeckNative.SetWindowDisplayAffinity(Hwnd, excludeFromCapture ? DeckNative.WDA_EXCLUDEFROMCAPTURE : DeckNative.WDA_NONE);
             Layout();
             Render();
@@ -219,7 +276,7 @@ namespace TrueReplayer.Services
         public void SummonKey(int vk)
         {
             if (!_shown) return;
-            int slots = _deck.Grid.Cols * _deck.Grid.Rows;
+            int slots = Cols * Rows;
             int digit = vk is >= 0x30 and <= 0x39 ? vk - 0x30 : vk is >= 0x60 and <= 0x69 ? vk - 0x60 : -1;
             if (digit >= 0)
             {
@@ -236,7 +293,7 @@ namespace TrueReplayer.Services
             {
                 case 0x25: case 0x26: case 0x27: case 0x28:
                 {
-                    int cols = _deck.Grid.Cols, rows = _deck.Grid.Rows;
+                    int cols = Cols, rows = Rows;
                     int at = _selected >= 0 ? _selected : _hover >= 0 ? _hover : -1;
                     if (at < 0) at = 0;
                     else
@@ -297,14 +354,18 @@ namespace TrueReplayer.Services
         // ── Sizes and the place ──
 
         private float Tile => _deck.Grid.Size switch { "s" => 48f, "l" => 80f, _ => 64f };
-        private float HeaderDip => _deck.Look.Header ? HeaderH : 0f;
-        private float FullWDip => 2 + 2 * Pad + _deck.Grid.Cols * Tile + (_deck.Grid.Cols - 1) * Gap;
-        private float FullHDip => 2 + HeaderDip + 2 * Pad + _deck.Grid.Rows * Tile + (_deck.Grid.Rows - 1) * Gap;
+        // The grid as it shows: the file's, or the corner's preview while it is dragged.
+        private int Cols => _previewCols > 0 ? _previewCols : _deck.Grid.Cols;
+        private int Rows => _previewRows > 0 ? _previewRows : _deck.Grid.Rows;
+        // The edit mode always has its header: it holds Done, and the deck's handle.
+        private float HeaderDip => _deck.Look.Header || _editing ? HeaderH : 0f;
+        private float FullWDip => 2 + 2 * Pad + Cols * Tile + (Cols - 1) * Gap;
+        private float FullHDip => 2 + HeaderDip + 2 * Pad + Rows * Tile + (Rows - 1) * Gap;
         private float PillWDip => 2 + 10 + 16 + 6 + Math.Min(220f, DeckPainter.Measure(Name, _painter.Format("Segoe UI Variable Small", 11f, false, true))) + 12;
         private string Name => _deck.Name.Length > 0 ? _deck.Name : "Deck";
 
         // A summoned deck is opaque: it shows because it was called.
-        private byte RestAlpha => IsSummonDeck ? (byte)255 : _deck.Look.RestOpacity <= 0 ? (byte)1 : (byte)Math.Round(255 * _deck.Look.RestOpacity / 100.0);
+        private byte RestAlpha => IsSummonDeck || _editing ? (byte)255 : _deck.Look.RestOpacity <= 0 ? (byte)1 : (byte)Math.Round(255 * _deck.Look.RestOpacity / 100.0);
 
         /// <summary>The monitor, the scale, the size and the place at rest (and past the edge), from the deck's Place — or, summoned, centred where it was called.</summary>
         private void Layout()
@@ -326,6 +387,13 @@ namespace TrueReplayer.Services
                 x = _summonAt!.Value.X - _w / 2;
                 y = _summonAt.Value.Y - _h / 2;
             }
+            else if (_resizing || _previewCols > 0)
+            {
+                // The corner being dragged (and its release, until the save comes back): the deck keeps its top-left,
+                // whatever its anchor.
+                x = _resizeLeft;
+                y = _resizeTop;
+            }
             else
             {
                 var (fx, fy) = AnchorFactors(_deck.Place.Anchor);
@@ -336,7 +404,7 @@ namespace TrueReplayer.Services
             _homeX = Math.Clamp(x, _work.Left, Math.Max(_work.Left, _work.Right - _w));
             _homeY = Math.Clamp(y, _work.Top, Math.Max(_work.Top, _work.Bottom - _h));
 
-            _edge = !IsSummonDeck && _deck.Look.EdgeHide ? DeckHost.EdgeFor(_deck.Place.Anchor, monitor) : null;
+            _edge = !IsSummonDeck && !_editing && _deck.Look.EdgeHide ? DeckHost.EdgeFor(_deck.Place.Anchor, monitor) : null;
             int strip = (int)Math.Ceiling(Strip * _scale);
             (_hideX, _hideY) = _edge switch
             {
@@ -376,7 +444,7 @@ namespace TrueReplayer.Services
         private DeckService.Tile? TileAt(int slot)
         {
             if (_folder != null && slot == 0) return null;
-            int slots = _deck.Grid.Cols * _deck.Grid.Rows;
+            int slots = Cols * Rows;
             if (slot < 0 || slot >= slots) return null;
             return ViewTiles().FirstOrDefault(t => t.Slot == slot);
         }
@@ -426,21 +494,31 @@ namespace TrueReplayer.Services
         {
             float w = FullWDip, h = FullHDip;
             _painter.FillRound(0, 0, w, h, Radius, t.Surface);
-            _painter.StrokeRound(0, 0, w, h, Radius, t.BorderDefault);
+            // Edited on screen: the border in the accent, 2 DIP, so the mode reads at a glance.
+            if (_editing) _painter.StrokeRound(0, 0, w, h, Radius, t.Accent, 2f);
+            else _painter.StrokeRound(0, 0, w, h, Radius, t.BorderDefault);
 
             var folder = OpenFolder;
-            if (_deck.Look.Header)
+            if (HeaderDip > 0)
             {
                 // A folder shows its own name, and no page dots: it is one grid.
                 int pages = folder == null ? _deck.Pages.Count : 1;
-                float dotsW = pages > 1 ? pages * 10f : 0f;
+                float dotsW = pages > 1 ? pages * 10f : 0f, rightW = HeaderRightW;
                 string title = folder != null && folder.Name.Length > 0 ? folder.Name : Name;
-                _painter.Text(title, _painter.Format("Segoe UI Variable Small", 11f, false, true), 1 + Pad, 1, w - 2 - 2 * Pad - dotsW, HeaderH, t.Text);
+                _painter.Text(title, _painter.Format("Segoe UI Variable Small", 11f, false, true), 1 + Pad, 1, w - 2 - 2 * Pad - dotsW - rightW, HeaderH, t.Text);
+                float dotsLeft = w - 1 - Pad - rightW - dotsW;
                 for (int i = 0; i < pages && pages > 1; i++)
-                    _painter.Circle(w - 1 - Pad - dotsW + i * 10f + 5f, 1 + HeaderH / 2f, i == _page ? 3f : 2.5f, i == _page ? t.Text : t.BorderStrong);
+                {
+                    float cx = dotsLeft + i * 10f + 5f, cy = 1 + HeaderH / 2f;
+                    _painter.Circle(cx, cy, i == _page ? 3f : 2.5f, i == _page ? t.Text : t.BorderStrong);
+                    // A button dragged onto a page's dot goes to that page.
+                    if (_tileDragging && _pageTarget == i) _painter.StrokeRound(cx - 6, cy - 6, 12, 12, 6, t.Accent, 1.5f);
+                }
+                if (_editing) DrawDone(t, w);
+                else if (ShowsPencil) _painter.Svg(DeckIcons.Svg["pencil"], Hex(_hoverPencil ? t.Text : t.BorderStrong), w - 1 - Pad - 14, 1 + (HeaderH - 14) / 2f, 14);
             }
 
-            int slots = _deck.Grid.Cols * _deck.Grid.Rows;
+            int slots = Cols * Rows;
             var bySlot = new Dictionary<int, DeckService.Tile>();
             foreach (var tile in ViewTiles()) if (tile.Slot < slots) bySlot[tile.Slot] = tile;
 
@@ -452,17 +530,66 @@ namespace TrueReplayer.Services
                     DrawBack(t, x, y, slot == _hover, slot == _pressed);
                 else if (!bySlot.TryGetValue(slot, out var tile))
                 {
-                    // An empty place: only its outline, so the grid reads as a grid.
-                    _painter.StrokeRound(x, y, Tile, Tile, TileRadius, t.BorderSubtle);
+                    // An empty place: only its outline, so the grid reads as a grid — and, edited, the "+" of what it can take.
+                    _painter.StrokeRound(x, y, Tile, Tile, TileRadius, _editing && slot == _hover ? t.BorderStrong : t.BorderSubtle);
+                    if (_editing)
+                    {
+                        float plus = Tile * 20f / 64f;
+                        _painter.Svg(DeckIcons.Svg["plus"], Hex(t.BorderStrong), x + (Tile - plus) / 2f, y + (Tile - plus) / 2f, plus);
+                    }
                 }
-                else DrawTile(t, tile, slot, x, y, slot == _hover, slot == _pressed);
+                else DrawTile(t, tile, slot, x, y, slot == _hover, slot == _pressed && !_editing);
+
+                if (_tileDragging && slot == _tileFrom)
+                    _painter.FillRound(x, y, Tile, Tile, TileRadius, new Color4(t.Surface.R, t.Surface.G, t.Surface.B, 0.65f));
+                if (_tileDragging && slot == _tileTarget && slot != _tileFrom)
+                    _painter.StrokeRound(x - 3, y - 3, Tile + 6, Tile + 6, TileRadius + 3, t.Accent, 2f);
 
                 if (!IsSummonDeck) continue;
                 // Summoned: the key that picks each of the first ten (1–9, then 0), and the arrows' selection, outside the face.
                 if (slot < 10) DrawKeyBadge(t, slot == 9 ? "0" : (slot + 1).ToString(), x, y);
                 if (slot == _selected) _painter.StrokeRound(x - 3, y - 3, Tile + 6, Tile + 6, TileRadius + 3, t.Text, 2f);
             }
+            if (_editing) DrawGrip(t, w, h);
         }
+
+        // ── The edit mode's controls: the pencil, Done, the corner ──
+
+        private const float PencilW = 18, GripW = 14;
+        private float _doneW = -1;
+
+        /// <summary>The pencil shows on a fixed deck under the mouse: it starts the edit mode.</summary>
+        private bool ShowsPencil => !IsSummonDeck && _inside && !_collapsedNow;
+        /// <summary>The room the header keeps at its right end: Done while edited, the pencil's place on a fixed deck.</summary>
+        private float HeaderRightW => _editing ? DoneW + 4 : IsSummonDeck ? 0f : PencilW;
+        private float DoneW
+        {
+            get
+            {
+                if (_doneW < 0) _doneW = DeckPainter.Measure(S.DeckEditDone, _painter.Format("Segoe UI Variable Small", 11f, true, false)) + 18;
+                return _doneW;
+            }
+        }
+
+        private void DrawDone(DeckTheme t, float w)
+        {
+            float x = w - 1 - Pad - DoneW, y = 1 + 3, h = HeaderH - 6;
+            _painter.FillRound(x, y, DoneW, h, h / 2, t.Card);
+            _painter.StrokeRound(x, y, DoneW, h, h / 2, t.Accent);
+            _painter.Text(S.DeckEditDone, _painter.Format("Segoe UI Variable Small", 11f, true, false), x, y, DoneW, h, t.Text);
+        }
+
+        /// <summary>The corner that changes the grid: six dots in a triangle, inside the deck's bottom-right corner.</summary>
+        private void DrawGrip(DeckTheme t, float w, float h)
+        {
+            for (int i = 0; i < 3; i++)
+                for (int j = 0; j <= i; j++)
+                    _painter.Circle(w - 5 - (i - j) * 4, h - 5 - j * 4, 1.1f, t.BorderStrong);
+        }
+
+        private bool HitPencil(float dx, float dy) => !_editing && !IsSummonDeck && !_collapsedNow && HeaderDip > 0 && dy < 1 + HeaderH && dx >= FullWDip - 1 - Pad - PencilW && dx < FullWDip - 1;
+        private bool HitDone(float dx, float dy) => _editing && dy < 1 + HeaderH && dx >= FullWDip - 1 - Pad - DoneW && dx < FullWDip - 1;
+        private bool HitGrip(float dx, float dy) => _editing && dx >= FullWDip - GripW && dy >= FullHDip - GripW && dx < FullWDip && dy < FullHDip;
 
         /// <summary>The pick key in the button's top-left corner: the panel's colour, its border, the text's ink (the label's contrast).</summary>
         private void DrawKeyBadge(DeckTheme t, string key, float x, float y)
@@ -475,7 +602,7 @@ namespace TrueReplayer.Services
 
         private (float x, float y) TileOrigin(int slot)
         {
-            int c = slot % _deck.Grid.Cols, r = slot / _deck.Grid.Cols;
+            int c = slot % Cols, r = slot / Cols;
             return (1 + Pad + c * (Tile + Gap), 1 + HeaderDip + Pad + r * (Tile + Gap));
         }
 
@@ -533,8 +660,10 @@ namespace TrueReplayer.Services
             _painter.StrokeRound(x, y, size, size, TileRadius, isOn ? t.OnBorder : hover || pressed ? t.BorderStrong : t.BorderSubtle);
 
             bool running = a.Kind == "macro" && a.Macro != null && a.Macro == live.RunningMacro;
-            bool missing = a.Kind == "macro" && a.Macro != null && !DeckService.IsMacroFound(a.Macro);
-            if (running && hover)
+            // Its macro being recorded (Record here, Fase 6): the recording's ring, and Stop under the mouse.
+            bool recordingIt = a.Kind == "macro" && a.Macro != null && live.Recording && a.Macro == live.RecordingMacro;
+            bool missing = a.Kind == "macro" && a.Macro != null && !DeckService.IsMacroFound(a.Macro) && !recordingIt;
+            if ((running || recordingIt) && hover && !_editing)
             {
                 // Under the mouse, a running macro's button says what a press does now: Stop.
                 float iconBox = size * 26f / 64f;
@@ -555,7 +684,7 @@ namespace TrueReplayer.Services
                     _painter.FillRound(x + 9 * k, y + size - 4.5f, barW, 2.5f, 1.25f, t.ReplayFg);
                 }
             }
-            else if (a.Kind == "tr3" && a.Command == "record" && live.Recording)
+            else if ((a.Kind == "tr3" && a.Command == "record" && live.Recording) || recordingIt)
                 _painter.StrokeRound(x, y, size, size, TileRadius, t.RecordingFg, 2f);
             else if (a.Kind == "tr3" && a.Command == "clicker" && live.Clicking)
                 _painter.StrokeRound(x, y, size, size, TileRadius, t.ReplayFg, 2f);
@@ -764,9 +893,17 @@ namespace TrueReplayer.Services
                 case DeckNative.WM_MOUSELEAVE: _tracking = false; if (!_routed && !_routedPress) OnLeave(); return IntPtr.Zero;
                 case DeckNative.WM_LBUTTONDOWN: if (!_routed) OnDown(DeckNative.LoX(l), DeckNative.HiY(l), routed: false); return IntPtr.Zero;
                 case DeckNative.WM_LBUTTONUP: if (!_routed) OnUp(DeckNative.LoX(l), DeckNative.HiY(l), routed: false); return IntPtr.Zero;
+                case DeckNative.WM_RBUTTONUP: if (!_routed) OnRightUp(DeckNative.LoX(l), DeckNative.HiY(l)); return IntPtr.Zero;
                 case DeckNative.WM_MOUSEWHEEL: if (!_routed) OnWheel((short)(((long)w >> 16) & 0xFFFF)); return IntPtr.Zero;
+                case DeckNative.WM_DROPFILES: OnDrop(w); return IntPtr.Zero;
                 case DeckNative.WM_CAPTURECHANGED:
-                    if (l != Hwnd && !_routedPress && (_dragging || _dragArmed || _pressed >= 0)) { _dragArmed = _dragging = false; _pressed = -1; Render(); }
+                    if (l != Hwnd && !_routedPress && (_dragging || _dragArmed || _pressed >= 0 || _resizing || _tileFrom >= 0 || _pressedControl))
+                    {
+                        _dragArmed = _dragging = _pressedControl = false;
+                        _pressed = -1;
+                        CancelEditGesture();
+                        Render();
+                    }
                     return IntPtr.Zero;
                 case DeckNative.WM_TIMER:
                     if ((long)w == (long)(ulong)TimerAnim) AnimTick();
@@ -793,8 +930,12 @@ namespace TrueReplayer.Services
 
         public void RoutedButton(bool down, bool right, int sx, int sy)
         {
-            // The right button has nothing on a deck yet (its menu comes with the editing on screen, Fase 6).
-            if (right) return;
+            // The right button opens the menu of the place under it (Fase 6), on its release.
+            if (right)
+            {
+                if (!down) OnRightUp(sx - _x, sy - _y);
+                return;
+            }
             if (down)
             {
                 _routedPress = true;
@@ -818,6 +959,42 @@ namespace TrueReplayer.Services
                 _tracking = DeckNative.TrackMouseEvent(ref tme);
             }
             if (!_inside) Enter();
+
+            // The edit mode's gestures (Fase 6): the corner changes the grid, a button pressed and moved goes along.
+            if (_resizing && DeckNative.GetCursorPos(out var corner))
+            {
+                ResizeTo(corner);
+                return;
+            }
+            if (_tileFrom >= 0 && DeckNative.GetCursorPos(out var held))
+            {
+                if (!_tileDragging && (Math.Abs(held.X - _tileStart.X) > DragSlopPx || Math.Abs(held.Y - _tileStart.Y) > DragSlopPx))
+                {
+                    _tileDragging = true;
+                    DeckNative.KillTimer(Hwnd, TimerTip);
+                    DeckHost.HideTip(this);
+                }
+                if (_tileDragging)
+                {
+                    float tx = px / _scale, ty = py / _scale;
+                    int target = HitTile(tx, ty);
+                    if (_folder != null && target == 0) target = -1;
+                    int dot = _folder == null && HeaderDip > 0 && _deck.Pages.Count > 1 && ty < 1 + HeaderH ? HitDot(tx, ty) : -1;
+                    if (target != _tileTarget || dot != _pageTarget)
+                    {
+                        _tileTarget = target;
+                        _pageTarget = dot;
+                        Render();
+                    }
+                    return;
+                }
+            }
+            bool pencil = HitPencil(px / _scale, py / _scale);
+            if (pencil != _hoverPencil)
+            {
+                _hoverPencil = pencil;
+                Render();
+            }
 
             if (_dragArmed && DeckNative.GetCursorPos(out var cur))
             {
@@ -858,11 +1035,13 @@ namespace TrueReplayer.Services
 
         private void OnLeave()
         {
-            if (_dragArmed || _dragging) return;
+            if (_dragArmed || _dragging || _resizing || _tileDragging) return;
             _inside = false;
             DeckNative.KillTimer(Hwnd, TimerTip);
             DeckHost.HideTip(this);
-            if (_hover >= 0 || _pressed >= 0) { _hover = -1; _pressed = -1; Render(); }
+            if (_hover >= 0 || _pressed >= 0 || _hoverPencil) { _hover = -1; _pressed = -1; _hoverPencil = false; Render(); }
+            // Edited on screen, the deck stays whole and opaque until the edit ends.
+            if (_editing) return;
             if (_deck.Look.Collapse || _edge != null) DeckNative.SetTimer(Hwnd, TimerLeave, LeaveDelayMs, IntPtr.Zero);
             AnimateTo(_homeX, _homeY, RestAlpha);
         }
@@ -895,7 +1074,25 @@ namespace TrueReplayer.Services
             DeckNative.KillTimer(Hwnd, TimerTip);
             DeckHost.HideTip(this);
             float dx = px / _scale, dy = py / _scale;
-            _pressedHeader = _collapsedNow || (_deck.Look.Header && dy < 1 + HeaderH);
+            // The edit mode's corner: the grid follows the mouse, the deck keeping its top-left (Fase 6).
+            if (HitGrip(dx, dy))
+            {
+                _resizing = true;
+                _resizeLeft = _x;
+                _resizeTop = _y;
+                _previewCols = _deck.Grid.Cols;
+                _previewRows = _deck.Grid.Rows;
+                if (!routed) DeckNative.SetCapture(Hwnd);
+                return;
+            }
+            // The pencil and Done act on their release, on them.
+            if (HitPencil(dx, dy) || HitDone(dx, dy))
+            {
+                _pressedControl = true;
+                if (!routed) DeckNative.SetCapture(Hwnd);
+                return;
+            }
+            _pressedHeader = _collapsedNow || (HeaderDip > 0 && dy < 1 + HeaderH);
             if (_pressedHeader)
             {
                 // The header (or the pill) moves the deck, unless it is locked — or summoned: it has no place to keep.
@@ -911,26 +1108,66 @@ namespace TrueReplayer.Services
             int slot = HitTile(dx, dy);
             if (slot >= 0)
             {
+                // Edited: a press on a place may become a drag of its button (its release decides).
+                if (_editing && DeckNative.GetCursorPos(out var start))
+                {
+                    _tileFrom = slot;
+                    _tileStart = start;
+                    _tileTarget = _pageTarget = -1;
+                    _tileDragging = false;
+                }
                 _pressed = slot;
                 if (!routed) DeckNative.SetCapture(Hwnd);
                 Render();
             }
         }
 
+        private bool _pressedControl;
+
         private void OnUp(int px, int py, bool routed)
         {
             // Read before ReleaseCapture: its WM_CAPTURECHANGED comes back into this window.
-            bool wasDragging = _dragging, header = _pressedHeader;
-            int pressed = _pressed;
-            _dragArmed = _dragging = _pressedHeader = false;
-            _pressed = -1;
+            bool wasDragging = _dragging, header = _pressedHeader, control = _pressedControl, resizing = _resizing;
+            int pressed = _pressed, tileFrom = _tileFrom, tileTarget = _tileTarget, pageTarget = _pageTarget;
+            bool tileDragged = _tileDragging;
+            _dragArmed = _dragging = _pressedHeader = _pressedControl = _resizing = _tileDragging = false;
+            _pressed = _tileFrom = _tileTarget = _pageTarget = -1;
             if (!routed && DeckNative.GetCapture() == Hwnd) DeckNative.ReleaseCapture();
+            float dx = px / _scale, dy = py / _scale;
+            if (resizing)
+            {
+                // The grid and the place in one save: the deck stays where it shows, at its new size. The preview holds
+                // until the save comes back (Update ends it).
+                DeckHost.SaveGrid(Id, Cols, Rows, PlaceFromScreen());
+                return;
+            }
+            if (tileFrom >= 0 && _editing)
+            {
+                if (tileDragged)
+                {
+                    if (tileTarget >= 0 && tileTarget != tileFrom) DeckHost.MoveTile(this, tileFrom, tileTarget);
+                    else if (pageTarget >= 0 && pageTarget != _page && _folder == null) DeckHost.MoveTileToPage(this, tileFrom, pageTarget);
+                    Render();
+                    return;
+                }
+                Render();
+                // A click, edited: Back goes back; any other place opens its menu.
+                if (HitTile(dx, dy) != tileFrom) return;
+                if (_folder != null && tileFrom == 0) Press(0);
+                else OpenMenuAt(tileFrom);
+                return;
+            }
             if (wasDragging)
             {
                 DeckHost.SavePlace(Id, PlaceFromScreen());
                 return;
             }
-            float dx = px / _scale, dy = py / _scale;
+            if (control)
+            {
+                if (HitDone(dx, dy)) DeckHost.Edit(null);
+                else if (HitPencil(dx, dy)) DeckHost.Edit(Id);
+                return;
+            }
             if (header)
             {
                 if (!_collapsedNow && _folder == null && _deck.Pages.Count > 1 && HitDot(dx, dy) is int dot and >= 0 && dot != _page) { _page = dot; Render(); }
@@ -992,9 +1229,83 @@ namespace TrueReplayer.Services
             ArmTip();
         }
 
+        // ── The edit mode's gestures, the menu, a drop (Fase 6) ──
+
+        /// <summary>The right button let go: the menu of the place under it, or the deck's own on its header.</summary>
+        private void OnRightUp(int px, int py)
+        {
+            if (_collapsedNow || _resizing || _tileDragging) return;
+            float dx = px / _scale, dy = py / _scale;
+            if (!DeckNative.GetCursorPos(out var at)) return;
+            DeckNative.KillTimer(Hwnd, TimerTip);
+            DeckHost.HideTip(this);
+            if (HeaderDip > 0 && dy < 1 + HeaderH)
+            {
+                DeckHost.OpenDeckMenu(this, at);
+                return;
+            }
+            int slot = HitTile(dx, dy);
+            if (slot < 0 || (_folder != null && slot == 0)) return;
+            DeckHost.OpenTileMenu(this, slot, TileAt(slot), at);
+        }
+
+        private void OpenMenuAt(int slot)
+        {
+            if (!DeckNative.GetCursorPos(out var at)) return;
+            DeckNative.KillTimer(Hwnd, TimerTip);
+            DeckHost.HideTip(this);
+            DeckHost.OpenTileMenu(this, slot, TileAt(slot), at);
+        }
+
+        /// <summary>The corner dragged: the columns and rows the mouse reaches, the deck's top-left kept.</summary>
+        private void ResizeTo(DeckNative.POINT cursor)
+        {
+            float dx = (cursor.X - _x) / _scale, dy = (cursor.Y - _y) / _scale;
+            int cols = Math.Clamp((int)Math.Round((dx - 1 - Pad + Gap / 2f) / (Tile + Gap)), 1, DeckService.MaxGrid);
+            int rows = Math.Clamp((int)Math.Round((dy - 1 - HeaderDip - Pad + Gap / 2f) / (Tile + Gap)), 1, DeckService.MaxGrid);
+            if (cols == _previewCols && rows == _previewRows) return;
+            _previewCols = cols;
+            _previewRows = rows;
+            Layout();
+            Render();
+        }
+
+        /// <summary>A gesture of the edit mode cut short (the capture lost): the grid back to the file's, nothing carried.</summary>
+        private void CancelEditGesture()
+        {
+            if (_resizing)
+            {
+                _resizing = false;
+                _previewCols = _previewRows = -1;
+                Layout();
+            }
+            _tileFrom = _tileTarget = _pageTarget = -1;
+            _tileDragging = false;
+        }
+
+        /// <summary>Files dropped on the deck (from Explorer, the desktop): Open buttons, at the place under the drop and the free ones after it.</summary>
+        private void OnDrop(IntPtr drop)
+        {
+            try
+            {
+                uint count = DeckNative.DragQueryFileW(drop, 0xFFFFFFFF, null, 0);
+                DeckNative.DragQueryPoint(drop, out var pt);
+                var files = new List<string>();
+                var buffer = new char[2048];
+                for (uint i = 0; i < count && i < 16; i++)
+                {
+                    uint n = DeckNative.DragQueryFileW(drop, i, buffer, (uint)buffer.Length);
+                    if (n > 0) files.Add(new string(buffer, 0, (int)n));
+                }
+                if (files.Count > 0 && !_collapsedNow) DeckHost.DropFiles(this, files, HitTile(pt.X / _scale, pt.Y / _scale));
+            }
+            catch (Exception ex) { DiagnosticLog.Warn($"Deck: a drop could not be read: {ex.GetType().Name}: {ex.Message}"); }
+            finally { DeckNative.DragFinish(drop); }
+        }
+
         private int HitTile(float dx, float dy)
         {
-            int slots = _deck.Grid.Cols * _deck.Grid.Rows;
+            int slots = Cols * Rows;
             for (int slot = 0; slot < slots; slot++)
             {
                 var (x, y) = TileOrigin(slot);
@@ -1006,7 +1317,7 @@ namespace TrueReplayer.Services
         private int HitDot(float dx, float dy)
         {
             int pages = _deck.Pages.Count;
-            float dotsW = pages * 10f, left = FullWDip - 1 - Pad - dotsW;
+            float dotsW = pages * 10f, left = FullWDip - 1 - Pad - HeaderRightW - dotsW;
             if (dy > 1 + HeaderH || dx < left || dx >= left + dotsW) return -1;
             return Math.Clamp((int)((dx - left) / 10f), 0, pages - 1);
         }

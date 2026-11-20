@@ -2,7 +2,7 @@
 // page at once and whole to the engine (deck:save), whose deck:state then settles it — the engine's
 // normalization is what the page ends up holding.
 import type { DeckConfig, DeckDeck, DeckTile } from '../../bridge/messageTypes';
-import { DECK_LIMITS, isBackSlot, newDeck, newId, slotsOf, tilesOf, type DeckView } from './deckModel';
+import { DECK_LIMITS, freeSlot, isBackSlot, newDeck, newId, slotsOf, tilesOf, type DeckView } from './deckModel';
 import { postToEngine, useDeck } from './deckStore';
 
 /** The explicit "replace the unreadable deck.json" the quarantine waits for (the page's notice). */
@@ -102,6 +102,26 @@ export function setTile(deckId: string, view: DeckView, slot: number, tile: Deck
   const rest = tilesOf(deck, view).filter(t => t.slot !== slot);
   updateDeck(deckId, withTiles(deck, view, tile ? [...rest, { ...tile, slot }] : rest));
 }
+
+/**
+ * A button for a macro on a deck (the macro's Deck section, Fase 6): at the first free place of the first page
+ * with room. Where it went, or null when every page of the deck is full.
+ */
+export function addMacroTile(deckId: string, macro: string): { page: number; slot: number } | null {
+  const deck = deckById(deckId);
+  if (!deck) return null;
+  for (let page = 0; page < deck.pages.length; page++) {
+    const view: DeckView = { kind: 'page', index: page };
+    const slot = freeSlot(deck, view);
+    if (slot < 0) continue;
+    setTile(deckId, view, slot, { slot, action: { kind: 'macro', macro } });
+    return { page, slot };
+  }
+  return null;
+}
+
+/** Has the deck a free place on one of its pages? */
+export const hasRoom = (deck: DeckDeck) => deck.pages.some((_, page) => freeSlot(deck, { kind: 'page', index: page }) >= 0);
 
 /** Changes a button where it is. */
 export function patchTile(deckId: string, view: DeckView, slot: number, patch: Partial<DeckTile>) {

@@ -1191,9 +1191,11 @@ namespace TrueReplayer
                     case "remap:overwriteUnreadable": HandleRemapOverwriteUnreadable(); break;
                     case "teclado:save": HandleTecladoSave(payload); break;
                     case "teclado:overwriteUnreadable": HandleTecladoOverwriteUnreadable(); break;
-                    case "deck:get": _deckWatched = true; PushDeckState(); break;
+                    case "deck:get": _deckWatched = true; PushDeckState(); SendMessage("deck:editing", new { deckId = DeckHost.Editing }); break;
                     case "deck:save": HandleDeckSave(payload); break;
                     case "deck:overwriteUnreadable": HandleDeckOverwriteUnreadable(); break;
+                    case "deck:edit": HandleDeckEdit(payload); break;
+                    case "deck:iconFrom": HandleDeckIconFrom(payload); break;
                     case "teclado:lock": HandleTecladoLock(payload); break;
                     case "teclado:export": HandleTecladoExport(payload); break;
                     case "actions:reorder": HandleActionsReorder(payload); break;
@@ -2664,6 +2666,154 @@ namespace TrueReplayer
         }
 
         internal void PushDeckState() => SendMessage("deck:state", DeckService.StatePayload());
+
+        // Fase 6: the page's "Edit on screen" — that deck edited in its own place (its corner, its buttons dragged,
+        // its menu), or none (deckId null). The answer is deck:editing, as when the deck's own Done ends it.
+        private void HandleDeckEdit(JsonElement payload)
+        {
+            string? id = payload.TryGetProperty("deckId", out var el) && el.ValueKind == JsonValueKind.String ? el.GetString() : null;
+            if (id != null && !DeckService.Current.Decks.Any(d => d.Id == id)) id = null;
+            DeckHost.SetEditing(id);
+        }
+
+        // Fase 6: a picture for the button chosen on the Deck page — a program's icon, a picture file, a cut of the
+        // screen —, as the deck's own menu asks for one. The answer is the deck:state of the edit.
+        private void HandleDeckIconFrom(JsonElement payload)
+        {
+            string? Str(string key) => payload.TryGetProperty(key, out var el) && el.ValueKind == JsonValueKind.String ? el.GetString() : null;
+            int Int(string key) => payload.TryGetProperty(key, out var el) && el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var v) ? v : -1;
+            string? kind = Str("source") switch { "app" => "iconApp", "picture" => "iconPicture", "capture" => "iconCapture", _ => null };
+            string? deckId = Str("deckId");
+            if (kind == null || deckId == null) return;
+            _ = DeckIconAsync(new DeckHost.DeckRequest(kind, deckId, Str("folder"), Math.Max(0, Int("page")), Int("slot")), fromPage: true);
+        }
+
+        /// <summary>
+        /// A picture for a deck's button (its menu's Icon ▸, or the Deck page): a program's or a shortcut's icon, a
+        /// picture file, or a piece of the screen cut with the capture overlay. Kept in Deck\images (DeckImages) and
+        /// set on the button; a button gone meanwhile keeps nothing. What fails is said where it was asked: over the
+        /// button on the deck, or in the page's alert. Never throws (fire-and-forget).
+        /// </summary>
+        internal async Task DeckIconAsync(DeckHost.DeckRequest r, bool fromPage)
+        {
+            void Fail(string message)
+            {
+                if (fromPage) SendMessage("alert:show", new { message, type = "error" });
+                else DeckHost.Flash(r.DeckId, r.Slot, message);
+            }
+            try
+            {
+                string? file = null;
+                switch (r.Kind)
+                {
+                    case "iconApp":
+                    {
+                        // From a deck the dialog opens on its own, over the app in front: the menu's click gave this
+                        // process the right to come forward.
+                        var path = await profileController.PickExecutableFileAsync();
+                        if (path == null) return;
+                        file = await Task.Run(() => DeckImages.FromProgram(path));
+                        if (file == null) { Fail(S.DeckTipIconFailed); return; }
+                        break;
+                    }
+                    case "iconPicture":
+                    {
+                        var path = await profileController.PickImageFileAsync();
+                        if (path == null) return;
+                        file = await Task.Run(() => DeckImages.FromPicture(path));
+                        if (file == null) { Fail(S.DeckTipImageFailed); return; }
+                        break;
+                    }
+                    case "iconCapture":
+                        file = await CaptureDeckIconAsync(r, fromPage, Fail);
+                        if (file == null) return;
+                        break;
+                    default:
+                        return;
+                }
+                bool set = DeckService.ChangeTile(r.DeckId, r.Folder, r.Page, r.Slot, t => t.Icon = new DeckService.Icon { Kind = "image", Path = file });
+                DiagnosticLog.Info($"Deck: {r.Kind} for '{r.DeckId}' slot {r.Slot} → {file}{(set ? "" : " (the button is gone: kept nowhere)")}");
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Error($"Deck: {r.Kind} for '{r.DeckId}' slot {r.Slot} failed", ex);
+                Fail(r.Kind == "iconPicture" ? S.DeckTipImageFailed : S.DeckTipIconFailed);
+            }
+        }
+
+        /// <summary>
+        /// "Cut from the screen": the capture overlay of the automations' image (CaptureOverlayHost, ScreenOverlayForm)
+        /// over a picture of the whole screen, without the decks (they step aside) and without TR3's window — put away
+        /// only when it is on screen, and brought back then. The piece dragged around is kept for the button: its file
+        /// name, or null (cancelled, refused, failed — said through <paramref name="fail"/>).
+        /// </summary>
+        private async Task<string?> CaptureDeckIconAsync(DeckHost.DeckRequest r, bool fromPage, System.Action<string> fail)
+        {
+            if (fromPage)
+            {
+                if (RefuseCaptureDuringRun("Deck icon capture")) return null;
+            }
+            else if (mainController.IsReplayInProgress() || recordingService.IsRecording)
+            {
+                fail(recordingService.IsRecording ? S.DeckTipRecording : S.DeckTipRunning);
+                return null;
+            }
+            var overlayHost = new Services.CaptureOverlayHost("deck icon capture overlay");
+            using var interaction = await Services.InteractionScope.EnterExclusiveAsync(
+                "deck icon capture overlay", overlayHost.IsAlive, overlayHost.RequestCancel);
+            if (interaction == null)
+            {
+                ReportOverlayRefused(S.BridgeCaptureWhatButtonIcon);
+                return null;
+            }
+            var mainHwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+            bool putAway = NativeMethods.IsWindowVisible(mainHwnd) && !NativeMethods.IsIconic(mainHwnd);
+            // From a deck, TR3 is behind the app in front: it goes and comes back without taking the foreground.
+            int restore = fromPage ? NativeMethods.SW_RESTORE : NativeMethods.SW_SHOWNOACTIVATE;
+            if (putAway)
+            {
+                NativeMethods.ShowWindow(mainHwnd, fromPage ? NativeMethods.SW_MINIMIZE : NativeMethods.SW_SHOWMINNOACTIVE);
+                await Task.Delay(400);
+            }
+            System.Drawing.Bitmap screenshot;
+            try
+            {
+                screenshot = ScreenCaptureService.CaptureVirtualScreen();
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Error("Deck icon capture screenshot failed", ex);
+                if (putAway) NativeMethods.ShowWindow(mainHwnd, restore);
+                fail(S.DeckTipImageFailed);
+                return null;
+            }
+            try
+            {
+                string deckName = DeckService.Current.Decks.FirstOrDefault(d => d.Id == r.DeckId)?.Name ?? "";
+                var selection = await overlayHost.RunAsync(() => new ScreenOverlayForm(screenshot,
+                    bar: new CaptureBar(S.BridgeCaptureTitleButtonIcon, S.BridgeCaptureForDeck(name: deckName), S.BridgeCaptureHintButtonIcon)));
+                if (putAway) dispatcherQueue.TryEnqueue(() => NativeMethods.ShowWindow(mainHwnd, restore));
+                if (selection?.CroppedImage == null) return null;
+                try
+                {
+                    return DeckImages.Save(selection.CroppedImage);
+                }
+                catch (Exception ex)
+                {
+                    DiagnosticLog.Error($"Deck icon capture save failed ['{r.DeckId}' slot {r.Slot}]", ex);
+                    fail(S.DeckTipImageFailed);
+                    return null;
+                }
+                finally
+                {
+                    selection.CroppedImage.Dispose();
+                }
+            }
+            finally
+            {
+                screenshot.Dispose();
+            }
+        }
 
         // The process in front and its game (phase 2), the layer key held (phase 3), and the game locked (phase 7).
         private void PushTecladoLive()

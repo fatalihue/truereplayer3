@@ -16,6 +16,7 @@ import { useShell } from './store';
 import { endTip, pendingTips } from './tips/tipsState';
 import CompactButton from './CompactButton';
 import { recordNewMacro } from './recordNew';
+import { goToTile } from './deck/deckUi';
 import { COMMIT_EDITORS, loadDragGhost, loadEmpties, loadRunProgress, loadStepGhost, openPage, openSettings, showMacroTab, useUi } from './ui';
 import { dock } from './dock/dockState';
 import { hearUpdate } from './updates';
@@ -51,10 +52,10 @@ function hear(message: IncomingMessage, refuse: (door: Door) => void) {
  * being in another app. A Windows notification's buttons (D8) come the same way: the macro's
  * automation, its Data Loop (the macro opened first), Key Remaps, the run report.
  */
-function hearTray(message: IncomingMessage, record: () => boolean, openMacro: (name: string) => void) {
+function hearTray(message: IncomingMessage, record: (name?: string) => boolean, openMacro: (name: string) => void) {
   if (message.type !== 'tray:command') return;
   const { command, name } = message.payload;
-  if (command === 'recordNew') { record(); return; }
+  if (command === 'recordNew') { record(name); return; }
   if (dialogOpen()) return;
   if (usePalette.getState().open) palette.close();
   if (command === 'settings') openSettings();
@@ -69,6 +70,19 @@ function hearTray(message: IncomingMessage, record: () => boolean, openMacro: (n
     if (command === 'dataLoop' && name) { openMacro(name); showMacroTab('data'); }
     else if (command === 'report') dock.show('report');
   }
+}
+
+/**
+ * A deck's menu (Deck, Fase 6) asked for the Deck page at a button, the engine having brought the window up:
+ * the button chosen there, with the field its menu came for (Keys…, Text…, All macros…), or the deck itself.
+ * Over a dialog it waits, as the tray's doors do.
+ */
+function hearDeck(message: IncomingMessage) {
+  if (message.type !== 'deck:show' || dialogOpen()) return;
+  const { deckId, folder, page, slot, focus } = message.payload;
+  if (usePalette.getState().open) palette.close();
+  goToTile(deckId, folder ? { kind: 'folder', id: folder } : { kind: 'page', index: Math.max(0, page) }, slot, focus);
+  openPage('deck');
 }
 
 /**
@@ -159,7 +173,7 @@ const tipsFor = (status: string) => {
 export function Watch({ early }: { early: readonly IncomingMessage[] }) {
   const { send, subscribe } = useBridge();
   const macro = useMacro();
-  const record = () => recordNewMacro(send, (name) => macro.create(name, null));
+  const record = (named?: string) => recordNewMacro(send, (name) => macro.create(name, null), named);
   const recordRef = useRef(record);
   useEffect(() => { recordRef.current = record; });
   const { showToast } = useToast();
@@ -178,14 +192,15 @@ export function Watch({ early }: { early: readonly IncomingMessage[] }) {
   useEffect(() => { early.forEach(m => hearImport(m, (text) => toastRef.current(text))); }, [early]);
   const openRef = useRef((name: string) => macro.open(name));
   useEffect(() => { openRef.current = (name: string) => macro.open(name); });
-  useEffect(() => { early.forEach(m => hearTray(m, () => recordRef.current(), (name) => openRef.current(name))); }, [early]);
+  useEffect(() => { early.forEach(m => hearTray(m, (named) => recordRef.current(named), (name) => openRef.current(name))); }, [early]);
   const [knock, setKnock] = useState(() => early.map(knockOf).filter(k => k !== null).at(-1) ?? null);
   // The title bar's Compact view, in the slot it keeps for it (TitleBar).
   const [compactSlot] = useState(() => document.getElementById('tr-compact-slot'));
   useEffect(() => subscribe((m) => {
     hear(m, (door) => refuseRef.current(door));
     hearImport(m, (text) => toastRef.current(text));
-    hearTray(m, () => recordRef.current(), (name) => openRef.current(name));
+    hearTray(m, (named) => recordRef.current(named), (name) => openRef.current(name));
+    hearDeck(m);
     hearCommit(m);
     const k = knockOf(m);
     if (k) setKnock(k);

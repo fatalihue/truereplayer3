@@ -59,6 +59,11 @@ export default {
     copyName: '{{deck}} copy',
     deleted: '{{deck}} deleted',
     duplicated: '{{deck}} is a copy, off until you turn it on.',
+    // Fase 6: the deck edited in its own place on screen (its corner, its buttons dragged, its menu). Pressed,
+    // the button ends it; Done on the deck and Esc end it too.
+    edit: 'Edit on screen',
+    editTip: 'Move it, change its grid and drag its buttons on the deck itself. Esc ends.',
+    editing: 'Done editing',
     sub: {
       fixedAlways: '{{place}} · always on screen',
       fixedApps: '{{place}} · with {{apps}} in front',
@@ -270,6 +275,7 @@ export default {
     iconDefault: 'The action\'s icon',
     lucide: 'Icon from the list',
     emoji: 'Emoji',
+    image: 'Picture',                        // a program's icon, a picture file or a cut of the screen
     useDefault: 'Use the default',
     color: 'Color',
     noColor: 'No color',
@@ -279,6 +285,12 @@ export default {
   icons: {
     icons: 'Icons',
     emoji: 'Emoji',
+    // Fase 6, the picker's third tab: a picture the engine keeps a copy of (Deck\images). "…" opens a dialog.
+    picture: 'Picture',
+    fromApp: 'From a program…',
+    fromFile: 'Picture file…',
+    fromScreen: 'Cut from the screen',
+    pictureHint: 'TR3 keeps a copy, so the button keeps its picture if the file moves.',
     groups: {
       media: 'Media',
       system: 'System',
@@ -389,5 +401,10 @@ export default {
     folder: 'folder {{folder}}',
     sub: 'Place {{n}}',
     subLabel: '{{label}} · place {{n}}',
+    // Fase 6: a button for this macro on a deck, at its first free place (the first page with room).
+    add: 'Add to a deck',
+    newDeck: 'New deck',
+    full: 'No free place on this deck',
+    added: 'Added to {{deck}}, page {{n}}.',
   },
 } as const;
