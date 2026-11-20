@@ -667,6 +667,111 @@ export interface TecladoLive {
   locked?: string | null;
 }
 
+// ── Deck (branch deck): on-screen decks of buttons that run the library's macros ──
+// The wire shape of Documents\TrueReplayer3\deck.json (DeckService). The engine leaves out what is
+// null, so every optional field may be absent.
+
+/** The picture on a button or on a deck's collapsed pill (DeckService.Icon). */
+export interface DeckIcon {
+  kind: 'none' | 'lucide' | 'emoji' | 'app' | 'image';
+  /** lucide: the icon's name ("swords"), which the page draws. */
+  name?: string;
+  /** lucide: the SVG the page drew for it (stroke="currentColor"); the native window draws this one. */
+  svg?: string;
+  /** emoji: the emoji. */
+  value?: string;
+  /** app: the .exe or .lnk; image: a file name in Documents\TrueReplayer3\Deck\images. */
+  path?: string;
+}
+
+export type DeckCommand = 'record' | 'stopAll' | 'clicker' | 'teclado' | 'remaps' | 'automations' | 'shortcuts' | 'show';
+
+/** What a button does (DeckService.Action). none = a button still being set up: it shows, and does nothing. */
+export interface DeckAction {
+  kind: 'none' | 'macro' | 'keys' | 'text' | 'open' | 'folder' | 'tr3';
+  /** macro: the library macro's name. */
+  macro?: string;
+  /** keys: the combo that goes out, in the engine's key names ("Ctrl+Shift+K"). */
+  combo?: string;
+  /** text: what goes out, typed or pasted. */
+  text?: string;
+  send?: 'type' | 'paste';
+  /** open: a program, file, folder or address; its arguments; bring it to the front when it is open. */
+  target?: string;
+  args?: string;
+  focus?: boolean;
+  /** folder: the id of one of the deck's folders. */
+  folder?: string;
+  command?: DeckCommand;
+}
+
+export interface DeckTile {
+  /** The place in the grid, row by row from 0; kept up to 8×8 even when the grid is smaller. */
+  slot: number;
+  label?: string;
+  /** One of the folders' colours, as data (FOLDER_COLORS): it does not follow the theme. */
+  color?: string;
+  icon?: DeckIcon;
+  action: DeckAction;
+}
+
+export interface DeckPage { id: string; tiles: DeckTile[] }
+
+/** A grid of its own that a Folder button opens in the deck's place, with Back first. */
+export interface DeckFolder { id: string; name: string; tiles: DeckTile[] }
+
+export type DeckAnchor = 'top-left' | 'top' | 'top-right' | 'left' | 'center' | 'right' | 'bottom-left' | 'bottom' | 'bottom-right';
+
+export interface DeckDeck {
+  id: string;
+  name: string;
+  icon?: DeckIcon;
+  /** The deck's own switch; the master one is DeckConfig.enabled. */
+  on: boolean;
+  /** fixed: stays on screen. summon: only the hotkey shows it. */
+  mode: 'fixed' | 'summon';
+  /** always, or only while one of the apps (.exe names) is in front. */
+  showWhen: { kind: 'always' | 'apps'; apps: string[] };
+  /** fixed: shows and hides it; summon: calls it. */
+  hotkey?: string;
+  summon: { at: 'cursor' | 'center'; hold: boolean; keysOnly: boolean; closeAfterPick: boolean };
+  /** size: 48, 64 or 80 DIP buttons. */
+  grid: { cols: number; rows: number; size: 's' | 'm' | 'l' };
+  /** The monitor's device path (absent: the primary one), and the offset in DIP from an anchor of its work area. */
+  place: { monitor?: string; anchor: DeckAnchor; dx: number; dy: number };
+  /** restOpacity 0 = invisible until the mouse comes. header false + a 1×1 grid = a lone button. */
+  look: { restOpacity: 100 | 85 | 70 | 50 | 0; collapse: boolean; edgeHide: boolean; locked: boolean; header: boolean };
+  pages: DeckPage[];
+  folders: DeckFolder[];
+}
+
+export interface DeckConfig {
+  version: number;
+  /** The Deck's master switch. */
+  enabled: boolean;
+  /** False: the decks stay out of screen captures (the engine's Wait Image and OCR, and OBS). */
+  showInCaptures: boolean;
+  /** A macro button pressed while another macro runs. */
+  busyPress: 'swap' | 'stop' | 'ignore';
+  toggleAllHotkey?: string;
+  decks: DeckDeck[];
+}
+
+/** What a macro a button names is to the library. */
+export interface DeckMacroReport {
+  found: boolean;
+}
+
+export interface DeckState {
+  config: DeckConfig;
+  loadFailed: boolean;
+  loadedFromBackup: boolean;
+  loadFailureDetail?: string | null;
+  pendingFile: string;
+  /** Only the macros the buttons name, once the library is in (absent before). */
+  macros?: Record<string, DeckMacroReport>;
+}
+
 // ── Automation (trigger daemon) ──
 
 /** One executed action in the last run's report. Mirrors ActionReplayer.RunStepRecord. */
@@ -1112,6 +1217,10 @@ export type IncomingMessage =
   | { type: 'teclado:imported'; payload: { id: string } }
   // The process in front and its game (TecladoFront, from the foreground event), on every change.
   | { type: 'teclado:live'; payload: TecladoLive }
+  // Deck (branch deck): the decks' whole config after every save and when asked (deck:get), with the
+  // quarantine's state (DeckService, the remaps.json protections); again when a macro a button names
+  // comes to the library or leaves it.
+  | { type: 'deck:state'; payload: DeckState }
   | { type: 'clipboard:content'; payload: { text: string } }
   | { type: 'replay:chain'; payload: { stack: string[] } }
   // Row position inside the sub-profile currently running (~4 Hz, engine-throttled). Handled by
@@ -1283,6 +1392,11 @@ export type OutgoingMessage =
   // teclado.json" the quarantine waits for.
   | { type: 'teclado:save'; payload: { config: TecladoConfig } }
   | { type: 'teclado:overwriteUnreadable'; payload: Record<string, never> }
+  // Deck: the state when the page needs it (the opening does not carry it), the whole-config save
+  // (DeckService.Save), and the explicit "replace the unreadable deck.json" the quarantine waits for.
+  | { type: 'deck:get'; payload: Record<string, never> }
+  | { type: 'deck:save'; payload: { config: DeckConfig } }
+  | { type: 'deck:overwriteUnreadable'; payload: Record<string, never> }
   // Phase 7: "Lock to this game" (id) and its undoing (null); "Export" of a game with its macros.
   | { type: 'teclado:lock'; payload: { id: string | null } }
   | { type: 'teclado:export'; payload: { id: string } }

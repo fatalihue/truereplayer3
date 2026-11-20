@@ -937,6 +937,8 @@ namespace TrueReplayer.Controllers
             foreach (var e in ProfileEntries)
                 tecladoLibrary.TryAdd(e.Name, new TecladoMacros.LibraryEntry(e.FilePath, e.EffectiveUseRelativeCoordinates));
             TecladoService.LibraryChanged(tecladoLibrary);
+            // Deck (branch deck): the buttons name their macros too; a name that left the list shows as missing.
+            DeckService.LibraryChanged(ProfileEntries.Select(e => e.Name));
 
             var map = GetProfileHotkeys();
             InputHookManager.RegisterProfileHotkeys(map);

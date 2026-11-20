@@ -1,0 +1,23 @@
+import type en from '../en-US/engine-deck.ts';
+import type { Catalogo } from '../tipos.ts';
+
+// "Deck" é o nome do recurso e fica com maiúscula; cada painel é "um deck" (masculino), em minúscula.
+export default {
+  open: 'Abrir o Deck',
+
+  unreadable: {
+    title: 'Deck: arquivo ilegível',
+    backup: {
+      zero: 'Não foi possível ler o deck.json, então o último backup foi carregado (nenhum deck). O arquivo não é substituído — as mudanças vão para {{pending}}.',
+      one: 'Não foi possível ler o deck.json, então o último backup foi carregado ({{n}} deck). O arquivo não é substituído — as mudanças vão para {{pending}}.',
+      other: 'Não foi possível ler o deck.json, então o último backup foi carregado ({{n}} decks). O arquivo não é substituído — as mudanças vão para {{pending}}.',
+    },
+    noBackup: 'Não foi possível ler o deck.json e não há backup, então nenhum deck aparece na tela. O arquivo NÃO foi substituído — veja o log da sessão.',
+  },
+
+  detail: {
+    read: 'Não foi possível abrir o arquivo: {{reason}}',
+    parse: 'O arquivo não é um JSON válido: {{reason}}',
+    unknown: 'O motivo é desconhecido.',
+  },
+} satisfies Catalogo<typeof en>;

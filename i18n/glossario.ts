@@ -46,6 +46,8 @@ export const TECLAS = [
 /** Os recursos e painéis do TrueReplayer. Regra 2. "Macros" é igual nos dois idiomas. */
 export const RECURSOS = [
   'Clicker', 'Data Loop', 'Key Remaps', 'Live Variables', 'Run Report', 'Game Mode', 'Screen Text', 'Inspector', 'Dock', 'Macros',
+  // Deck (branch deck): os botões na tela. O nome do recurso é igual nos dois idiomas; cada painel é "um deck".
+  'Deck',
 ] as const;
 
 /** Os coringas, com o motivo de cada um. Regra 3. */

@@ -1042,6 +1042,20 @@ namespace TrueReplayer.Services
         public static string CopyKeyWindowMaximizeLaunch(string window) => IsPt ? $"Maximizar · {window} — abrir" : $"Maximize · {window} — launch";
         /// <summary>engine-copy.key.window.run · run: {{path}}</summary>
         public static string CopyKeyWindowRun(string path) => IsPt ? $"abrir: {path}" : $"run: {path}";
+        /// <summary>engine-deck.open · Open the Deck</summary>
+        public static string DeckOpen => IsPt ? "Abrir o Deck" : "Open the Deck";
+        /// <summary>engine-deck.unreadable.title · Deck: file unreadable</summary>
+        public static string DeckUnreadableTitle => IsPt ? "Deck: arquivo ilegível" : "Deck: file unreadable";
+        /// <summary>engine-deck.unreadable.backup · deck.json could not be read, so the last backup was loaded ({{n}} deck). The file is not overwritten — edits go to {{pending}}.</summary>
+        public static string DeckUnreadableBackup(string n, string pending, int count) => IsPt ? (count == 0 ? $"Não foi possível ler o deck.json, então o último backup foi carregado (nenhum deck). O arquivo não é substituído — as mudanças vão para {pending}." : (count < 2 ? $"Não foi possível ler o deck.json, então o último backup foi carregado ({n} deck). O arquivo não é substituído — as mudanças vão para {pending}." : $"Não foi possível ler o deck.json, então o último backup foi carregado ({n} decks). O arquivo não é substituído — as mudanças vão para {pending}.")) : (count == 1 ? $"deck.json could not be read, so the last backup was loaded ({n} deck). The file is not overwritten — edits go to {pending}." : $"deck.json could not be read, so the last backup was loaded ({n} decks). The file is not overwritten — edits go to {pending}.");
+        /// <summary>engine-deck.unreadable.noBackup · deck.json could not be read and there is no backup, so no deck shows on screen. The file was NOT overwritten — see the session log.</summary>
+        public static string DeckUnreadableNoBackup => IsPt ? "Não foi possível ler o deck.json e não há backup, então nenhum deck aparece na tela. O arquivo NÃO foi substituído — veja o log da sessão." : "deck.json could not be read and there is no backup, so no deck shows on screen. The file was NOT overwritten — see the session log.";
+        /// <summary>engine-deck.detail.read · The file could not be opened: {{reason}}</summary>
+        public static string DeckDetailRead(string reason) => IsPt ? $"Não foi possível abrir o arquivo: {reason}" : $"The file could not be opened: {reason}";
+        /// <summary>engine-deck.detail.parse · The file is not valid JSON: {{reason}}</summary>
+        public static string DeckDetailParse(string reason) => IsPt ? $"O arquivo não é um JSON válido: {reason}" : $"The file is not valid JSON: {reason}";
+        /// <summary>engine-deck.detail.unknown · The reason is unknown.</summary>
+        public static string DeckDetailUnknown => IsPt ? "O motivo é desconhecido." : "The reason is unknown.";
         /// <summary>engine-errors.fileInUse · the file is in use by another program</summary>
         public static string ErrorsFileInUse => IsPt ? "o arquivo está em uso por outro programa" : "the file is in use by another program";
         /// <summary>engine-errors.accessDenied · Windows denied access to the file or folder</summary>

@@ -311,6 +311,8 @@ namespace TrueReplayer
             RemapService.Load();
             // Teclado (branch teclado): the per-game keyboard, loaded with the remaps for the same reason.
             TecladoService.Load();
+            // Deck (branch deck): the on-screen decks show up before WebView2, so their config is read here too.
+            DeckService.Load();
 
             // Run cursors (data-loop row position, SetVariable cycle position) — loaded here for
             // the same reason as the remaps: an automation or a hotkey can fire a replay long
@@ -2002,6 +2004,8 @@ namespace TrueReplayer
                 "remaps-open" => "remaps",
                 // Teclado (branch teclado): the notification of an unreadable teclado.json.
                 "teclado-open" => "teclado",
+                // Deck (branch deck): the notification of an unreadable deck.json.
+                "deck-open" => "deck",
                 "report-open" => "report",
                 _ => null,
             };

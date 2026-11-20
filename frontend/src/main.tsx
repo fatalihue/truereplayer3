@@ -13,8 +13,13 @@ import { applyThemeConfig, loadCustomPresets, loadThemeConfig, resolveThemeColor
 // when asked (VITE_TECLADO_DEMO=1, set by the vite-mk preview), so the e2e tests keep the bridge's own
 // postMessage fallback. Imported only in development, so none of it reaches the app's bundle (rule 6);
 // the first render waits for it.
-const demo = import.meta.env.DEV && import.meta.env.VITE_TECLADO_DEMO === '1' && !window.chrome?.webview
-  ? import('./shell/mk/demoEngine').then(m => m.installDemoEngine())
+// Deck (branch deck): VITE_DECK_DEMO=1 puts the Deck's fake engine on top (shell/deck/demoDeck), alone or
+// over the Teclado's, the same way.
+const tecladoDemo = import.meta.env.DEV && import.meta.env.VITE_TECLADO_DEMO === '1' && !window.chrome?.webview
+const deckDemo = import.meta.env.DEV && import.meta.env.VITE_DECK_DEMO === '1' && !window.chrome?.webview
+const demo = tecladoDemo || deckDemo
+  ? (tecladoDemo ? import('./shell/mk/demoEngine').then(m => m.installDemoEngine()) : Promise.resolve())
+      .then(() => (deckDemo ? import('./shell/deck/demoDeck').then(m => m.installDeckDemo()) : undefined))
   : null
 
 // The theme's TOKENS go on <html> before the first render; data-animations stays off until

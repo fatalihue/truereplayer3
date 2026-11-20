@@ -439,6 +439,11 @@ namespace TrueReplayer
         // Teclado (branch teclado): the game in front changed (TecladoFront, raised on the hook thread).
         private Action<TecladoFront.State>? _onTecladoFront;
         private Action? _onTecladoMacros;
+        // Deck (branch deck): a macro the buttons run came back to the library or left it.
+        private Action? _onDeckMacros;
+        // The page asked for the decks (deck:get, or an edit): from then on a change of the report goes
+        // to it. Before, nothing does — the opening carries no deck, and the first list load would.
+        private bool _deckWatched;
         private Action<string, string>? _onBrowserExtensionVersionMismatch;
         private Action<string, string, string?, string?, string?, bool, IReadOnlyList<Services.BrowserBridgeService.SelectorAlternative>>? _onBrowserElementClicked;
         private Action<string, string, bool, IReadOnlyList<Services.BrowserBridgeService.SelectorAlternative>>? _onBrowserTypingCaptured;
@@ -712,6 +717,9 @@ namespace TrueReplayer
             // Teclado, phase 4: the library changed, so what each key's macro is to the executor may have too.
             _onTecladoMacros = () => { if (!_disposed) PushTecladoState(); };
             TecladoService.MacrosChanged += _onTecladoMacros;
+            // Deck: the buttons' report (a macro found or missing) follows the library.
+            _onDeckMacros = () => { if (!_disposed && _deckWatched) PushDeckState(); };
+            DeckService.MacrosChanged += _onDeckMacros;
 
             // Watch for browser extension events
             if (browserBridge != null)
@@ -1181,6 +1189,9 @@ namespace TrueReplayer
                     case "remap:overwriteUnreadable": HandleRemapOverwriteUnreadable(); break;
                     case "teclado:save": HandleTecladoSave(payload); break;
                     case "teclado:overwriteUnreadable": HandleTecladoOverwriteUnreadable(); break;
+                    case "deck:get": _deckWatched = true; PushDeckState(); break;
+                    case "deck:save": HandleDeckSave(payload); break;
+                    case "deck:overwriteUnreadable": HandleDeckOverwriteUnreadable(); break;
                     case "teclado:lock": HandleTecladoLock(payload); break;
                     case "teclado:export": HandleTecladoExport(payload); break;
                     case "actions:reorder": HandleActionsReorder(payload); break;
@@ -2626,6 +2637,29 @@ namespace TrueReplayer
         }
 
         internal void PushTecladoState() => SendMessage("teclado:state", TecladoService.StatePayload());
+
+        // Deck (branch deck): the on-screen decks' whole config, as the Teclado's — DeckService checks it,
+        // keeps it in deck.json and the page gets it back as it was kept. The page asks for it with
+        // deck:get when it needs it (the Deck page); the opening does not carry it.
+        private void HandleDeckSave(JsonElement payload)
+        {
+            _deckWatched = true;
+            if (payload.TryGetProperty("config", out var cEl) && cEl.ValueKind == JsonValueKind.Object
+                && DeckService.FromJson(cEl) is { } config)
+            {
+                DeckService.Save(config);
+            }
+            PushDeckState();
+        }
+
+        // The explicit "replace the unreadable deck.json" the quarantine waits for (the page's notice).
+        private void HandleDeckOverwriteUnreadable()
+        {
+            DeckService.Save(DeckService.Current, overwriteUnreadableFile: true);
+            PushDeckState();
+        }
+
+        internal void PushDeckState() => SendMessage("deck:state", DeckService.StatePayload());
 
         // The process in front and its game (phase 2), the layer key held (phase 3), and the game locked (phase 7).
         private void PushTecladoLive()
@@ -10972,6 +11006,9 @@ namespace TrueReplayer
                 // cycle position are keyed by profile name, so without this a rename silently
                 // sends every list in the profile back to item 1.
                 RunCursorService.RenameProfile(oldName, actualNewName);
+                // Deck (branch deck): the buttons that run it follow, before the refresh below re-reads the
+                // list — after it, the page saw the old name missing for a moment.
+                if (DeckService.RenameMacro(oldName, actualNewName)) PushDeckState();
                 await profileController.RenameProfileInOrderAsync(oldName, actualNewName);
                 await profileController.RefreshProfileListAsync(true);
 
@@ -11051,6 +11088,8 @@ namespace TrueReplayer
             RunCursorService.RenameProfile(oldName, newName);
             // Teclado (branch teclado): a game key keeps its macro under the new name.
             if (TecladoService.RenameMacro(oldName, newName)) PushTecladoState();
+            // Deck (branch deck): and a button keeps its macro under the new name.
+            if (DeckService.RenameMacro(oldName, newName)) PushDeckState();
             // The profile on screen: without this its next Save wrote the OLD file back next to the
             // renamed one, a duplicate profile under the name the user had just retired.
             if (CurrentProfileName == oldName)
@@ -15553,6 +15592,7 @@ namespace TrueReplayer
                 if (_onBrowserConnectionChanged != null) browserBridge.ConnectionChanged -= _onBrowserConnectionChanged;
                 if (_onTecladoFront != null) TecladoFront.Changed -= _onTecladoFront;
                 if (_onTecladoMacros != null) TecladoService.MacrosChanged -= _onTecladoMacros;
+                if (_onDeckMacros != null) DeckService.MacrosChanged -= _onDeckMacros;
                 if (_onBrowserExtensionVersionMismatch != null) browserBridge.ExtensionVersionMismatch -= _onBrowserExtensionVersionMismatch;
                 if (_onBrowserElementClicked != null) browserBridge.ElementClicked -= _onBrowserElementClicked;
                 if (_onBrowserTypingCaptured != null) browserBridge.TypingCaptured -= _onBrowserTypingCaptured;
