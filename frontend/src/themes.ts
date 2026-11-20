@@ -620,6 +620,29 @@ export function nativeDialogColors(c: ThemeColors): Record<'bgBase' | 'bgSurface
 }
 
 /**
+ * Deck (branch deck): the rest of what the decks' native window paints with (Source/DeckRenderer.cs),
+ * opaque #rrggbb like nativeDialogColors: the panel's and the buttons' borders, and the inks that mark a
+ * button's state on its face — the -fg solves of the replay and recording colours, which keep 3:1 on the
+ * face in every theme (the raw replay colour falls to 1.16:1 on a light one; Fase 0).
+ */
+export function nativeDeckColors(c: ThemeColors, ui: ThemeUISettings): Record<'borderDefault' | 'borderStrong' | 'replayFg' | 'recordingFg', string> {
+  const base = nativeDialogColors(c);
+  const surface = base.bgSurface || base.bgBase || '#000000';
+  const card = base.bgCard || surface;
+  const opaque = (color: string | undefined, under: string) => (isParsableColor(color) ? flattenOver(color, under) : '');
+  const declared = new Map(colorDeclarations(c, ui).map(d => {
+    const i = d.indexOf(':');
+    return [d.slice(0, i).trim(), d.slice(i + 1).replace(/;\s*$/, '').trim()] as const;
+  }));
+  return {
+    borderDefault: opaque(c['border-default'], surface),
+    borderStrong: opaque(c['border-strong'], card),
+    replayFg: opaque(declared.get('--color-replay-fg'), card),
+    recordingFg: opaque(declared.get('--color-recording-fg'), card),
+  };
+}
+
+/**
  * The single maxTint every hue ink is SOLVED against, and the alpha each `-bg` wash is EMITTED at.
  *
  * These are two different numbers and conflating them was a real bug: the solve brackets its

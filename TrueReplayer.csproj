@@ -146,6 +146,8 @@
     <PackageReference Include="Velopack" Version="0.0.1298" />
     <PackageReference Include="OpenCvSharp4" Version="4.10.0.20241108" />
     <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.10.0.20241108" />
+    <!-- Deck (branch deck): the decks' native windows draw with Direct2D + DirectWrite (MIT, managed bindings only). -->
+    <PackageReference Include="Vortice.Direct2D1" Version="3.8.3" />
   </ItemGroup>
 
   <!-- Frontend sources that trigger an incremental rebuild of frontend/dist.

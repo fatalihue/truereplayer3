@@ -59,6 +59,9 @@ namespace TrueReplayer.Services
             // Teclado (branch teclado): the hooks' stop only queued the executor's; what its macros hold
             // goes up before the process ends, or a key stays down in the game.
             Guard("teclado macros stop", () => TecladoRunner.StopAllAndWait(500));
+            // Deck (branch deck): the decks' windows and thread end before the CLR does, for the window
+            // subclass's reason below — their WndProc is a managed thunk too.
+            Guard("deck windows", DeckHost.Stop);
             // The original WndProc goes back before the process starts dying: with the subclass
             // left installed, the WM_DESTROY/WM_NCDESTROY still to come would re-enter a managed
             // thunk after Environment.Exit(0) has begun tearing the CLR down.

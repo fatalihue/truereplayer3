@@ -231,9 +231,14 @@ namespace TrueReplayer.Services
         /// <summary>Raised after every Load and Save (the native decks follow it from phase 2).</summary>
         public static event System.Action? Changed;
 
-        // The library's macro names, as the last list load saw them (ProfileController), for the report.
+        // The library's macro names, as the last list load saw them (ProfileController), for the report; and
+        // each one's emoji, which a button without an icon of its own shows (DeckWindow).
         private static HashSet<string> _library = new(StringComparer.Ordinal);
+        private static Dictionary<string, string> _emoji = new(StringComparer.Ordinal);
         private static bool _libraryKnown;
+
+        /// <summary>Raised after an edit made on the decks themselves (a deck dragged to a new place): the page's state is stale.</summary>
+        public static event System.Action? EditedOnScreen;
 
         private const int ReadRetryAttempts = 3;
         private const int ReadRetryDelayMs = 40;
@@ -395,20 +400,57 @@ namespace TrueReplayer.Services
         /// watcher). A button whose macro came back is found again; one whose macro left shows as missing.
         /// Raised only when a name the buttons use changed sides, so a save of an unrelated macro is quiet.
         /// </summary>
-        public static void LibraryChanged(IEnumerable<string> names)
+        public static void LibraryChanged(IEnumerable<(string Name, string? Emoji)> entries)
         {
             bool raise;
             lock (_lock)
             {
-                var next = new HashSet<string>(names, StringComparer.Ordinal);
+                var next = new HashSet<string>(StringComparer.Ordinal);
+                var emoji = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var (name, e) in entries)
+                {
+                    if (!next.Add(name)) continue;
+                    if (!string.IsNullOrWhiteSpace(e)) emoji[name] = e.Trim();
+                }
                 var named = MacrosNamed(Current);
-                raise = !_libraryKnown || named.Any(n => _library.Contains(n) != next.Contains(n));
+                // A name the buttons use came or went, or its emoji changed (the deck draws it).
+                raise = !_libraryKnown || named.Any(n => _library.Contains(n) != next.Contains(n)
+                    || !string.Equals(_emoji.GetValueOrDefault(n), emoji.GetValueOrDefault(n), StringComparison.Ordinal));
                 _library = next;
+                _emoji = emoji;
                 _libraryKnown = true;
             }
             if (!raise) return;
             try { MacrosChanged?.Invoke(); }
             catch (Exception ex) { DiagnosticLog.Warn($"Deck: a MacrosChanged handler failed: {ex.GetType().Name}: {ex.Message}"); }
+        }
+
+        /// <summary>Is the macro in the library? True until the library is first known, so nothing shows missing at startup.</summary>
+        public static bool IsMacroFound(string name)
+        {
+            lock (_lock) return !_libraryKnown || _library.Contains(name);
+        }
+
+        /// <summary>The macro's own emoji (the library's), or null.</summary>
+        public static string? MacroEmoji(string name)
+        {
+            lock (_lock) return _emoji.GetValueOrDefault(name);
+        }
+
+        /// <summary>A deck dragged to a new place on screen (DeckWindow): kept, and the page told.</summary>
+        public static void SetPlace(string deckId, Place place)
+        {
+            Config next;
+            lock (_lock)
+            {
+                next = Clone(Current);
+                var deck = next.Decks.FirstOrDefault(d => d.Id == deckId);
+                if (deck == null) return;
+                deck.Place = place;
+            }
+            Save(next);
+            try { EditedOnScreen?.Invoke(); }
+            catch (Exception ex) { DiagnosticLog.Warn($"Deck: an EditedOnScreen handler failed: {ex.GetType().Name}: {ex.Message}"); }
         }
 
         /// <summary>A macro renamed in the library: every button that runs it follows. True when the config changed (and was saved).</summary>
@@ -423,6 +465,7 @@ namespace TrueReplayer.Services
                 // change and stays quiet). Both callers rename before that load: the watcher's ahead of its
                 // debounced reload, the app's ahead of its refresh.
                 if (_library.Remove(oldName)) _library.Add(newName);
+                if (_emoji.Remove(oldName, out var e)) _emoji[newName] = e;
                 bool changed = false;
                 foreach (var tile in AllTiles(Current))
                 {
@@ -731,8 +774,22 @@ namespace TrueReplayer.Services
 
         private static void Raise()
         {
+            // The hook's table of the decks' hotkeys, compiled here (off the hook thread) and swapped whole.
+            try { InputHookManager.SetDeckHotkeys(HotkeyTable(Current)); }
+            catch (Exception ex) { DiagnosticLog.Error("Deck: compiling the hotkeys failed", ex); }
             try { Changed?.Invoke(); }
             catch (Exception ex) { DiagnosticLog.Warn($"Deck: a Changed handler failed: {ex.GetType().Name}: {ex.Message}"); }
+        }
+
+        /// <summary>Combo → command for the hook: "DECK_ALL" for the one that shows and hides every deck, "DECK::id" for a deck's own. The first to name a combo keeps it.</summary>
+        private static IReadOnlyDictionary<string, string> HotkeyTable(Config config)
+        {
+            var map = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (!config.Enabled) return map;
+            if (config.ToggleAllHotkey != null) map.TryAdd(config.ToggleAllHotkey, "DECK_ALL");
+            foreach (var deck in config.Decks)
+                if (deck.On && deck.Mode == "fixed" && deck.Hotkey != null) map.TryAdd(deck.Hotkey, "DECK::" + deck.Id);
+            return map;
         }
 
         private static bool TryReadText(string path, out string text, out Exception? error, int attempts = ReadRetryAttempts)

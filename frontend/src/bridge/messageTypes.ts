@@ -1738,7 +1738,9 @@ export type OutgoingMessage =
   // browser:testAction because a condition has no failure state — a not-found element is the
   // answer, not an error — so the reply is a branch, not a success/error pair.
   | { type: 'browser:testCondition'; payload: { requestId: string; key: string; waitMode?: string | null; browserText?: string | null; conditionNegate?: boolean; alternatives?: SelectorAlternative[] | null } }
-  | { type: 'theme:colors'; payload: { bgSurface: string; bgCard: string; textPrimary: string; textSecondary: string; accentSolid: string; borderSubtle: string } }
+  // The native pieces' colours (themes.ts nativeDialogColors), opaque #rrggbb. Deck (branch deck): with the
+  // decks' own (nativeDeckColors) and whether the page animates (the decks fade and slide only then).
+  | { type: 'theme:colors'; payload: { bgBase: string; bgSurface: string; bgCard: string; textPrimary: string; textSecondary: string; accentSolid: string; borderSubtle: string; borderDefault: string; borderStrong: string; replayFg: string; recordingFg: string; animations: boolean } }
   | { type: 'hotkey:suppress'; payload: { enabled: boolean } }
   // The row editor holds edits that have not become `actions:edit` yet. Read ONLY by
   // AutomationGuard, so an autonomous fire refuses (retriably, as SkippedModal) instead of

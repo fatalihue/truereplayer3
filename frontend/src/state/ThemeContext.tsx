@@ -19,6 +19,7 @@ import {
   saveCustomPresets,
   makeCustomPresetId,
   nativeDialogColors,
+  nativeDeckColors,
   CURRENT_THEME_CONFIG_VERSION,
   animationModeFrom,
   effectiveAnimations,
@@ -139,9 +140,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         if (webview) {
           // Opaque #rrggbb, flattened the way the card paints — the C# side reads hex only, and an
           // imported theme can spell a token any way isSafeCssColor admits.
+          // The decks (branch deck) paint with a few more tokens, and animate only as the page does.
           webview.postMessage({
             type: 'theme:colors',
-            payload: nativeDialogColors(resolvedColors),
+            payload: {
+              ...nativeDialogColors(resolvedColors),
+              ...nativeDeckColors(resolvedColors, config.uiSettings),
+              animations: effectiveAnimations(config.uiSettings.animationMode, osReducedMotion),
+            },
           });
         }
       } catch (err) {
@@ -163,7 +169,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('pagehide', onLeave);
       window.removeEventListener('beforeunload', onLeave);
     };
-  }, [config, resolvedColors]);
+  }, [config, resolvedColors, osReducedMotion]);
 
   const selectPreset = useCallback((id: string) => {
     // Built-in OR custom preset — both are valid targets.

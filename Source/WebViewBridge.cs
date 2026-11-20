@@ -717,9 +717,11 @@ namespace TrueReplayer
             // Teclado, phase 4: the library changed, so what each key's macro is to the executor may have too.
             _onTecladoMacros = () => { if (!_disposed) PushTecladoState(); };
             TecladoService.MacrosChanged += _onTecladoMacros;
-            // Deck: the buttons' report (a macro found or missing) follows the library.
+            // Deck: the buttons' report (a macro found or missing) follows the library, and an edit made on a
+            // deck itself (dragged to a new place) reaches the page that is watching.
             _onDeckMacros = () => { if (!_disposed && _deckWatched) PushDeckState(); };
             DeckService.MacrosChanged += _onDeckMacros;
+            DeckService.EditedOnScreen += _onDeckMacros;
 
             // Watch for browser extension events
             if (browserBridge != null)
@@ -5145,6 +5147,27 @@ namespace TrueReplayer
                 if (!string.Equals(settings.WindowBackground, bgBase, StringComparison.OrdinalIgnoreCase))
                 {
                     settings.WindowBackground = bgBase;
+                    AppSettingsManager.Save(settings);
+                }
+            }
+
+            // Deck (branch deck): the decks are native pieces too. They paint with these at once, and the same
+            // go to appsettings.json for the next launch, where the decks show before any page exists. Only the
+            // tokens that read as #rrggbb; written only on a change, like the background above.
+            if (bgSurface != null && textPrimary != null)
+            {
+                var deckHex = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var key in DeckTheme.DefaultHex.Keys)
+                    if (Str(payload, key) is { } v && DeckTheme.Parse(v) != null) deckHex[key] = v.ToLowerInvariant();
+                bool animations = !payload.TryGetProperty("animations", out var aEl) || aEl.ValueKind != JsonValueKind.False;
+                DeckHost.SetTheme(deckHex, animations);
+                var settings = AppSettingsManager.Load();
+                bool same = settings.DeckAnimations == animations && settings.DeckTheme != null
+                    && settings.DeckTheme.Count == deckHex.Count && deckHex.All(kv => settings.DeckTheme.TryGetValue(kv.Key, out var old) && old == kv.Value);
+                if (!same)
+                {
+                    settings.DeckTheme = deckHex;
+                    settings.DeckAnimations = animations;
                     AppSettingsManager.Save(settings);
                 }
             }
@@ -15592,7 +15615,7 @@ namespace TrueReplayer
                 if (_onBrowserConnectionChanged != null) browserBridge.ConnectionChanged -= _onBrowserConnectionChanged;
                 if (_onTecladoFront != null) TecladoFront.Changed -= _onTecladoFront;
                 if (_onTecladoMacros != null) TecladoService.MacrosChanged -= _onTecladoMacros;
-                if (_onDeckMacros != null) DeckService.MacrosChanged -= _onDeckMacros;
+                if (_onDeckMacros != null) { DeckService.MacrosChanged -= _onDeckMacros; DeckService.EditedOnScreen -= _onDeckMacros; }
                 if (_onBrowserExtensionVersionMismatch != null) browserBridge.ExtensionVersionMismatch -= _onBrowserExtensionVersionMismatch;
                 if (_onBrowserElementClicked != null) browserBridge.ElementClicked -= _onBrowserElementClicked;
                 if (_onBrowserTypingCaptured != null) browserBridge.TypingCaptured -= _onBrowserTypingCaptured;

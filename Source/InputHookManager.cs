@@ -152,6 +152,13 @@ namespace TrueReplayer
         /// branches in another file and three of them forgot. A branch that swallows is the thing
         /// that owes the claim.
         /// </remarks>
+        // Deck (branch deck): the decks' show/hide hotkeys — combo → "DECK::<id>", and the one for every
+        // deck → "DECK_ALL". Compiled by DeckService off this thread and swapped whole, as the other tables.
+        private static volatile IReadOnlyDictionary<string, string> _deckHotkeys = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        /// <summary>The decks' hotkeys, whole (DeckService, after every load and save).</summary>
+        public static void SetDeckHotkeys(IReadOnlyDictionary<string, string> map) => _deckHotkeys = map;
+
         private static IntPtr SwallowHotkey(string key)
         {
             MainController.Instance?.SetLastHotkeyPressed(key);
@@ -3731,6 +3738,20 @@ namespace TrueReplayer
                             if (ShouldCancelMenuFor(key)) InjectMenuCancelKey();
                             return SwallowHotkey(key);
                         }
+                        // Deck (branch deck): a deck's show/hide hotkey, or the one for every deck — the
+                        // general pause turns them off like the hotkeys above. The command, not the combo,
+                        // goes to the dispatcher ("DECK::<id>" or "DECK_ALL").
+                        if (_deckHotkeys.TryGetValue(key, out var deckCommand))
+                        {
+                            if (PassThroughWhileProfileKeysOff(key))
+                            {
+                                PassThroughRecordsDown(keyName);
+                                return NativeMethods.CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
+                            }
+                            if (ShouldCancelMenuFor(key)) InjectMenuCancelKey();
+                            OnHotkeyPressed?.Invoke(deckCommand);
+                            return (IntPtr)1;
+                        }
                     }
                     else
                     {
@@ -3785,6 +3806,13 @@ namespace TrueReplayer
                         }
                         if (!string.IsNullOrEmpty(UserProfile.Current.CopyScreenTextHotkey)
                             && key == UserProfile.Current.CopyScreenTextHotkey)
+                        {
+                            if (!UserProfile.Current.ProfileKeyEnabled)
+                                return NativeMethods.CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
+                            return (IntPtr)1;
+                        }
+                        // Deck: a held show/hide hotkey toggles once (the same gate as its first press).
+                        if (_deckHotkeys.ContainsKey(key))
                         {
                             if (!UserProfile.Current.ProfileKeyEnabled)
                                 return NativeMethods.CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);

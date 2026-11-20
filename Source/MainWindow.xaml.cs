@@ -311,8 +311,13 @@ namespace TrueReplayer
             RemapService.Load();
             // Teclado (branch teclado): the per-game keyboard, loaded with the remaps for the same reason.
             TecladoService.Load();
-            // Deck (branch deck): the on-screen decks show up before WebView2, so their config is read here too.
+            // Deck (branch deck): the on-screen decks show up before WebView2, so their config is read here too,
+            // and their thread starts with the theme the last run saw (the page's comes with theme:colors).
             DeckService.Load();
+            {
+                var deckSettings = AppSettingsManager.Load();
+                DeckHost.Start(deckSettings.DeckTheme, deckSettings.DeckAnimations ?? true);
+            }
 
             // Run cursors (data-loop row position, SetVariable cycle position) — loaded here for
             // the same reason as the remaps: an automation or a hotkey can fire a replay long
@@ -1264,6 +1269,18 @@ namespace TrueReplayer
                     // Single anchor covering all hotkey dispatch sites — lets support confirm a
                     // hotkey was actually received + dispatched (vs. gated, which the hook logs).
                     Services.DiagnosticLog.Info($"Hotkey dispatched: {key}");
+
+                    // Deck (branch deck): a deck's show/hide hotkey, and the one for every deck (InputHookManager).
+                    if (key.StartsWith("DECK::", StringComparison.Ordinal))
+                    {
+                        DeckHost.Toggle(key.Substring("DECK::".Length));
+                        return;
+                    }
+                    if (key == "DECK_ALL")
+                    {
+                        DeckHost.ToggleAll();
+                        return;
+                    }
 
                     if (key == UserProfile.Current.ProfileKeyToggleHotkey)
                     {

@@ -20,4 +20,15 @@ export default {
     parse: 'O arquivo não é um JSON válido: {{reason}}',
     unknown: 'O motivo é desconhecido.',
   },
+
+  command: {
+    record: 'Gravar',
+    stopAll: 'Parar tudo',
+    clicker: 'Clicker',
+    teclado: 'Teclado',
+    remaps: 'Key Remaps',
+    automations: 'Automações',
+    shortcuts: 'Atalhos',
+    show: 'Mostrar o TR3',
+  },
 } satisfies Catalogo<typeof en>;

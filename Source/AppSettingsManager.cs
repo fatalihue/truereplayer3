@@ -155,6 +155,10 @@ namespace TrueReplayer.Services
             // Painted by the native window before the WebView2 has loaded anything — see
             // MainWindow.ApplyWindowBackground. Null until a theme has been seen once.
             public string? WindowBackground { get; set; }
+            // Deck (branch deck): the decks' colours from the last theme:colors (DeckTheme), which they paint
+            // with at the next launch before any page exists, and whether they animate. Null until seen once.
+            public Dictionary<string, string>? DeckTheme { get; set; }
+            public bool? DeckAnimations { get; set; }
         }
 
         // One saved Clicker setup. Ints and bools like AppSettings (the bridge mirrors are strings

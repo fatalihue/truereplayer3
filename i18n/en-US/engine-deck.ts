@@ -24,4 +24,17 @@ export default {
     parse: 'The file is not valid JSON: {{reason}}',
     unknown: 'The reason is unknown.',
   },
+
+  // O rótulo de um botão "TR3" sem rótulo próprio, sob o ícone, na janela do deck (DeckWindow): cabe em
+  // ~50 DIP a 11 px, então curto. Os nomes de recurso ficam como são.
+  command: {
+    record: 'Record',
+    stopAll: 'Stop all',
+    clicker: 'Clicker',
+    teclado: 'Keyboard',
+    remaps: 'Key Remaps',
+    automations: 'Automations',
+    shortcuts: 'Shortcuts',
+    show: 'Show TR3',
+  },
 } as const;

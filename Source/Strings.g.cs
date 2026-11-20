@@ -1056,6 +1056,22 @@ namespace TrueReplayer.Services
         public static string DeckDetailParse(string reason) => IsPt ? $"O arquivo não é um JSON válido: {reason}" : $"The file is not valid JSON: {reason}";
         /// <summary>engine-deck.detail.unknown · The reason is unknown.</summary>
         public static string DeckDetailUnknown => IsPt ? "O motivo é desconhecido." : "The reason is unknown.";
+        /// <summary>engine-deck.command.record · Record</summary>
+        public static string DeckCommandRecord => IsPt ? "Gravar" : "Record";
+        /// <summary>engine-deck.command.stopAll · Stop all</summary>
+        public static string DeckCommandStopAll => IsPt ? "Parar tudo" : "Stop all";
+        /// <summary>engine-deck.command.clicker · Clicker</summary>
+        public static string DeckCommandClicker => IsPt ? "Clicker" : "Clicker";
+        /// <summary>engine-deck.command.teclado · Keyboard</summary>
+        public static string DeckCommandTeclado => IsPt ? "Teclado" : "Keyboard";
+        /// <summary>engine-deck.command.remaps · Key Remaps</summary>
+        public static string DeckCommandRemaps => IsPt ? "Key Remaps" : "Key Remaps";
+        /// <summary>engine-deck.command.automations · Automations</summary>
+        public static string DeckCommandAutomations => IsPt ? "Automações" : "Automations";
+        /// <summary>engine-deck.command.shortcuts · Shortcuts</summary>
+        public static string DeckCommandShortcuts => IsPt ? "Atalhos" : "Shortcuts";
+        /// <summary>engine-deck.command.show · Show TR3</summary>
+        public static string DeckCommandShow => IsPt ? "Mostrar o TR3" : "Show TR3";
         /// <summary>engine-errors.fileInUse · the file is in use by another program</summary>
         public static string ErrorsFileInUse => IsPt ? "o arquivo está em uso por outro programa" : "the file is in use by another program";
         /// <summary>engine-errors.accessDenied · Windows denied access to the file or folder</summary>
