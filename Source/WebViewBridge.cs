@@ -1446,6 +1446,8 @@ namespace TrueReplayer
 
         public void PushStatusChange(string status)
         {
+            // Deck (branch deck, Fase 3): a run, the Clicker, a recording, the end, an error — the buttons show them.
+            DeckHost.RunStatus(status, CurrentProfileName, UseCursorClick);
             bool wasError = status.StartsWith("error:");
             string errorText = wasError ? status[6..] : "";
             if (wasError)
@@ -3944,6 +3946,8 @@ namespace TrueReplayer
 
         public void PushActionHighlight(int index)
         {
+            // Deck (branch deck, Fase 3): the running macro's button draws its bar from the row.
+            DeckHost.StepProgress(index, actions.Count);
             _liveHighlightIndex = index;
             SendMessage("actions:highlight", new { index });
         }
@@ -15522,7 +15526,9 @@ namespace TrueReplayer
                 // A run that stopped with an error, behind another app: a Windows notification (the Tray
                 // board's "stopped at step N") with the run report and Run again, whatever the run-end
                 // cue settings say — as the error's toast in the window is shown whatever they say.
-                bool told = error && ShowRunStoppedNotice(errorText);
+                // Deck (branch deck, Fase 3): a run a deck's button started, with that deck on screen, says its
+                // failure on the deck, over the button — the notification would sit over the deck at the corner.
+                bool told = error && !DeckHost.ClaimRunFailure() && ShowRunStoppedNotice(errorText);
                 if (!UserProfile.Current.RunEndFlash && !UserProfile.Current.RunEndSound)
                     return;
                 if (UserProfile.Current.RunEndFlash)

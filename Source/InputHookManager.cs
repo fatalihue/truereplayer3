@@ -2247,7 +2247,12 @@ namespace TrueReplayer
             // capture-gate reorder below documents (message-type test first), carried one step
             // further — if a move ever needs handling, this early-out is what has to go.
             if ((int)wParam == NativeMethods.WM_MOUSEMOVE)
+            {
+                // Deck (branch deck, Fase 3): the user's moves near a deck that lets clicks through go to it
+                // (DeckMove). Two volatile reads when no deck is in the passthrough and no press is routed.
+                if (_deckHits.Pass || _deckOwedAny) DeckMove(lParam);
                 return NativeMethods.CallNextHookEx(_mouseHookId, nCode, wParam, lParam);
+            }
 
             // Which mouse buttons the USER is physically holding. Tracked here, above every gate,
             // for the same reason _remapBypassedDowns exists on the keyboard side: with a modal
@@ -2284,6 +2289,10 @@ namespace TrueReplayer
             // and its release is swallowed even after its slot was let go (an orphan side-button up is a
             // Back/Forward in the window in front).
             if (TecladoMouseWatching && TecladoMouseRelease((int)wParam, hookStruct0)) return (IntPtr)1;
+
+            // Deck (branch deck, Fase 3): the release of a press a deck took by the hook is the deck's too, before
+            // every gate and whatever came since (DeckReleaseOwed).
+            if (_deckOwedAny && DeckReleaseOwed((int)wParam, hookStruct0)) return (IntPtr)1;
 
             // X-button remap pairing release runs BEFORE the capture/suppress gates — same
             // stuck-injected-key hazard as the keyboard hoist above it. Physical ups only.
@@ -2578,7 +2587,8 @@ namespace TrueReplayer
                     bool ourInjection = (hookStruct.flags & 0x1) != 0
                         && (hookStruct.dwExtraInfo == RemapMouseMark || hookStruct.dwExtraInfo == TecladoMark);
 
-                    if (!skipRecording && !ourInjection)
+                    // Deck (branch deck, Fase 3): a click on a deck, and its release, are not the macro's (DeckLeavesOut).
+                    if (!skipRecording && !ourInjection && !DeckLeavesOut((int)wParam, hookStruct))
                         OnMouseEvent?.Invoke(button, hookStruct.pt.x, hookStruct.pt.y, isDown, scrollDelta, Environment.TickCount64);
                 }
             }
@@ -2597,6 +2607,10 @@ namespace TrueReplayer
                     if (_swallowedXDowns.Remove(gatedVk) || resolved) return (IntPtr)1;
                 }
             }
+
+            // Deck (branch deck, Fase 3): asked last, where the event would go on to the window under the cursor —
+            // with a deck letting clicks through, the app under it. The user's press or wheel there is the deck's.
+            if (DeckTake((int)wParam, hookStruct0)) return (IntPtr)1;
 
             return NativeMethods.CallNextHookEx(_mouseHookId, nCode, wParam, lParam);
         }

@@ -15,6 +15,16 @@ namespace TrueReplayer.Services
     /// which keeps them out of every "find the app's window" — TrueReplayer 2's knock, CoexistenceGuard —
     /// and is the mailbox other threads post to), one DeckWindow per fixed deck, the monitors as last read,
     /// and the app in front (for "only with these apps").
+    ///
+    /// Fase 3 adds:
+    ///   - the passthrough: while the engine clicks (a run, the Clicker, a Teclado game in front) the decks let
+    ///     clicks through and the hook brings the user's mouse here (InputHookManager.Deck). The order holds both
+    ///     ways — on, the hook takes the user's clicks before the windows let the engine's through; off, the
+    ///     windows take clicks again before the hook lets go — so a click of the user's never falls through;
+    ///   - what the buttons show: the macro a run runs (and its progress), the Clicker clicking, a recording, the
+    ///     TR3 switches, and the failures, kept until the button is pressed again; the tip that says them;
+    ///   - stepping aside: under a capture overlay, and around the engine's reads of the screen where Windows does
+    ///     not keep the decks out of captures by itself.
     /// </summary>
     public static class DeckHost
     {
@@ -29,8 +39,12 @@ namespace TrueReplayer.Services
             { Handle = handle; Bounds = bounds; Work = work; Scale = scale; DevicePath = devicePath; Primary = primary; }
         }
 
+        /// <summary>What the buttons show of the app: the macro a run runs, the Clicker clicking, a recording, and the TR3 switches.</summary>
+        internal sealed record LiveState(string? RunningMacro, bool Clicking, bool Recording, bool ClickerMode, bool Shortcuts, bool Automations, bool Remaps, bool Teclado);
+
         private const string OwnerClass = AppIdentity.Id + "DeckOwner";
         private const uint WM_RUN = DeckNative.WM_APP + 1;
+        private static readonly UIntPtr TimerPass = (UIntPtr)11, TimerProgress = (UIntPtr)12, TimerTip = (UIntPtr)13, TimerCapture = (UIntPtr)14;
 
         private static Thread? _thread;
         private static IntPtr _owner;
@@ -50,12 +64,51 @@ namespace TrueReplayer.Services
         // WDA_EXCLUDEFROMCAPTURE exists from Windows 10 2004; before it the flag reads as WDA_MONITOR, a black
         // box that would blind Wait Image under the deck (Fase 0, probe C) — so nothing is set there.
         private static readonly bool _excludeSupported = Environment.OSVersion.Version.Build >= 19041;
+        private static bool _exclude;
+
+        // ── The passthrough ──
+        private static volatile bool _passReplay, _passTeclado, _tecladoEnabled;
+        private static long _passNetUntil;
+        private static bool _passApplied;
+        private static readonly ManualResetEventSlim _passReady = new(true);
+        private static volatile InputHookManager.DeckHits _hits = InputHookManager.DeckHits.None;
+        private static DeckWindow? _routedOver;
+        private static Action<TecladoFront.State>? _onTecladoFront;
+        private static System.Action? _onTecladoService;
+
+        // ── What the buttons show ──
+        private static volatile LiveState _live = new(null, false, false, false, true, false, false, false);
+        private static volatile float _progress;
+        private static float _progressDrawn;
+        private static string? _runMacro;
+        private static readonly Dictionary<string, string> _failures = new(StringComparer.Ordinal);
+
+        // A macro button's press, and the run it started (on the UI thread: MainWindow, WebViewBridge). That run's
+        // failure is the deck's to say, over its button — the app's Windows notification would sit over the deck,
+        // at the screen's corner, and take its clicks.
+        private sealed record DeckRun(string DeckId, int Slot, string Macro, long At);
+        private static volatile DeckRun? _deckPress, _deckRunLive, _errorRun;
+        private static volatile string[] _shownIds = Array.Empty<string>();
+        private static DeckTip? _tip;
+        private static DeckWindow? _tipFrom;
+
+        // ── Stepping aside ──
+        private static int _overlays;
+        private static volatile bool _captureHidden, _capturesSeeDecks;
+        private static int _captures;
+        private static long _captureHiddenAt;
 
         /// <summary>The theme the decks paint with now.</summary>
         internal static DeckTheme Theme => _theme;
 
-        /// <summary>A button was clicked (deck id, page index, slot). Raised on the Deck thread; the actions come in Fase 3.</summary>
-        public static event System.Action<string, int, int>? TileClicked;
+        /// <summary>What the buttons show of the app now (the Deck's thread reads it as it draws).</summary>
+        internal static LiveState Live => _live;
+
+        /// <summary>How far the running macro is, 0 to 1 (its row over its rows).</summary>
+        internal static float Progress => _progress;
+
+        /// <summary>A button was pressed and let go on it (deck id, slot, the button). Raised on the Deck thread; MainWindow runs it.</summary>
+        public static event System.Action<string, int, DeckService.Tile>? TileClicked;
 
         /// <summary>Starts the thread with the theme saved at the last run (the page's comes later, through SetTheme).</summary>
         public static void Start(IReadOnlyDictionary<string, string>? savedTheme, bool animations)
@@ -102,6 +155,7 @@ namespace TrueReplayer.Services
 
         private static void Post(System.Action action)
         {
+            if (_thread == null) return;
             _queue.Enqueue(action);
             if (_ready) DeckNative.PostMessageW(_owner, WM_RUN, IntPtr.Zero, IntPtr.Zero);
         }
@@ -114,6 +168,7 @@ namespace TrueReplayer.Services
             {
                 Register(OwnerClass);
                 Register(DeckWindow.ClassName);
+                Register(DeckTip.ClassName);
                 _owner = DeckNative.CreateWindowExW(DeckNative.WS_EX_TOOLWINDOW, OwnerClass, AppIdentity.DisplayName + " · Deck", DeckNative.WS_POPUP,
                     0, 0, 0, 0, IntPtr.Zero, IntPtr.Zero, DeckNative.GetModuleHandleW(null), IntPtr.Zero);
                 if (_owner == IntPtr.Zero) throw new InvalidOperationException($"CreateWindowEx(owner): {Marshal.GetLastWin32Error()}");
@@ -125,7 +180,13 @@ namespace TrueReplayer.Services
                 DeckService.MacrosChanged += OnConfigChanged;
                 _ready = true;
                 SyncNow();
-                if (!_excludeSupported) DiagnosticLog.Warn($"Deck: Windows build {Environment.OSVersion.Version.Build} has no WDA_EXCLUDEFROMCAPTURE; the decks show in screen captures");
+                // The Teclado's game in front lets clicks through too (its keys click); its switch is a button's state.
+                _onTecladoFront = _ => OnTeclado();
+                _onTecladoService = OnTeclado;
+                TecladoFront.Changed += _onTecladoFront;
+                TecladoService.Changed += _onTecladoService;
+                OnTeclado();
+                if (!_excludeSupported) DiagnosticLog.Warn($"Deck: Windows build {Environment.OSVersion.Version.Build} has no WDA_EXCLUDEFROMCAPTURE; the decks step aside while the engine reads the screen");
                 started.Set();
                 Drain();
                 while (DeckNative.GetMessageW(out var msg, IntPtr.Zero, 0, 0) > 0)
@@ -144,10 +205,18 @@ namespace TrueReplayer.Services
                 started.Set();
                 DeckService.Changed -= OnConfigChanged;
                 DeckService.MacrosChanged -= OnConfigChanged;
+                if (_onTecladoFront != null) TecladoFront.Changed -= _onTecladoFront;
+                if (_onTecladoService != null) TecladoService.Changed -= _onTecladoService;
+                // Nothing of the decks is left for the hook: no click is routed to a window that is gone.
+                _hits = InputHookManager.DeckHits.None;
+                InputHookManager.SetDeckHits(_hits);
+                _passReady.Set();
                 if (_fgHook != IntPtr.Zero) DeckNative.UnhookWinEvent(_fgHook);
                 foreach (var w in _windows.Values) { try { w.Dispose(); } catch { } }
                 _windows.Clear();
                 _byHwnd.Clear();
+                try { _tip?.Dispose(); } catch { }
+                _tip = null;
                 if (_owner != IntPtr.Zero) DeckNative.DestroyWindow(_owner);
                 _owner = IntPtr.Zero;
             }
@@ -179,12 +248,31 @@ namespace TrueReplayer.Services
                     switch (m)
                     {
                         case WM_RUN: Drain(); return IntPtr.Zero;
+                        case InputHookManager.WM_DECK_MOVE:
+                        {
+                            var (x, y) = InputHookManager.TakeDeckMove();
+                            RoutedMove(x, y);
+                            return IntPtr.Zero;
+                        }
+                        case InputHookManager.WM_DECK_WHEEL:
+                            if (_byHwnd.TryGetValue(w, out var wheeled)) wheeled.RoutedWheel((int)(long)l);
+                            return IntPtr.Zero;
+                        case DeckNative.WM_TIMER:
+                            OnOwnerTimer(w);
+                            return IntPtr.Zero;
                         case DeckNative.WM_DISPLAYCHANGE:
                             ReplaceAll();
                             return IntPtr.Zero;
                         case DeckNative.WM_SETTINGCHANGE:
                             if ((uint)(long)w == DeckNative.SPI_SETWORKAREA) ReplaceAll();
                             break;
+                    }
+                    if (m >= InputHookManager.WM_DECK_BUTTON && m < InputHookManager.WM_DECK_BUTTON + 4)
+                    {
+                        uint b = m - InputHookManager.WM_DECK_BUTTON;
+                        if (_byHwnd.TryGetValue(w, out var pressed))
+                            pressed.RoutedButton(down: (b & 1) == 0, right: (b & 2) != 0, DeckNative.LoX(l), DeckNative.HiY(l));
+                        return IntPtr.Zero;
                     }
                 }
                 else if (_byHwnd.TryGetValue(h, out var deck))
@@ -199,6 +287,32 @@ namespace TrueReplayer.Services
                 DiagnosticLog.Warn($"Deck: a window message 0x{m:X} failed: {ex.GetType().Name}: {ex.Message}");
             }
             return DeckNative.DefWindowProcW(h, m, w, l);
+        }
+
+        private static void OnOwnerTimer(IntPtr id)
+        {
+            long t = (long)id;
+            if (t == (long)(ulong)TimerPass)
+            {
+                DeckNative.KillTimer(_owner, TimerPass);
+                SyncPass();
+            }
+            else if (t == (long)(ulong)TimerProgress) ProgressTick();
+            else if (t == (long)(ulong)TimerTip)
+            {
+                DeckNative.KillTimer(_owner, TimerTip);
+                _tip?.Hide();
+                _tipFrom = null;
+            }
+            else if (t == (long)(ulong)TimerCapture)
+            {
+                DeckNative.KillTimer(_owner, TimerCapture);
+                if (Volatile.Read(ref _captures) == 0 && _captureHidden)
+                {
+                    _captureHidden = false;
+                    RefreshVisibility();
+                }
+            }
         }
 
         private static void Drain()
@@ -216,7 +330,8 @@ namespace TrueReplayer.Services
         private static void SyncNow()
         {
             var config = DeckService.Current;
-            bool exclude = !config.ShowInCaptures && _excludeSupported;
+            _exclude = !config.ShowInCaptures && _excludeSupported;
+            _capturesSeeDecks = !_exclude;
             var keep = new HashSet<string>(StringComparer.Ordinal);
             // With the Deck turned off, no window at all: nothing of Direct2D is loaded for decks nobody sees.
             foreach (var deck in config.Enabled ? config.Decks : new List<DeckService.Deck>())
@@ -230,11 +345,14 @@ namespace TrueReplayer.Services
                     _windows[deck.Id] = window;
                     _byHwnd[window.Hwnd] = window;
                 }
-                window.Update(deck, exclude);
+                window.Update(deck, _exclude);
+                window.SetPassthrough(_passApplied);
             }
             foreach (var id in _windows.Keys.Where(k => !keep.Contains(k)).ToList())
             {
                 var window = _windows[id];
+                if (_routedOver == window) _routedOver = null;
+                HideTip(window);
                 _byHwnd.Remove(window.Hwnd);
                 window.Dispose();
                 _windows.Remove(id);
@@ -249,7 +367,8 @@ namespace TrueReplayer.Services
             foreach (var deck in config.Decks)
             {
                 if (!_windows.TryGetValue(deck.Id, out var window)) continue;
-                bool show = config.Enabled && deck.On && !_allHidden && !_hidden.Contains(deck.Id) && AppsLetShow(deck);
+                bool show = config.Enabled && deck.On && !_allHidden && !_hidden.Contains(deck.Id) && AppsLetShow(deck)
+                    && _overlays == 0 && !_captureHidden;
                 bool was = window.Shown;
                 window.SetShown(show);
                 if (show && !was)
@@ -258,6 +377,7 @@ namespace TrueReplayer.Services
                     DiagnosticLog.Info($"Deck: '{deck.Name}' shown at ({r.Left},{r.Top}) {r.Width}×{r.Height}");
                 }
             }
+            PublishHits();
         }
 
         private static bool AppsLetShow(DeckService.Deck deck)
@@ -270,6 +390,372 @@ namespace TrueReplayer.Services
         {
             ReadMonitors();
             foreach (var w in _windows.Values) w.Replace();
+        }
+
+        private static void RedrawAll()
+        {
+            foreach (var w in _windows.Values) w.Redraw();
+        }
+
+        // ── The passthrough ──
+
+        /// <summary>What the hook knows of the decks on screen: their windows, their rectangles, the passthrough.</summary>
+        private static void PublishHits()
+        {
+            var shown = _windows.Values.Where(w => w.Shown).ToList();
+            var hits = new InputHookManager.DeckHits(_owner, _passApplied, shown.Select(w => w.Hwnd).ToArray(), shown.Select(w => w.ScreenRect).ToArray());
+            _hits = hits;
+            _shownIds = shown.Select(w => w.Id).ToArray();
+            InputHookManager.SetDeckHits(hits);
+        }
+
+        /// <summary>A deck moved, changed size or was drawn at a new place (DeckWindow): the hook's picture follows.</summary>
+        internal static void Moved()
+        {
+            if (_ready) PublishHits();
+        }
+
+        /// <summary>
+        /// The engine starts clicking (a run or the Clicker: ActionExecution's IsReplaying). The decks let clicks
+        /// through before it injects anything: this waits for the windows to say so, 50 ms at most.
+        /// </summary>
+        public static void ReplayStarted()
+        {
+            _passReplay = true;
+            AskPass(wait: true);
+        }
+
+        /// <summary>The engine stopped clicking: the decks take clicks again 150 ms later (its last events may still be on their way).</summary>
+        public static void ReplayEnded()
+        {
+            _passReplay = false;
+            Post(() => DeckNative.SetTimer(_owner, TimerPass, 150, IntPtr.Zero));
+        }
+
+        /// <summary>
+        /// A replayed click is about to land on a point (ActionReplayer.BeforePointer, off the UI thread). Over a
+        /// deck that still takes clicks — a step tested on its own, outside a run — the decks let clicks through
+        /// for a moment, and the click waits for them (50 ms at most).
+        /// </summary>
+        public static void BeforePointer(int x, int y)
+        {
+            var hits = _hits;
+            if (hits.Hwnds.Length == 0 || !hits.Touches(x, y)) return;
+            if (hits.Pass && _passReady.IsSet) return;
+            Interlocked.Exchange(ref _passNetUntil, Environment.TickCount64 + 1000);
+            AskPass(wait: true);
+        }
+
+        private static void AskPass(bool wait)
+        {
+            if (_thread == null || !_ready) return;
+            _passReady.Reset();
+            Post(SyncPass);
+            if (wait && _hits.Hwnds.Length > 0 && Thread.CurrentThread != _thread && !_passReady.Wait(50))
+                DiagnosticLog.Warn("Deck: the decks did not let clicks through within 50 ms");
+        }
+
+        private static void SyncPass()
+        {
+            long netLeft = Interlocked.Read(ref _passNetUntil) - Environment.TickCount64;
+            bool want = _passReplay || _passTeclado || netLeft > 0;
+            if (want != _passApplied)
+            {
+                if (want)
+                {
+                    // The hook takes the user's clicks first, then the windows let the engine's through…
+                    _passApplied = true;
+                    PublishHits();
+                    foreach (var w in _windows.Values) w.SetPassthrough(true);
+                }
+                else
+                {
+                    // …and back the other way: the windows take clicks again, then the hook lets go.
+                    foreach (var w in _windows.Values) w.SetPassthrough(false);
+                    _passApplied = false;
+                    _routedOver = null;
+                    PublishHits();
+                }
+                DiagnosticLog.Info($"Deck: click-through {(want ? "on" : "off")} (run {_passReplay}, Teclado {_passTeclado}, step {netLeft > 0})");
+            }
+            // A step tested on its own lets clicks through for a second: its end comes back here.
+            if (want && !_passReplay && !_passTeclado) DeckNative.SetTimer(_owner, TimerPass, (uint)Math.Max(50, netLeft + 50), IntPtr.Zero);
+            _passReady.Set();
+        }
+
+        /// <summary>The Teclado's switch, or the game in front, changed (the hook's thread, or a save): its passthrough and its button follow.</summary>
+        private static void OnTeclado()
+        {
+            bool enabled = TecladoService.Current.Enabled;
+            bool on = enabled && TecladoFront.Current.GameOn;
+            if (on != _passTeclado)
+            {
+                _passTeclado = on;
+                AskPass(wait: false);
+            }
+            if (enabled != _tecladoEnabled)
+            {
+                _tecladoEnabled = enabled;
+                Post(() =>
+                {
+                    _live = _live with { Teclado = _tecladoEnabled };
+                    RedrawAll();
+                });
+            }
+        }
+
+        /// <summary>A move the hook brought (WM_DECK_MOVE): to the deck under it, or to the one a routed press holds.</summary>
+        private static void RoutedMove(int x, int y)
+        {
+            foreach (var w in _windows.Values)
+            {
+                if (!w.RoutedPress) continue;
+                w.RoutedMove(x, y);
+                return;
+            }
+            DeckWindow? over = null;
+            foreach (var w in _windows.Values)
+            {
+                if (!w.Shown || !w.ScreenRect.Contains(x, y)) continue;
+                over = w;
+                break;
+            }
+            if (_routedOver != null && _routedOver != over) _routedOver.RoutedLeave();
+            _routedOver = over;
+            over?.RoutedMove(x, y);
+        }
+
+        // ── What the buttons show ──
+
+        /// <summary>
+        /// The app's run status (WebViewBridge.PushStatusChange, on the UI thread, at every change): a run of the
+        /// open macro, the Clicker, a recording, the end — and an error, which stays on the buttons of the macro
+        /// that failed until one of them is pressed again, or the macro runs again.
+        /// </summary>
+        public static void RunStatus(string status, string? openMacro, bool clicker)
+        {
+            string? macro = openMacro is { Length: > 0 } m && m != "No Profile" ? m : null;
+            // Which run the deck owns is settled here, on the caller's thread: ClaimRunFailure asks right after.
+            DeckRun? errorRun = null;
+            if (status == "replaying")
+            {
+                var p = _deckPress;
+                _deckRunLive = p != null && !clicker && p.Macro == macro && Environment.TickCount64 - p.At < 5000 ? p : null;
+                _deckPress = null;
+            }
+            else if (status.StartsWith("error:", StringComparison.Ordinal))
+            {
+                // A run that failed, or a press whose run never started (a data table with no rows).
+                errorRun = _deckRunLive ?? (_deckPress is { } p && Environment.TickCount64 - p.At < 5000 ? p : null);
+                _deckPress = null;
+                _deckRunLive = null;
+            }
+            else if (status != "recording") _deckRunLive = null;
+            _errorRun = errorRun;
+            Post(() => ApplyRunStatus(status, macro, clicker, errorRun));
+        }
+
+        /// <summary>A deck's macro button was pressed (MainWindow): the run it starts is that button's.</summary>
+        public static void MacroPressed(string deckId, int slot, string name) =>
+            _deckPress = new DeckRun(deckId, slot, name, Environment.TickCount64);
+
+        /// <summary>
+        /// The run that just failed (WebViewBridge.NotifyRunEnded, right after RunStatus, on the UI thread) came from
+        /// a press on a deck that is on screen: the deck says it, over the button, and the app's Windows notification
+        /// is not shown. False for any other run, and when that deck is not on screen.
+        /// </summary>
+        public static bool ClaimRunFailure() => _errorRun is { } run && Array.IndexOf(_shownIds, run.DeckId) >= 0;
+
+        private static void ApplyRunStatus(string status, string? macro, bool clicker, DeckRun? errorRun)
+        {
+            var live = _live;
+            if (status.StartsWith("error:", StringComparison.Ordinal))
+            {
+                string message = status.Substring(6);
+                string? who = _runMacro ?? errorRun?.Macro;
+                if (who != null)
+                {
+                    _failures["macro:" + who] = message;
+                    bool said = errorRun != null && _windows.TryGetValue(errorRun.DeckId, out var pressedOn) && pressedOn.Shown;
+                    DiagnosticLog.Info($"Deck: the buttons of '{who}' show its failure{(said ? $", said over '{errorRun!.DeckId}' slot {errorRun.Slot}" : "")}");
+                    if (said) _windows[errorRun!.DeckId].Flash(errorRun.Slot, message);
+                }
+                _runMacro = null;
+                _live = live with { RunningMacro = null, Clicking = false };
+            }
+            else if (status == "replaying")
+            {
+                _runMacro = clicker ? null : macro;
+                if (_runMacro != null) _failures.Remove("macro:" + _runMacro);
+                _progress = 0;
+                _progressDrawn = 0;
+                _live = live with { RunningMacro = _runMacro, Clicking = clicker, Recording = false };
+            }
+            else if (status == "recording") _live = live with { Recording = true };
+            else
+            {
+                _runMacro = null;
+                _live = live with { RunningMacro = null, Clicking = false, Recording = false };
+            }
+            if (_live.RunningMacro != null) DeckNative.SetTimer(_owner, TimerProgress, 100, IntPtr.Zero);
+            else DeckNative.KillTimer(_owner, TimerProgress);
+            RedrawAll();
+        }
+
+        /// <summary>The row a run is at (WebViewBridge.PushActionHighlight): the bar is drawn at most 10 times a second.</summary>
+        public static void StepProgress(int index, int total)
+        {
+            if (total > 0) _progress = Math.Clamp((index + 1) / (float)total, 0f, 1f);
+        }
+
+        private static void ProgressTick()
+        {
+            var name = _live.RunningMacro;
+            if (name == null)
+            {
+                DeckNative.KillTimer(_owner, TimerProgress);
+                return;
+            }
+            float p = _progress;
+            if (Math.Abs(p - _progressDrawn) < 0.001f) return;
+            _progressDrawn = p;
+            foreach (var w in _windows.Values) if (w.Shown && w.RunsMacro(name)) w.Redraw();
+        }
+
+        /// <summary>The TR3 switches a button shows (TrayIconService.UpdateTrayIcon, after every change of one).</summary>
+        public static void SetSwitches(bool clickerMode, bool shortcuts, bool automations, bool remaps) => Post(() =>
+        {
+            var l = _live;
+            if (l.ClickerMode == clickerMode && l.Shortcuts == shortcuts && l.Automations == automations && l.Remaps == remaps) return;
+            _live = l with { ClickerMode = clickerMode, Shortcuts = shortcuts, Automations = automations, Remaps = remaps };
+            RedrawAll();
+        });
+
+        /// <summary>What names a button's action for its failure: the buttons that do the same share it.</summary>
+        internal static string? KeyOf(DeckService.Action a) => a.Kind switch
+        {
+            "macro" => a.Macro == null ? null : "macro:" + a.Macro,
+            "keys" => "keys:" + a.Combo,
+            "text" => "text:" + a.Text,
+            "open" => "open:" + a.Target,
+            "tr3" => "tr3:" + a.Command,
+            _ => null,
+        };
+
+        /// <summary>Why the button's action failed last, until it is pressed again; null when it did not.</summary>
+        internal static string? FailureOf(DeckService.Tile tile) =>
+            KeyOf(tile.Action) is { } key && _failures.TryGetValue(key, out var message) ? message : null;
+
+        /// <summary>A press that did not do what its button says (MainWindow): the tip says why, over that button, for a moment.</summary>
+        public static void Flash(string deckId, int slot, string message)
+        {
+            DiagnosticLog.Info($"Deck: '{deckId}' slot {slot} said: {message}");
+            Post(() => { if (_windows.TryGetValue(deckId, out var w)) w.Flash(slot, message); });
+        }
+
+        /// <summary>A button's action failed (it could not open, its keys are not keys): the dot stays until it is pressed again, and the tip says why.</summary>
+        public static void Fail(string deckId, int slot, DeckService.Tile tile, string message)
+        {
+            DiagnosticLog.Info($"Deck: '{deckId}' slot {slot} failed: {message}");
+            Post(() =>
+            {
+                if (KeyOf(tile.Action) is { } key) _failures[key] = message;
+                RedrawAll();
+                if (_windows.TryGetValue(deckId, out var w)) w.Flash(slot, message);
+            });
+        }
+
+        /// <summary>The tip over a button (DeckWindow); with autoHideMs, it goes by itself.</summary>
+        internal static void ShowTip(DeckWindow from, string text, DeckNative.RECT anchor, int autoHideMs = 0)
+        {
+            try
+            {
+                _tip ??= new DeckTip(_owner);
+                _tipFrom = from;
+                var monitor = MonitorAt(anchor.Left + anchor.Width / 2, anchor.Top + anchor.Height / 2);
+                _tip.Show(text, anchor, monitor, _theme, _exclude);
+                DeckNative.KillTimer(_owner, TimerTip);
+                if (autoHideMs > 0) DeckNative.SetTimer(_owner, TimerTip, (uint)autoHideMs, IntPtr.Zero);
+            }
+            catch (Exception ex) { DiagnosticLog.Warn($"Deck: the tip could not show: {ex.GetType().Name}: {ex.Message}"); }
+        }
+
+        /// <summary>The tip goes, when it is that deck's.</summary>
+        internal static void HideTip(DeckWindow from)
+        {
+            if (_tipFrom != from) return;
+            _tipFrom = null;
+            DeckNative.KillTimer(_owner, TimerTip);
+            _tip?.Hide();
+        }
+
+        // ── Stepping aside ──
+
+        private sealed class Release : IDisposable
+        {
+            private System.Action? _release;
+            public Release(System.Action release) => _release = release;
+            public void Dispose() => Interlocked.Exchange(ref _release, null)?.Invoke();
+        }
+
+        private sealed class Nothing : IDisposable
+        {
+            public static readonly Nothing Instance = new();
+            public void Dispose() { }
+        }
+
+        /// <summary>
+        /// A capture overlay opens (an area, a point, a colour: CaptureOverlayHost): the whole screen is the user's,
+        /// so the decks step aside until it closes. Waits for them to be gone, 100 ms at most.
+        /// </summary>
+        public static IDisposable StepAside()
+        {
+            if (_thread == null || !_ready) return Nothing.Instance;
+            var done = new ManualResetEventSlim();
+            Post(() =>
+            {
+                _overlays++;
+                RefreshVisibility();
+                done.Set();
+            });
+            if (Thread.CurrentThread != _thread) done.Wait(100);
+            return new Release(() => Post(() =>
+            {
+                if (_overlays > 0) _overlays--;
+                RefreshVisibility();
+            }));
+        }
+
+        /// <summary>
+        /// The engine reads the screen (ScreenCaptureService, PixelColorService: Wait Image, OCR, a colour). Where
+        /// Windows does not keep the decks out of captures — before Windows 10 2004, or with "show in captures" on —
+        /// they step aside while it reads and come back 300 ms after the last read, so a Wait Image that polls keeps
+        /// them away without blinking. Anywhere else nothing happens.
+        /// </summary>
+        public static IDisposable ForCapture()
+        {
+            if (!_capturesSeeDecks || _thread == null || !_ready) return Nothing.Instance;
+            if (_hits.Hwnds.Length == 0 && !_captureHidden) return Nothing.Instance;
+            Interlocked.Increment(ref _captures);
+            var done = new ManualResetEventSlim();
+            Post(() =>
+            {
+                DeckNative.KillTimer(_owner, TimerCapture);
+                if (!_captureHidden)
+                {
+                    _captureHidden = true;
+                    RefreshVisibility();
+                    Interlocked.Exchange(ref _captureHiddenAt, Environment.TickCount64);
+                }
+                done.Set();
+            });
+            // The screen composed once without them before it is read.
+            if (Thread.CurrentThread != _thread && done.Wait(100) && Environment.TickCount64 - Interlocked.Read(ref _captureHiddenAt) < 100)
+                DeckNative.DwmFlush();
+            return new Release(() =>
+            {
+                if (Interlocked.Decrement(ref _captures) == 0) Post(() => DeckNative.SetTimer(_owner, TimerCapture, 300, IntPtr.Zero));
+            });
         }
 
         // ── The app in front ──
@@ -406,10 +892,12 @@ namespace TrueReplayer.Services
             DeckService.SetPlace(id, place);
         }
 
-        internal static void TileClick(string id, int page, int slot)
+        /// <summary>A button pressed and let go on it (DeckWindow): its last failure is over, and MainWindow runs it.</summary>
+        internal static void TileClick(string id, string where, int slot, DeckService.Tile tile)
         {
-            DiagnosticLog.Info($"Deck: click on '{id}' page {page} slot {slot}");
-            try { TileClicked?.Invoke(id, page, slot); }
+            DiagnosticLog.Info($"Deck: click on '{id}' {where} slot {slot} ({tile.Action.Kind})");
+            if (KeyOf(tile.Action) is { } key && _failures.Remove(key)) RedrawAll();
+            try { TileClicked?.Invoke(id, slot, tile); }
             catch (Exception ex) { DiagnosticLog.Warn($"Deck: a TileClicked handler failed: {ex.GetType().Name}: {ex.Message}"); }
         }
     }

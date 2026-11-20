@@ -31,4 +31,19 @@ export default {
     shortcuts: 'Atalhos',
     show: 'Mostrar o TR3',
   },
+
+  back: 'Voltar',
+
+  tip: {
+    missing: 'A macro {{name}} não existe.',
+    clicker: 'O TR3 está no modo Clicker: as macros esperam.',
+    recording: 'O TR3 está gravando.',
+    busy: '{{name}} está rodando.',
+    running: 'Uma macro está rodando.',
+    modal: 'Uma janela do TR3 espera uma resposta.',
+    unsaved: 'A macro aberta tem mudanças não salvas.',
+    couldNotStart: 'Não foi possível começar {{name}}.',
+    openFailed: 'Não foi possível abrir: {{reason}}',
+    keysInvalid: 'Estas teclas não podem ser enviadas: {{combo}}',
+  },
 } satisfies Catalogo<typeof en>;

@@ -33,6 +33,8 @@ namespace TrueReplayer.Services
         public const uint EDD_GET_DEVICE_INTERFACE_NAME = 1;
         public const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
         public const uint SPI_SETWORKAREA = 0x2F;
+        public const uint GW_HWNDPREV = 3;
+        public const int DWMWA_CLOAKED = 14;
 
         public delegate IntPtr WndProc(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
         public delegate void WinEventProc(IntPtr hook, uint ev, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);
@@ -132,6 +134,10 @@ namespace TrueReplayer.Services
         [DllImport("user32.dll")] public static extern UIntPtr SetTimer(IntPtr h, UIntPtr id, uint ms, IntPtr proc);
         [DllImport("user32.dll")] public static extern bool KillTimer(IntPtr h, UIntPtr id);
         [DllImport("shcore.dll")] public static extern int GetDpiForMonitor(IntPtr monitor, int dpiType, out uint dpiX, out uint dpiY);
+        [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h, uint cmd);
+        [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+        [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int attribute, out int value, int size);
+        [DllImport("dwmapi.dll")] public static extern int DwmFlush();
 
         [DllImport("gdi32.dll")] public static extern IntPtr CreateCompatibleDC(IntPtr dc);
         [DllImport("gdi32.dll")] public static extern bool DeleteDC(IntPtr dc);

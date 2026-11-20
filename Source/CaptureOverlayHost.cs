@@ -57,6 +57,9 @@ namespace TrueReplayer.Services
 
         public async Task<RegionSelectionResult?> RunAsync(Func<ScreenOverlayForm> factory)
         {
+            // Deck (branch deck, Fase 3): the whole screen is the overlay's while it is open — the decks, always on
+            // top, step aside until it closes.
+            using var deckAside = DeckHost.StepAside();
             RegionSelectionResult? selection = null;
             var thread = new Thread(() =>
             {

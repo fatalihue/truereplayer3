@@ -17,6 +17,11 @@ namespace TrueReplayer.Services
     /// Sizes are in DIP: the place is kept in DIP from an anchor of a monitor's work area, so a deck stays
     /// where it was put across scales and resolutions. Opacity, collapsing and the edge slide change the
     /// window with UpdateLayeredWindow alone — nothing is drawn again for them.
+    ///
+    /// Fase 3: a press runs the button (DeckHost.TileClick; a folder opens in the deck's place, with Back
+    /// first); a button shows its state — its macro running (a ring and a bar, Stop under the mouse), a TR3
+    /// switch on (the wash and the mini-switch), a failure (the dot, and the tip). In the passthrough the
+    /// window lets every click through and the hook brings the user's mouse to it instead (Routed*).
     /// </summary>
     internal sealed class DeckWindow : IDisposable
     {
@@ -24,8 +29,8 @@ namespace TrueReplayer.Services
         // The magnet: a work-area edge pulls at two lines, the edge itself and the 24 DIP a new deck starts at
         // (so a small drag never moves a deck off its margin); another deck pulls at its own edges and 8 DIP past.
         private const float Gap = 6, Pad = 8, HeaderH = 22, PillH = 30, Strip = 4, SnapReach = 12, EdgeMargin = 24, DeckGap = 8, Radius = 12, TileRadius = 8;
-        private const int AnimMs = 130, LeaveDelayMs = 700, DragSlopPx = 4;
-        private static readonly UIntPtr TimerAnim = (UIntPtr)1, TimerLeave = (UIntPtr)2;
+        private const int AnimMs = 130, LeaveDelayMs = 700, DragSlopPx = 4, TipDelayMs = 450;
+        private static readonly UIntPtr TimerAnim = (UIntPtr)1, TimerLeave = (UIntPtr)2, TimerTip = (UIntPtr)3, TimerWatch = (UIntPtr)4;
 
         public readonly string Id;
         public IntPtr Hwnd { get; private set; }
@@ -45,6 +50,15 @@ namespace TrueReplayer.Services
         private int _page, _hover = -1, _pressed = -1;
         private bool _inside, _tracking, _dragArmed, _dragging, _pressedHeader;
         private DeckNative.POINT _dragStart, _grab;
+
+        // The passthrough: the window lets every click through, and the hook brings the user's mouse here
+        // (Routed*); a press it brought stays the window's until its release comes the same way.
+        private bool _routed, _routedPress;
+
+        // The folder open in the deck's place (null: the pages).
+        private string? _folder;
+        // The labels cut short at the last frame, by slot: the tip says them whole.
+        private readonly HashSet<int> _cut = new();
 
         // What it shows.
         private bool _collapsedNow, _edgeHiddenNow, _shown;
@@ -68,6 +82,12 @@ namespace TrueReplayer.Services
 
         public DeckNative.RECT ScreenRect => new(_x, _y, _x + _w, _y + _h);
         public bool Shown => _shown;
+        public bool RoutedPress => _routedPress;
+
+        /// <summary>Does a button of this deck run that macro (its ring and its bar follow the run)?</summary>
+        public bool RunsMacro(string name) =>
+            _deck.Pages.Any(p => p.Tiles.Any(t => t.Action.Kind == "macro" && t.Action.Macro == name))
+            || _deck.Folders.Any(f => f.Tiles.Any(t => t.Action.Kind == "macro" && t.Action.Macro == name));
 
         // ── The config ──
 
@@ -76,6 +96,7 @@ namespace TrueReplayer.Services
         {
             _deck = deck;
             if (_page >= deck.Pages.Count) _page = 0;
+            if (_folder != null && !deck.Folders.Any(f => f.Id == _folder)) _folder = null;
             // A switch that changed while the mouse is away takes effect now; with the mouse on the deck, when it leaves.
             _collapsedNow = deck.Look.Collapse && (_collapsedNow || !_inside);
             _edgeHiddenNow = deck.Look.EdgeHide && (_edgeHiddenNow || !_inside);
@@ -101,6 +122,9 @@ namespace TrueReplayer.Services
                 StopTimers();
                 _inside = _tracking = _dragArmed = _dragging = false;
                 _hover = _pressed = -1;
+                // Back at its pages the next time it shows.
+                _folder = null;
+                DeckHost.HideTip(this);
                 if (DeckNative.GetCapture() == Hwnd) DeckNative.ReleaseCapture();
                 DeckNative.ShowWindow(Hwnd, DeckNative.SW_HIDE);
             }
@@ -118,6 +142,48 @@ namespace TrueReplayer.Services
             if (!_shown) return;
             Layout();
             Render();
+        }
+
+        /// <summary>A button's state changed (a run, a switch, a failure): drawn again.</summary>
+        public void Redraw()
+        {
+            if (_shown) Render();
+        }
+
+        /// <summary>
+        /// The passthrough (Fase 3). On, the window lets every click through (WS_EX_TRANSPARENT) — the engine's
+        /// reach the app under it, and the user's come by the hook (Routed*). Off, it takes its mouse itself again.
+        /// </summary>
+        public void SetPassthrough(bool on)
+        {
+            if (on == _routed) return;
+            _routed = on;
+            long ex = DeckNative.GetWindowLongPtrW(Hwnd, DeckNative.GWL_EXSTYLE).ToInt64();
+            ex = on ? ex | DeckNative.WS_EX_TRANSPARENT : ex & ~(long)DeckNative.WS_EX_TRANSPARENT;
+            DeckNative.SetWindowLongPtrW(Hwnd, DeckNative.GWL_EXSTYLE, (IntPtr)ex);
+            // A press the window had the usual way ends here (its WM_CAPTURECHANGED clears it).
+            if (on && DeckNative.GetCapture() == Hwnd) DeckNative.ReleaseCapture();
+            _tracking = false;
+            // Back to its own mouse with the mouse on it: until a move of its own arms TrackMouseEvent, the window
+            // watches for the mouse leaving. TrackMouseEvent cannot be armed now: Windows still has the window under
+            // it as the mouse's (until the next move), and would say "left" at once — a press brought by the hook,
+            // still waiting for its release, would lose its button.
+            if (!on && _inside && _shown) DeckNative.SetTimer(Hwnd, TimerWatch, 100, IntPtr.Zero);
+        }
+
+        /// <summary>After the passthrough: the mouse left without a move of the window's own — it is a leave.</summary>
+        private void WatchTick()
+        {
+            if (!_inside || _routed || _tracking || !_shown)
+            {
+                DeckNative.KillTimer(Hwnd, TimerWatch);
+                return;
+            }
+            if (DeckNative.GetCursorPos(out var p) && !ScreenRect.Contains(p.X, p.Y) && !_routedPress)
+            {
+                DeckNative.KillTimer(Hwnd, TimerWatch);
+                OnLeave();
+            }
         }
 
         // ── Sizes and the place ──
@@ -177,6 +243,25 @@ namespace TrueReplayer.Services
             "bottom-left" => (0, 1), "bottom" => (0.5, 1), _ => (1, 1),
         };
 
+        // ── What the deck shows: its page, or the folder open in its place ──
+
+        private DeckService.Folder? OpenFolder => _folder == null ? null : _deck.Folders.FirstOrDefault(f => f.Id == _folder);
+
+        private List<DeckService.Tile> ViewTiles()
+        {
+            if (OpenFolder is { } folder) return folder.Tiles;
+            return _deck.Pages.Count > 0 ? _deck.Pages[Math.Clamp(_page, 0, _deck.Pages.Count - 1)].Tiles : new List<DeckService.Tile>();
+        }
+
+        /// <summary>The button in a slot of what the deck shows; null for an empty slot and for Back (slot 0 of a folder).</summary>
+        private DeckService.Tile? TileAt(int slot)
+        {
+            if (_folder != null && slot == 0) return null;
+            int slots = _deck.Grid.Cols * _deck.Grid.Rows;
+            if (slot < 0 || slot >= slots) return null;
+            return ViewTiles().FirstOrDefault(t => t.Slot == slot);
+        }
+
         // ── Drawing ──
 
         private void Render()
@@ -195,6 +280,7 @@ namespace TrueReplayer.Services
                 if (!_painter.End()) { _painter.Ensure(_w, _h, _scale); }
             }
             _painter.Present(Hwnd, _x, _y, _alpha);
+            DeckHost.Moved();
         }
 
         private void DrawPill(DeckTheme t)
@@ -223,30 +309,38 @@ namespace TrueReplayer.Services
             _painter.FillRound(0, 0, w, h, Radius, t.Surface);
             _painter.StrokeRound(0, 0, w, h, Radius, t.BorderDefault);
 
+            var folder = OpenFolder;
             if (_deck.Look.Header)
             {
-                int pages = _deck.Pages.Count;
+                // A folder shows its own name, and no page dots: it is one grid.
+                int pages = folder == null ? _deck.Pages.Count : 1;
                 float dotsW = pages > 1 ? pages * 10f : 0f;
-                _painter.Text(Name, _painter.Format("Segoe UI Variable Small", 11f, false, true), 1 + Pad, 1, w - 2 - 2 * Pad - dotsW, HeaderH, t.Text);
+                string title = folder != null && folder.Name.Length > 0 ? folder.Name : Name;
+                _painter.Text(title, _painter.Format("Segoe UI Variable Small", 11f, false, true), 1 + Pad, 1, w - 2 - 2 * Pad - dotsW, HeaderH, t.Text);
                 for (int i = 0; i < pages && pages > 1; i++)
                     _painter.Circle(w - 1 - Pad - dotsW + i * 10f + 5f, 1 + HeaderH / 2f, i == _page ? 3f : 2.5f, i == _page ? t.Text : t.BorderStrong);
             }
 
-            var page = _deck.Pages.Count > 0 ? _deck.Pages[Math.Clamp(_page, 0, _deck.Pages.Count - 1)] : null;
             int slots = _deck.Grid.Cols * _deck.Grid.Rows;
             var bySlot = new Dictionary<int, DeckService.Tile>();
-            if (page != null) foreach (var tile in page.Tiles) if (tile.Slot < slots) bySlot[tile.Slot] = tile;
+            foreach (var tile in ViewTiles()) if (tile.Slot < slots) bySlot[tile.Slot] = tile;
 
+            _cut.Clear();
             for (int slot = 0; slot < slots; slot++)
             {
                 var (x, y) = TileOrigin(slot);
+                if (folder != null && slot == 0)
+                {
+                    DrawBack(t, x, y, slot == _hover, slot == _pressed);
+                    continue;
+                }
                 if (!bySlot.TryGetValue(slot, out var tile))
                 {
                     // An empty place: only its outline, so the grid reads as a grid.
                     _painter.StrokeRound(x, y, Tile, Tile, TileRadius, t.BorderSubtle);
                     continue;
                 }
-                DrawTile(t, tile, x, y, slot == _hover, slot == _pressed);
+                DrawTile(t, tile, slot, x, y, slot == _hover, slot == _pressed);
             }
         }
 
@@ -256,30 +350,114 @@ namespace TrueReplayer.Services
             return (1 + Pad + c * (Tile + Gap), 1 + HeaderDip + Pad + r * (Tile + Gap));
         }
 
-        private void DrawTile(DeckTheme t, DeckService.Tile tile, float x, float y, bool hover, bool pressed)
+        /// <summary>A button's face, in screen pixels (the tip's anchor); the whole window while it is a pill.</summary>
+        private DeckNative.RECT TileScreenRect(int slot)
+        {
+            if (_collapsedNow || slot < 0) return ScreenRect;
+            var (tx, ty) = TileOrigin(slot);
+            return new DeckNative.RECT(_x + (int)Math.Floor(tx * _scale), _y + (int)Math.Floor(ty * _scale),
+                _x + (int)Math.Ceiling((tx + Tile) * _scale), _y + (int)Math.Ceiling((ty + Tile) * _scale));
+        }
+
+        private void PressTransform(float x, float y, float size, bool pressed)
+        {
+            if (!pressed) return;
+            // The press: a 0.97 scale around the button's centre (the app's buttons do the same).
+            var target = _painter.Target;
+            var c = new System.Numerics.Vector2(x + size / 2, y + size / 2);
+            target.Transform = System.Numerics.Matrix3x2.CreateScale(0.97f, c) * target.Transform;
+        }
+
+        private void DrawBack(DeckTheme t, float x, float y, bool hover, bool pressed)
         {
             float size = Tile;
-            var target = _painter.Target;
-            var before = target.Transform;
-            if (pressed)
-            {
-                // The press: a 0.97 scale around the button's centre (the app's buttons do the same).
-                var c = new System.Numerics.Vector2(x + size / 2, y + size / 2);
-                target.Transform = System.Numerics.Matrix3x2.CreateScale(0.97f, c) * before;
-            }
+            var before = _painter.Target.Transform;
+            PressTransform(x, y, size, pressed);
             _painter.FillRound(x, y, size, size, TileRadius, t.Card);
             _painter.StrokeRound(x, y, size, size, TileRadius, hover || pressed ? t.BorderStrong : t.BorderSubtle);
+            float iconBox = size * 26f / 64f;
+            _painter.Svg(DeckIcons.Svg["chevron-left"], Hex(t.Text), x + (size - iconBox) / 2f, y + size * 11f / 64f, iconBox);
+            DrawLabel(t, S.DeckBack, -1, x, y, size);
+            _painter.Target.Transform = before;
+        }
 
-            bool missing = tile.Action.Kind == "macro" && tile.Action.Macro != null && !DeckService.IsMacroFound(tile.Action.Macro);
-            DrawTileIcon(t, tile, x, y, size, missing);
+        private void DrawTile(DeckTheme t, DeckService.Tile tile, int slot, float x, float y, bool hover, bool pressed)
+        {
+            float size = Tile, k = size / 64f;
+            var before = _painter.Target.Transform;
+            PressTransform(x, y, size, pressed);
 
-            string? label = LabelOf(tile);
-            if (!string.IsNullOrEmpty(label))
+            var live = DeckHost.Live;
+            var a = tile.Action;
+            // A TR3 switch: on or off, by the mini-switch's place and fill, and the wash when on (two channels).
+            bool? on = a.Kind == "tr3" ? a.Command switch
             {
-                float labelTop = y + size * 42f / 64f, labelH = size < 56 ? 14f : 16f;
-                _painter.Text(label, _painter.Format("Segoe UI Variable Small", size >= 80 ? 12f : 11f, true, true), x + 5, labelTop, size - 10, labelH, t.Text);
+                "clicker" => live.ClickerMode,
+                "teclado" => live.Teclado,
+                "remaps" => live.Remaps,
+                "automations" => live.Automations,
+                "shortcuts" => live.Shortcuts,
+                _ => (bool?)null,
+            } : null;
+            bool isOn = on == true;
+            _painter.FillRound(x, y, size, size, TileRadius, isOn ? t.OnFace : t.Card);
+            _painter.StrokeRound(x, y, size, size, TileRadius, isOn ? t.OnBorder : hover || pressed ? t.BorderStrong : t.BorderSubtle);
+
+            bool running = a.Kind == "macro" && a.Macro != null && a.Macro == live.RunningMacro;
+            bool missing = a.Kind == "macro" && a.Macro != null && !DeckService.IsMacroFound(a.Macro);
+            if (running && hover)
+            {
+                // Under the mouse, a running macro's button says what a press does now: Stop.
+                float iconBox = size * 26f / 64f;
+                _painter.Svg(DeckIcons.Svg["square"], Hex(t.Text), x + (size - iconBox) / 2f, y + size * 11f / 64f, iconBox);
             }
-            target.Transform = before;
+            else DrawTileIcon(t, tile, x, y, size, missing);
+
+            DrawLabel(t, LabelOf(tile), slot, x, y, size);
+
+            if (running)
+            {
+                // Running: the fixed ring in the replay ink, and the bar of the steps done.
+                _painter.StrokeRound(x, y, size, size, TileRadius, t.ReplayFg, 2f);
+                float progress = DeckHost.Progress;
+                if (progress > 0)
+                {
+                    float barW = (size - 18 * k) * Math.Min(1f, progress);
+                    _painter.FillRound(x + 9 * k, y + size - 4.5f, barW, 2.5f, 1.25f, t.ReplayFg);
+                }
+            }
+            else if (a.Kind == "tr3" && a.Command == "record" && live.Recording)
+                _painter.StrokeRound(x, y, size, size, TileRadius, t.RecordingFg, 2f);
+            else if (a.Kind == "tr3" && a.Command == "clicker" && live.Clicking)
+                _painter.StrokeRound(x, y, size, size, TileRadius, t.ReplayFg, 2f);
+
+            if (on.HasValue)
+            {
+                float tw = 14 * k, th = 8 * k, tx = x + size - 6 * k - tw, ty = y + 6 * k;
+                if (on.Value)
+                {
+                    _painter.FillRound(tx, ty, tw, th, th / 2, t.Text);
+                    _painter.Circle(tx + tw - th / 2, ty + th / 2, th / 2 - k, t.OnFace);
+                }
+                else
+                {
+                    _painter.StrokeRound(tx, ty, tw, th, th / 2, t.BorderStrong);
+                    _painter.Circle(tx + th / 2, ty + th / 2, th / 2 - 2 * k, t.BorderStrong);
+                }
+            }
+            else if (DeckHost.FailureOf(tile) != null)
+                _painter.Circle(x + size - 9 * k, y + 9 * k, 3 * k, t.RecordingFg);
+
+            _painter.Target.Transform = before;
+        }
+
+        private void DrawLabel(DeckTheme t, string? label, int slot, float x, float y, float size)
+        {
+            if (string.IsNullOrEmpty(label)) return;
+            float labelTop = y + size * 42f / 64f, labelH = size < 56 ? 14f : 16f;
+            var format = _painter.Format("Segoe UI Variable Small", size >= 80 ? 12f : 11f, true, true);
+            _painter.Text(label, format, x + 5, labelTop, size - 10, labelH, t.Text);
+            if (slot >= 0 && _painter.TextWidth(label, format) > size - 10) _cut.Add(slot);
         }
 
         private void DrawTileIcon(DeckTheme t, DeckService.Tile tile, float x, float y, float size, bool missing)
@@ -388,6 +566,40 @@ namespace TrueReplayer.Services
         private static string Hex(Color4 c) =>
             $"#{(int)Math.Round(c.R * 255):x2}{(int)Math.Round(c.G * 255):x2}{(int)Math.Round(c.B * 255):x2}";
 
+        // ── The tip ──
+
+        /// <summary>What the tip says over a button: its failure, its macro missing, or its label cut short. Null: no tip.</summary>
+        private string? TipFor(int slot)
+        {
+            var tile = TileAt(slot);
+            if (tile == null) return null;
+            if (DeckHost.FailureOf(tile) is { } failure) return failure;
+            var a = tile.Action;
+            if (a.Kind == "macro" && a.Macro != null && !DeckService.IsMacroFound(a.Macro)) return S.DeckTipMissing(name: a.Macro);
+            return _cut.Contains(slot) ? LabelOf(tile) : null;
+        }
+
+        private void ArmTip()
+        {
+            DeckNative.KillTimer(Hwnd, TimerTip);
+            DeckHost.HideTip(this);
+            if (_hover >= 0 && !_dragArmed && TipFor(_hover) != null) DeckNative.SetTimer(Hwnd, TimerTip, TipDelayMs, IntPtr.Zero);
+        }
+
+        private void ShowHoverTip()
+        {
+            if (!_inside || _hover < 0 || _dragArmed) return;
+            if (TipFor(_hover) is { } text) DeckHost.ShowTip(this, text, TileScreenRect(_hover));
+        }
+
+        /// <summary>A press that did not do what its button says: the tip says why, for a moment, over that button.</summary>
+        public void Flash(int slot, string message)
+        {
+            if (!_shown) return;
+            DeckNative.KillTimer(Hwnd, TimerTip);
+            DeckHost.ShowTip(this, message, TileScreenRect(slot), autoHideMs: 2600);
+        }
+
         // ── The mouse ──
 
         public IntPtr Proc(uint msg, IntPtr w, IntPtr l)
@@ -396,17 +608,21 @@ namespace TrueReplayer.Services
             {
                 case DeckNative.WM_MOUSEACTIVATE: return (IntPtr)DeckNative.MA_NOACTIVATE;
                 case DeckNative.WM_POINTERACTIVATE: return (IntPtr)DeckNative.PA_NOACTIVATE;
-                case DeckNative.WM_MOUSEMOVE: OnMove(DeckNative.LoX(l), DeckNative.HiY(l)); return IntPtr.Zero;
-                case DeckNative.WM_MOUSELEAVE: OnLeave(); return IntPtr.Zero;
-                case DeckNative.WM_LBUTTONDOWN: OnDown(DeckNative.LoX(l), DeckNative.HiY(l)); return IntPtr.Zero;
-                case DeckNative.WM_LBUTTONUP: OnUp(DeckNative.LoX(l), DeckNative.HiY(l)); return IntPtr.Zero;
-                case DeckNative.WM_MOUSEWHEEL: OnWheel((short)(((long)w >> 16) & 0xFFFF)); return IntPtr.Zero;
+                // In the passthrough the hook brings the mouse (Routed*): what still comes this way is stale.
+                case DeckNative.WM_MOUSEMOVE: if (!_routed) OnMove(DeckNative.LoX(l), DeckNative.HiY(l), routed: false); return IntPtr.Zero;
+                // A press the hook brought owns the mouse until its release comes the same way.
+                case DeckNative.WM_MOUSELEAVE: _tracking = false; if (!_routed && !_routedPress) OnLeave(); return IntPtr.Zero;
+                case DeckNative.WM_LBUTTONDOWN: if (!_routed) OnDown(DeckNative.LoX(l), DeckNative.HiY(l), routed: false); return IntPtr.Zero;
+                case DeckNative.WM_LBUTTONUP: if (!_routed) OnUp(DeckNative.LoX(l), DeckNative.HiY(l), routed: false); return IntPtr.Zero;
+                case DeckNative.WM_MOUSEWHEEL: if (!_routed) OnWheel((short)(((long)w >> 16) & 0xFFFF)); return IntPtr.Zero;
                 case DeckNative.WM_CAPTURECHANGED:
-                    if (l != Hwnd && (_dragging || _dragArmed || _pressed >= 0)) { _dragArmed = _dragging = false; _pressed = -1; Render(); }
+                    if (l != Hwnd && !_routedPress && (_dragging || _dragArmed || _pressed >= 0)) { _dragArmed = _dragging = false; _pressed = -1; Render(); }
                     return IntPtr.Zero;
                 case DeckNative.WM_TIMER:
                     if ((long)w == (long)(ulong)TimerAnim) AnimTick();
                     else if ((long)w == (long)(ulong)TimerLeave) { DeckNative.KillTimer(Hwnd, TimerLeave); SettleOutside(); }
+                    else if ((long)w == (long)(ulong)TimerTip) { DeckNative.KillTimer(Hwnd, TimerTip); ShowHoverTip(); }
+                    else if ((long)w == (long)(ulong)TimerWatch) WatchTick();
                     return IntPtr.Zero;
                 case DeckNative.WM_DPICHANGED:
                     // Windows suggests a rect; the deck works its place out itself, from the anchor.
@@ -417,9 +633,36 @@ namespace TrueReplayer.Services
             return DeckNative.DefWindowProcW(Hwnd, msg, w, l);
         }
 
-        private void OnMove(int px, int py)
+        // The mouse the hook brings in the passthrough (DeckHost), in screen pixels.
+        public void RoutedMove(int sx, int sy) => OnMove(sx - _x, sy - _y, routed: true);
+
+        public void RoutedLeave()
         {
-            if (!_tracking)
+            if (!_routedPress) OnLeave();
+        }
+
+        public void RoutedButton(bool down, bool right, int sx, int sy)
+        {
+            // The right button has nothing on a deck yet (its menu comes with the editing on screen, Fase 6).
+            if (right) return;
+            if (down)
+            {
+                _routedPress = true;
+                if (!_inside) Enter();
+                OnDown(sx - _x, sy - _y, routed: true);
+            }
+            else
+            {
+                _routedPress = false;
+                OnUp(sx - _x, sy - _y, routed: true);
+            }
+        }
+
+        public void RoutedWheel(int delta) => OnWheel(delta);
+
+        private void OnMove(int px, int py, bool routed)
+        {
+            if (!routed && !_tracking)
             {
                 var tme = new DeckNative.TRACKMOUSEEVENT { cbSize = (uint)Marshal.SizeOf<DeckNative.TRACKMOUSEEVENT>(), dwFlags = DeckNative.TME_LEAVE, hwndTrack = Hwnd };
                 _tracking = DeckNative.TrackMouseEvent(ref tme);
@@ -433,11 +676,17 @@ namespace TrueReplayer.Services
                 {
                     (_x, _y) = Snap(cur.X - _grab.X, cur.Y - _grab.Y);
                     DeckPainter.Move(Hwnd, _x, _y, _alpha);
+                    DeckHost.Moved();
                 }
                 return;
             }
             int hover = _collapsedNow ? -1 : HitTile(px / _scale, py / _scale);
-            if (hover != _hover) { _hover = hover; Render(); }
+            if (hover != _hover)
+            {
+                _hover = hover;
+                Render();
+                ArmTip();
+            }
         }
 
         private void Enter()
@@ -459,21 +708,28 @@ namespace TrueReplayer.Services
 
         private void OnLeave()
         {
-            _tracking = false;
             if (_dragArmed || _dragging) return;
             _inside = false;
+            DeckNative.KillTimer(Hwnd, TimerTip);
+            DeckHost.HideTip(this);
             if (_hover >= 0 || _pressed >= 0) { _hover = -1; _pressed = -1; Render(); }
             if (_deck.Look.Collapse || _edge != null) DeckNative.SetTimer(Hwnd, TimerLeave, LeaveDelayMs, IntPtr.Zero);
             AnimateTo(_homeX, _homeY, RestAlpha);
         }
 
-        /// <summary>The mouse is away and stayed away: fold into the pill, slide past the edge.</summary>
+        /// <summary>The mouse is away and stayed away: fold into the pill, slide past the edge — back at the pages.</summary>
         private void SettleOutside()
         {
             if (_inside || _dragging) return;
+            bool folded = false;
             if (_deck.Look.Collapse && !_collapsedNow)
             {
                 _collapsedNow = true;
+                folded = true;
+            }
+            if (_folder != null) { _folder = null; folded = true; }
+            if (folded)
+            {
                 Layout();
                 Render();
             }
@@ -484,8 +740,10 @@ namespace TrueReplayer.Services
             }
         }
 
-        private void OnDown(int px, int py)
+        private void OnDown(int px, int py, bool routed)
         {
+            DeckNative.KillTimer(Hwnd, TimerTip);
+            DeckHost.HideTip(this);
             float dx = px / _scale, dy = py / _scale;
             _pressedHeader = _collapsedNow || (_deck.Look.Header && dy < 1 + HeaderH);
             if (_pressedHeader)
@@ -497,26 +755,26 @@ namespace TrueReplayer.Services
                     _dragStart = cur;
                     _grab = new DeckNative.POINT(cur.X - _x, cur.Y - _y);
                 }
-                DeckNative.SetCapture(Hwnd);
+                if (!routed) DeckNative.SetCapture(Hwnd);
                 return;
             }
             int slot = HitTile(dx, dy);
             if (slot >= 0)
             {
                 _pressed = slot;
-                DeckNative.SetCapture(Hwnd);
+                if (!routed) DeckNative.SetCapture(Hwnd);
                 Render();
             }
         }
 
-        private void OnUp(int px, int py)
+        private void OnUp(int px, int py, bool routed)
         {
             // Read before ReleaseCapture: its WM_CAPTURECHANGED comes back into this window.
             bool wasDragging = _dragging, header = _pressedHeader;
             int pressed = _pressed;
             _dragArmed = _dragging = _pressedHeader = false;
             _pressed = -1;
-            if (DeckNative.GetCapture() == Hwnd) DeckNative.ReleaseCapture();
+            if (!routed && DeckNative.GetCapture() == Hwnd) DeckNative.ReleaseCapture();
             if (wasDragging)
             {
                 DeckHost.SavePlace(Id, PlaceFromScreen());
@@ -525,20 +783,52 @@ namespace TrueReplayer.Services
             float dx = px / _scale, dy = py / _scale;
             if (header)
             {
-                if (!_collapsedNow && _deck.Pages.Count > 1 && HitDot(dx, dy) is int dot and >= 0 && dot != _page) { _page = dot; Render(); }
+                if (!_collapsedNow && _folder == null && _deck.Pages.Count > 1 && HitDot(dx, dy) is int dot and >= 0 && dot != _page) { _page = dot; Render(); }
                 return;
             }
             Render();
             int slot = HitTile(dx, dy);
-            if (slot >= 0 && slot == pressed) DeckHost.TileClick(Id, _page, slot);
+            if (slot >= 0 && slot == pressed) Press(slot);
+        }
+
+        /// <summary>A button pressed and let go on it: Back, a folder, or its action (DeckHost).</summary>
+        private void Press(int slot)
+        {
+            if (_folder != null && slot == 0)
+            {
+                _folder = null;
+                Render();
+                ArmTip();
+                return;
+            }
+            var tile = TileAt(slot);
+            if (tile == null)
+            {
+                DiagnosticLog.Info($"Deck: click on '{Id}' slot {slot} (empty)");
+                return;
+            }
+            if (tile.Action.Kind == "folder")
+            {
+                if (tile.Action.Folder != null && _deck.Folders.Any(f => f.Id == tile.Action.Folder))
+                {
+                    _folder = tile.Action.Folder;
+                    DiagnosticLog.Info($"Deck: '{Id}' opened the folder '{_folder}'");
+                    Render();
+                    ArmTip();
+                }
+                return;
+            }
+            DeckHost.TileClick(Id, _folder ?? "page " + _page, slot, tile);
+            ArmTip();
         }
 
         private void OnWheel(int delta)
         {
             int pages = _deck.Pages.Count;
-            if (pages <= 1 || _collapsedNow) return;
+            if (pages <= 1 || _collapsedNow || _folder != null) return;
             _page = (_page + (delta < 0 ? 1 : pages - 1)) % pages;
             Render();
+            ArmTip();
         }
 
         private int HitTile(float dx, float dy)
@@ -626,7 +916,11 @@ namespace TrueReplayer.Services
                 _x = x; _y = y; _alpha = alpha;
                 _animStart = -1;
                 DeckNative.KillTimer(Hwnd, TimerAnim);
-                if (_shown) DeckPainter.Move(Hwnd, _x, _y, _alpha);
+                if (_shown)
+                {
+                    DeckPainter.Move(Hwnd, _x, _y, _alpha);
+                    DeckHost.Moved();
+                }
                 return;
             }
             _fromX = _x; _fromY = _y; _alphaFrom = _alpha;
@@ -639,10 +933,14 @@ namespace TrueReplayer.Services
             if (_animStart < 0) { DeckNative.KillTimer(Hwnd, TimerAnim); return; }
             double k = Math.Min(1.0, (Stopwatch.GetTimestamp() - _animStart) * 1000.0 / Stopwatch.Frequency / AnimMs);
             double e = 1 - Math.Pow(1 - k, 3); // ease-out
-            _x = (int)Math.Round(_fromX + (_toX - _fromX) * e);
-            _y = (int)Math.Round(_fromY + (_toY - _fromY) * e);
+            int x = (int)Math.Round(_fromX + (_toX - _fromX) * e);
+            int y = (int)Math.Round(_fromY + (_toY - _fromY) * e);
+            bool moved = x != _x || y != _y;
+            _x = x;
+            _y = y;
             _alpha = (byte)Math.Round(_alphaFrom + (_alphaTo - _alphaFrom) * e);
             DeckPainter.Move(Hwnd, _x, _y, _alpha);
+            if (moved) DeckHost.Moved();
             if (k >= 1)
             {
                 _animStart = -1;
@@ -654,6 +952,8 @@ namespace TrueReplayer.Services
         {
             DeckNative.KillTimer(Hwnd, TimerAnim);
             DeckNative.KillTimer(Hwnd, TimerLeave);
+            DeckNative.KillTimer(Hwnd, TimerTip);
+            DeckNative.KillTimer(Hwnd, TimerWatch);
             // An animation cut short ends where it was going.
             if (_animStart >= 0) { _x = _toX; _y = _toY; _alpha = _alphaTo; }
             _animStart = -1;

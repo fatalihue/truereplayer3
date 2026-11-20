@@ -1072,6 +1072,28 @@ namespace TrueReplayer.Services
         public static string DeckCommandShortcuts => IsPt ? "Atalhos" : "Shortcuts";
         /// <summary>engine-deck.command.show · Show TR3</summary>
         public static string DeckCommandShow => IsPt ? "Mostrar o TR3" : "Show TR3";
+        /// <summary>engine-deck.back · Back</summary>
+        public static string DeckBack => IsPt ? "Voltar" : "Back";
+        /// <summary>engine-deck.tip.missing · The macro {{name}} does not exist.</summary>
+        public static string DeckTipMissing(string name) => IsPt ? $"A macro {name} não existe." : $"The macro {name} does not exist.";
+        /// <summary>engine-deck.tip.clicker · TR3 is in Clicker mode: macros wait.</summary>
+        public static string DeckTipClicker => IsPt ? "O TR3 está no modo Clicker: as macros esperam." : "TR3 is in Clicker mode: macros wait.";
+        /// <summary>engine-deck.tip.recording · TR3 is recording.</summary>
+        public static string DeckTipRecording => IsPt ? "O TR3 está gravando." : "TR3 is recording.";
+        /// <summary>engine-deck.tip.busy · {{name}} is running.</summary>
+        public static string DeckTipBusy(string name) => IsPt ? $"{name} está rodando." : $"{name} is running.";
+        /// <summary>engine-deck.tip.running · A macro is running.</summary>
+        public static string DeckTipRunning => IsPt ? "Uma macro está rodando." : "A macro is running.";
+        /// <summary>engine-deck.tip.modal · A TR3 window is waiting for an answer.</summary>
+        public static string DeckTipModal => IsPt ? "Uma janela do TR3 espera uma resposta." : "A TR3 window is waiting for an answer.";
+        /// <summary>engine-deck.tip.unsaved · The open macro has unsaved changes.</summary>
+        public static string DeckTipUnsaved => IsPt ? "A macro aberta tem mudanças não salvas." : "The open macro has unsaved changes.";
+        /// <summary>engine-deck.tip.couldNotStart · {{name}} could not start.</summary>
+        public static string DeckTipCouldNotStart(string name) => IsPt ? $"Não foi possível começar {name}." : $"{name} could not start.";
+        /// <summary>engine-deck.tip.openFailed · Could not open: {{reason}}</summary>
+        public static string DeckTipOpenFailed(string reason) => IsPt ? $"Não foi possível abrir: {reason}" : $"Could not open: {reason}";
+        /// <summary>engine-deck.tip.keysInvalid · These keys cannot be sent: {{combo}}</summary>
+        public static string DeckTipKeysInvalid(string combo) => IsPt ? $"Estas teclas não podem ser enviadas: {combo}" : $"These keys cannot be sent: {combo}";
         /// <summary>engine-errors.fileInUse · the file is in use by another program</summary>
         public static string ErrorsFileInUse => IsPt ? "o arquivo está em uso por outro programa" : "the file is in use by another program";
         /// <summary>engine-errors.accessDenied · Windows denied access to the file or folder</summary>

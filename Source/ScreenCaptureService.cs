@@ -23,6 +23,8 @@ namespace TrueReplayer.Services
             // construction instead of by timing.
             var (x, y, w, h) = NativeMethods.VirtualScreen.Bounds;
 
+            // Deck (branch deck, Fase 3): where Windows does not keep the decks out of captures, they step aside.
+            using var deckAside = DeckHost.ForCapture();
             // Use managed Bitmap + Graphics.CopyFromScreen to avoid GDI handle leaks.
             // The previous approach (CreateDC/CreateCompatibleBitmap/Image.FromHbitmap)
             // leaked GDI handles and could exhaust system resources, crashing explorer.exe.
@@ -42,6 +44,8 @@ namespace TrueReplayer.Services
         /// </summary>
         public static Bitmap CaptureRegion(int absX, int absY, int w, int h)
         {
+            // Deck (branch deck, Fase 3): as above.
+            using var deckAside = DeckHost.ForCapture();
             // Managed Bitmap + CopyFromScreen for the same GDI-handle-leak reason as
             // CaptureVirtualScreen above.
             var bitmap = new Bitmap(w, h, PixelFormat.Format32bppArgb);

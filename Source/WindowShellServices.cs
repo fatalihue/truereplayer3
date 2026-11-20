@@ -217,6 +217,8 @@ namespace TrueReplayer.Services
             notifyIcon.szTip = ResolveTooltip(settings);
             Shell_NotifyIcon(NIM_MODIFY, ref notifyIcon);
             LogStateChange(settings, notifyIcon.szTip);
+            // Deck (branch deck, Fase 3): the switches a TR3 button shows change where the tray's do.
+            DeckHost.SetSwitches(settings.UseCursorClick, UserProfile.Current.ProfileKeyEnabled, settings.AutomationEnabled, RemapService.Current.Enabled);
         }
 
         // One line when the icon's state changes (not on every tooltip refresh: a looping run moves

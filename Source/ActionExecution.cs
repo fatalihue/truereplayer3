@@ -155,7 +155,19 @@ namespace TrueReplayer.Services
         }
 
         // Volatile: written on the UI thread, read by the input hooks on their own thread.
-        public bool IsReplaying { get => _isReplaying; private set => _isReplaying = value; }
+        // Deck (branch deck, Fase 3): while the engine clicks — a run or the Clicker — the decks let clicks
+        // through (DeckHost.ReplayStarted waits, 50 ms at most, for them to before the first click goes out).
+        public bool IsReplaying
+        {
+            get => _isReplaying;
+            private set
+            {
+                if (_isReplaying == value) return;
+                _isReplaying = value;
+                if (value) DeckHost.ReplayStarted();
+                else DeckHost.ReplayEnded();
+            }
+        }
         private volatile bool _isReplaying;
 
         public ReplayService(
@@ -8994,7 +9006,11 @@ namespace TrueReplayer.Services
             }
         }
 
-        private void RestoreOriginalClipboard((string? Text, string? Html) originalClipboard, ClipboardNonText? nonText = null)
+        private void RestoreOriginalClipboard((string? Text, string? Html) originalClipboard, ClipboardNonText? nonText = null) =>
+            RestoreClipboard(dispatcherQueue, originalClipboard, nonText);
+
+        /// <summary>The user's clipboard back, as it was read (ReadClipboardSnapshotAsync, ReadClipboardNonTextAsync); on the UI queue. The Deck's paste uses it too.</summary>
+        internal static void RestoreClipboard(DispatcherQueue dispatcherQueue, (string? Text, string? Html) originalClipboard, ClipboardNonText? nonText = null)
         {
             bool queued = dispatcherQueue.TryEnqueue(async () =>
             {
@@ -10956,7 +10972,7 @@ namespace TrueReplayer.Services
         // clipboard sequence number is no such signal either (it counts writes, and a read is not
         // one). So a fixed floor, the order of what text expanders ship as their restore delay:
         // ~250 ms more per paste-mode SendText, against a leak of the user's clipboard.
-        private const int PasteSettleMs = 300;
+        internal const int PasteSettleMs = 300;
         // Environment.TickCount64 of the last injected Ctrl+V. 0 never waits: the tick count is
         // milliseconds since boot.
         private long _lastPasteTicks;

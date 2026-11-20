@@ -100,7 +100,8 @@ namespace TrueReplayer.Services
         private readonly Dictionary<uint, ID2D1SolidColorBrush> _brushes = new();
         private readonly Dictionary<string, ID2D1SvgDocument?> _svgs = new(StringComparer.Ordinal);
         private readonly Dictionary<string, (ID2D1Bitmap? Bitmap, DateTime Stamp)> _images = new(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<(string Family, float Size, bool Center, bool Trim), IDWriteTextFormat> _formats = new();
+        private readonly Dictionary<(string Family, float Size, bool Center, bool Trim, bool Wrap), IDWriteTextFormat> _formats = new();
+        private readonly Dictionary<(string Text, IDWriteTextFormat Format), float> _widths = new();
         private readonly List<IDWriteInlineObject> _signs = new();
 
         public ID2D1RenderTarget Target => _rt!;
@@ -196,14 +197,15 @@ namespace TrueReplayer.Services
 
         public void Circle(float cx, float cy, float r, Color4 c) => _rt!.FillEllipse(new Ellipse(new Vector2(cx, cy), r, r), Brush(c));
 
-        public IDWriteTextFormat Format(string family, float size, bool center, bool trim)
+        /// <summary>A text format, made once per painter. wrap: lines break at the box's width (a long word too, as the app's tips do).</summary>
+        public IDWriteTextFormat Format(string family, float size, bool center, bool trim, bool wrap = false)
         {
-            var key = (family, size, center, trim);
+            var key = (family, size, center, trim, wrap);
             if (_formats.TryGetValue(key, out var f)) return f;
             f = DWrite.CreateTextFormat(family, null, FontWeight.Normal, DWFontStyle.Normal, FontStretch.Normal, size, "pt-br");
             f.TextAlignment = center ? TextAlignment.Center : TextAlignment.Leading;
-            f.ParagraphAlignment = ParagraphAlignment.Center;
-            f.WordWrapping = WordWrapping.NoWrap;
+            f.ParagraphAlignment = wrap ? ParagraphAlignment.Near : ParagraphAlignment.Center;
+            f.WordWrapping = wrap ? WordWrapping.EmergencyBreak : WordWrapping.NoWrap;
             if (trim)
             {
                 var sign = DWrite.CreateEllipsisTrimmingSign(f);
@@ -222,6 +224,22 @@ namespace TrueReplayer.Services
         {
             using var layout = DWrite.CreateTextLayout(text, format, 4000f, 200f);
             return layout.Metrics.WidthIncludingTrailingWhitespace;
+        }
+
+        /// <summary>The same, remembered by this painter (a label is measured at every frame to know whether it was cut).</summary>
+        public float TextWidth(string text, IDWriteTextFormat format)
+        {
+            if (_widths.TryGetValue((text, format), out var w)) return w;
+            if (_widths.Count > 512) _widths.Clear();
+            return _widths[(text, format)] = Measure(text, format);
+        }
+
+        /// <summary>The box a text takes when its lines break at maxWidth, in DIP.</summary>
+        public static (float W, float H) MeasureBox(string text, IDWriteTextFormat format, float maxWidth)
+        {
+            using var layout = DWrite.CreateTextLayout(text, format, maxWidth, 4000f);
+            var m = layout.Metrics;
+            return (m.Width, m.Height);
         }
 
         /// <summary>A lucide SVG (stroke="currentColor") in a box, in an ink: "#rrggbb", or "rgba(0, 0, 0, 0.72)" for the dark ink on a light swatch.</summary>

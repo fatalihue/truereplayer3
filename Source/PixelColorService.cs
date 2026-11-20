@@ -35,6 +35,8 @@ namespace TrueReplayer.Services
         /// </summary>
         public static Color? GetPixelAt(int x, int y)
         {
+            // Deck (branch deck, Fase 3): where Windows does not keep the decks out of captures, they step aside.
+            using var deckAside = DeckHost.ForCapture();
             IntPtr hdc = NativeMethods.GetDC(IntPtr.Zero);
             if (hdc == IntPtr.Zero)
             {

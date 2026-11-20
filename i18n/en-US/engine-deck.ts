@@ -37,4 +37,23 @@ export default {
     shortcuts: 'Shortcuts',
     show: 'Show TR3',
   },
+
+  // The first button of a folder open in the deck's place (DeckWindow): it goes back to the pages. Short.
+  back: 'Back',
+
+  // The deck's tip (DeckTip): over a button under the mouse, or for a moment after a press that could not do
+  // what the button says. One short sentence. name = a macro's name as the user wrote it; combo = the keys
+  // as the button has them ("Ctrl+Shift+K"); reason = the engine's sentence for the error (S.Reason).
+  tip: {
+    missing: 'The macro {{name}} does not exist.',
+    clicker: 'TR3 is in Clicker mode: macros wait.',
+    recording: 'TR3 is recording.',
+    busy: '{{name}} is running.',
+    running: 'A macro is running.',
+    modal: 'A TR3 window is waiting for an answer.',
+    unsaved: 'The open macro has unsaved changes.',
+    couldNotStart: '{{name}} could not start.',
+    openFailed: 'Could not open: {{reason}}',
+    keysInvalid: 'These keys cannot be sent: {{combo}}',
+  },
 } as const;

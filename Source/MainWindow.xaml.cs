@@ -172,6 +172,9 @@ namespace TrueReplayer
             // The replay runs off this thread: it waits (briefly) for the move before it clicks.
             ActionReplayer.BeforePointer = (x, y) =>
             {
+                // Deck (branch deck, Fase 3): a click about to land on a deck that still takes clicks (a step
+                // tested on its own, outside a run) lets it through first.
+                DeckHost.BeforePointer(x, y);
                 var manager = windowEventManager;
                 if (manager == null || !manager.IsCompact) return;
                 if (DispatcherQueue.HasThreadAccess) { manager.MoveCompactAwayFrom(x, y); return; }
@@ -317,6 +320,10 @@ namespace TrueReplayer
             {
                 var deckSettings = AppSettingsManager.Load();
                 DeckHost.Start(deckSettings.DeckTheme, deckSettings.DeckAnimations ?? true);
+                // Fase 3: the TR3 switches a button shows (UpdateTrayIcon keeps them current), and a button
+                // pressed runs here, on this thread.
+                DeckHost.SetSwitches(deckSettings.UseCursorClick, deckSettings.ProfileKeyEnabled, deckSettings.AutomationEnabled, RemapService.Current.Enabled);
+                DeckHost.TileClicked += (deckId, slot, tile) => DispatcherQueue.TryEnqueue(() => RunDeckTile(deckId, slot, tile));
             }
 
             // Run cursors (data-loop row position, SetVariable cycle position) — loaded here for
@@ -2048,6 +2055,170 @@ namespace TrueReplayer
                     Services.DiagnosticLog.Error($"Tray panel run '{name}' failed", ex);
                 }
             });
+        }
+
+        // ── Deck (branch deck, Fase 3): what a button does ──
+
+        /// <summary>
+        /// A deck's button was pressed (DeckHost.TileClicked, queued here from the Deck's thread). The macros and the
+        /// TR3 commands run through the paths the tray and the hotkeys use; keys, texts and opening go to
+        /// DeckActions. A folder never comes here: it opens on the deck itself.
+        /// </summary>
+        private void RunDeckTile(string deckId, int slot, DeckService.Tile tile)
+        {
+            try
+            {
+                var a = tile.Action;
+                switch (a.Kind)
+                {
+                    case "macro":
+                        if (a.Macro != null) RunMacroFromDeck(deckId, slot, tile, a.Macro);
+                        break;
+                    case "keys":
+                        DeckActions.Keys(deckId, slot, tile);
+                        break;
+                    case "text":
+                        if (a.Send == "paste") DeckActions.Paste(a.Text ?? "", DispatcherQueue, () => triggerService?.NotifyAppClipboardActivity());
+                        else DeckActions.TypeText(a.Text ?? "");
+                        break;
+                    case "open":
+                        DeckActions.Open(deckId, slot, tile);
+                        break;
+                    case "tr3":
+                        RunDeckCommand(deckId, slot, a.Command);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Services.DiagnosticLog.Error($"Deck: the button at '{deckId}' slot {slot} failed", ex);
+            }
+        }
+
+        /// <summary>
+        /// A macro button. It runs the macro as the tray panel's row does (RunProfileTriggerAsync, start only), so the
+        /// macro becomes the one open in the grid, as with a Profile Key. Pressed again while it runs, it stops it.
+        /// Pressed while another macro runs, it does what the Deck's setting says (busyPress): swap — that one stops
+        /// and this one starts —, stop, or nothing. When it cannot start (Clicker mode, a recording, a dialog of TR3
+        /// waiting, an unsaved macro open) the deck says why over the button.
+        /// </summary>
+        private async void RunMacroFromDeck(string deckId, int slot, DeckService.Tile tile, string name)
+        {
+            try
+            {
+                if (bridge == null) return;
+                if (!DeckService.IsMacroFound(name)) { DeckHost.Flash(deckId, slot, S.DeckTipMissing(name: name)); return; }
+                if (mainController.IsRecording()) { DeckHost.Flash(deckId, slot, S.DeckTipRecording); return; }
+                if (bridge.UseCursorClick) { DeckHost.Flash(deckId, slot, S.DeckTipClicker); return; }
+                if (mainController.IsReplayInProgress())
+                {
+                    string? running = bridge.CurrentProfileName;
+                    if (running == name)
+                    {
+                        Services.DiagnosticLog.Info($"Deck: stop '{name}'");
+                        mainController.StopReplayIfRunning();
+                        return;
+                    }
+                    switch (DeckService.Current.BusyPress)
+                    {
+                        case "stop":
+                            Services.DiagnosticLog.Info($"Deck: stop '{running}' (the button of '{name}')");
+                            mainController.StopReplayIfRunning();
+                            return;
+                        case "ignore":
+                            DeckHost.Flash(deckId, slot, DeckBusyTip());
+                            return;
+                    }
+                    // Swap: the running macro stops, and this one starts once that run has ended (3 s at most).
+                    Services.DiagnosticLog.Info($"Deck: swap '{running}' for '{name}'");
+                    mainController.StopReplayIfRunning();
+                    for (int i = 0; i < 120 && mainController.IsReplayInProgress(); i++) await Task.Delay(25);
+                    if (mainController.IsReplayInProgress()) { DeckHost.Flash(deckId, slot, DeckBusyTip()); return; }
+                }
+                if (bridge.HasUnsavedActionWork && bridge.AutoSaveEnabled) await bridge.FlushAutoSaveAsync();
+                // A hotkey's combo left over from an earlier fire would hold the start until its keys are up (2 s at most).
+                InputHookManager.LastTriggerHotkey = null;
+                DeckHost.MacroPressed(deckId, slot, name);
+                Services.DiagnosticLog.Info($"Deck: run '{name}'");
+                var result = await RunProfileTriggerAsync(name, forceInfiniteLoop: false, isWhilePressedHold: false, hotkeyKey: null, startOnly: true);
+                switch (result)
+                {
+                    case TriggerFireResult.Fired:
+                        return;
+                    case TriggerFireResult.Failed:
+                        Services.DiagnosticLog.Info($"Deck: '{name}' did not start ({result})");
+                        DeckHost.Fail(deckId, slot, tile, S.DeckTipCouldNotStart(name: name));
+                        return;
+                }
+                string why = result switch
+                {
+                    TriggerFireResult.SkippedModal => S.DeckTipModal,
+                    TriggerFireResult.SkippedDirty => S.DeckTipUnsaved,
+                    _ => mainController.IsRecording() ? S.DeckTipRecording
+                        : bridge.UseCursorClick ? S.DeckTipClicker
+                        : bridge.HasUnsavedActionWork ? S.DeckTipUnsaved
+                        : DeckBusyTip(),
+                };
+                Services.DiagnosticLog.Info($"Deck: '{name}' did not start ({result})");
+                DeckHost.Flash(deckId, slot, why);
+            }
+            catch (Exception ex)
+            {
+                // async void: nothing may escape.
+                Services.DiagnosticLog.Error($"Deck: run '{name}' failed", ex);
+                DeckHost.Fail(deckId, slot, tile, S.DeckTipCouldNotStart(name: name));
+            }
+        }
+
+        private string DeckBusyTip() =>
+            bridge?.CurrentProfileName is { Length: > 0 } open && open != "No Profile" ? S.DeckTipBusy(name: open) : S.DeckTipRunning;
+
+        /// <summary>A TR3 button: the same commands as the tray's switches and the hotkeys.</summary>
+        private void RunDeckCommand(string deckId, int slot, string? command)
+        {
+            Services.DiagnosticLog.Info($"Deck: command {command}");
+            switch (command)
+            {
+                case "record":
+                    // As the Record hotkey: a recording stops; else one starts, in the open macro or in a new one.
+                    if (mainController.IsRecording()) { mainController.ToggleRecording(); return; }
+                    if (bridge?.UseCursorClick == true) { DeckHost.Flash(deckId, slot, S.DeckTipClicker); return; }
+                    if (mainController.IsReplayInProgress()) { DeckHost.Flash(deckId, slot, DeckBusyTip()); return; }
+                    if (bridge?.RecordIntoNewMacro() == true) return;
+                    foreach (var action in Actions)
+                    {
+                        action.IsInsertionPoint = false;
+                        action.IsVisuallyDeselected = false;
+                    }
+                    mainController.EnableInsertMode(bridge?.SelectedInsertIndex);
+                    mainController.ToggleRecording();
+                    return;
+                case "stopAll":
+                    // Everything that runs: a recording or a run (the Clicker's too), the Teclado's macros, a text being typed.
+                    if (mainController.IsRecording()) mainController.ToggleRecording();
+                    else mainController.StopReplayIfRunning();
+                    TecladoRunner.StopAll();
+                    DeckActions.StopTyping();
+                    return;
+                case "clicker":
+                    TrayIconService.OnSetMode?.Invoke(!(bridge?.UseCursorClick ?? false));
+                    return;
+                case "teclado":
+                    TrayPanel.OnSetTeclado?.Invoke(!TecladoService.Current.Enabled);
+                    return;
+                case "remaps":
+                    TrayPanel.OnSetRemaps?.Invoke(!RemapService.Current.Enabled);
+                    return;
+                case "automations":
+                    TrayIconService.OnToggleAutomations?.Invoke();
+                    return;
+                case "shortcuts":
+                    SetShortcutsEnabled(!UserProfile.Current.ProfileKeyEnabled, "a deck");
+                    return;
+                case "show":
+                    windowEventManager?.BringToForeground();
+                    return;
+            }
         }
 
         /// <summary>
