@@ -22,6 +22,8 @@ const NAMES = [
   'circle', 'square', 'mouse-pointer-click', 'arrow-right-left', 'zap', 'command', 'app-window',
   // The states and the window's own.
   'triangle-alert', 'chevron-left', 'image', 'layout-grid', 'pencil',
+  // The example deck's own icons (DeckService.ExampleDeck, Fase 7): the engine writes their SVG into deck.json.
+  'clipboard', 'scissors', 'folder-open', 'calculator',
 ];
 
 const version = JSON.parse(fs.readFileSync(path.join(front, 'node_modules', 'lucide-react', 'package.json'), 'utf8')).version;

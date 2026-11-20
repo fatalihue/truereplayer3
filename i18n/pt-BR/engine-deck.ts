@@ -92,4 +92,22 @@ export default {
   },
 
   recordName: '{{deck}} {{n}}',
+
+  picker: {
+    export: 'Exportar o deck',
+    import: 'Importar um deck',
+    filter: 'Deck do TR3',
+  },
+  file: {
+    notDeck: 'Este arquivo não é um deck do TR3.',
+    unreadable: 'Não foi possível ler o arquivo do deck: {{reason}}',
+  },
+
+  example: {
+    name: 'Mídia e sistema',
+    clipboard: 'Clipboard',
+    snip: 'Recorte',
+    files: 'Arquivos',
+    calculator: 'Calculadora',
+  },
 } satisfies Catalogo<typeof en>;

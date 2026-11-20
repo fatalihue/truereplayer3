@@ -775,6 +775,26 @@ export interface DeckState {
 /** What a deck's menu opens on the Deck page at a button (Fase 6): the field it is typed or picked in. */
 export type DeckFocus = 'macro' | 'keys' | 'text' | 'open' | 'icon';
 
+/**
+ * A .trdeck read for import (Fase 7, DeckFile.Read): each deck it holds, with what its Open and Text buttons do —
+ * the page shows them before anything comes in — and the macros its buttons run that this library lacks. The
+ * bridge leaves nulls out, so a label, an args or a send may be absent.
+ */
+export interface DeckImportPreview {
+  token: number;
+  fileName: string;
+  /** How many more decks the Deck holds (DeckService.MaxDecks). */
+  room: number;
+  decks: {
+    name: string;
+    buttons: number;
+    pictures: number;
+    opens: { label?: string; target: string; args?: string }[];
+    texts: { label?: string; text: string; send?: 'type' | 'paste' }[];
+    missingMacros: string[];
+  }[];
+}
+
 // ── Automation (trigger daemon) ──
 
 /** One executed action in the last run's report. Mirrors ActionReplayer.RunStepRecord. */
@@ -1227,6 +1247,11 @@ export type IncomingMessage =
   // Fase 6: the deck edited on screen (its id, or null), when that changes and after every deck:get; and a
   // deck's menu asking for the Deck page at a button (slot -1: the deck itself), with what to open there.
   | { type: 'deck:editing'; payload: { deckId?: string | null } }
+  // Fase 7: a .trdeck read for import, waiting for the page's answer; the decks that came in (an import or the
+  // example; left = how many did not fit); a deck written to a .trdeck (Show in folder by exportId).
+  | { type: 'deck:importPreview'; payload: DeckImportPreview }
+  | { type: 'deck:imported'; payload: { decks: { id: string; name: string; hotkeyDropped?: boolean; missingMacros?: number }[]; left: number; example: boolean } }
+  | { type: 'deck:exported'; payload: { exportId: number; fileName: string; deck: string; images: number; missingImages: number } }
   | { type: 'deck:show'; payload: { deckId: string; folder: string | null; page: number; slot: number; focus: DeckFocus | null } }
   | { type: 'clipboard:content'; payload: { text: string } }
   | { type: 'replay:chain'; payload: { stack: string[] } }
@@ -1407,6 +1432,13 @@ export type OutgoingMessage =
   // Fase 6: a deck edited on screen (null: none), and a picture for a button from a program's icon, a picture
   // file or a cut of the screen (the engine keeps it in Deck\images and sets it; deck:state answers).
   | { type: 'deck:edit'; payload: { deckId: string | null } }
+  // Fase 7: a deck to a .trdeck (the engine asks where); a .trdeck to import (the engine asks which, and answers
+  // deck:importPreview), the page's yes or no to it; the example deck.
+  | { type: 'deck:export'; payload: { deckId: string } }
+  | { type: 'deck:import'; payload: Record<string, never> }
+  | { type: 'deck:importConfirm'; payload: { token: number } }
+  | { type: 'deck:importCancel'; payload: { token: number } }
+  | { type: 'deck:example'; payload: Record<string, never> }
   | { type: 'deck:iconFrom'; payload: { deckId: string; folder: string | null; page: number; slot: number; source: 'app' | 'picture' | 'capture' } }
   // Phase 7: "Lock to this game" (id) and its undoing (null); "Export" of a game with its macros.
   | { type: 'teclado:lock'; payload: { id: string | null } }

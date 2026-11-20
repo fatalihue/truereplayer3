@@ -8,7 +8,7 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 import { useBridge } from '../../bridge/BridgeContext';
-import type { DeckConfig, DeckMacroReport, DeckState, OutgoingMessage } from '../../bridge/messageTypes';
+import type { DeckConfig, DeckImportPreview, DeckMacroReport, DeckState, OutgoingMessage } from '../../bridge/messageTypes';
 
 export interface DeckStoreState {
   /** The engine's config (deck:state). */
@@ -24,6 +24,8 @@ export interface DeckStoreState {
   macros: Record<string, DeckMacroReport>;
   /** The deck edited on screen (deck:editing, Fase 6), or null. */
   editing: string | null;
+  /** A .trdeck whose Open and Text buttons wait to be seen before it comes in (Fase 7), or null. */
+  importAsk: DeckImportPreview | null;
 }
 
 export const EMPTY_DECK_CONFIG: DeckConfig = { version: 1, enabled: true, showInCaptures: false, busyPress: 'swap', decks: [] };
@@ -37,10 +39,35 @@ export const useDeck = create<DeckStoreState>(() => ({
   pendingFile: 'deck.pending.json',
   macros: {},
   editing: null,
+  importAsk: null,
 }));
 
 /** A deck edited on screen, or none (the engine answers with deck:editing). */
 export const editOnScreen = (deckId: string | null) => postToEngine({ type: 'deck:edit', payload: { deckId } });
+
+// ── Fase 7: a deck to a .trdeck and back, and the example ──
+
+/** A deck to a .trdeck: the engine asks where, and answers deck:exported. */
+export const exportDeck = (deckId: string) => postToEngine({ type: 'deck:export', payload: { deckId } });
+/** A .trdeck to import: the engine asks which, and answers deck:importPreview. */
+export const importDeck = () => postToEngine({ type: 'deck:import', payload: {} });
+/** The example deck ("Media and system"), added by the engine in the app's language: it answers deck:imported. */
+export const addExampleDeck = () => postToEngine({ type: 'deck:example', payload: {} });
+
+/** The answer to an import's warning: yes brings the decks in (deck:imported), no drops the file. */
+export function answerImport(yes: boolean) {
+  const ask = useDeck.getState().importAsk;
+  if (!ask) return;
+  useDeck.setState({ importAsk: null });
+  postToEngine({ type: yes ? 'deck:importConfirm' : 'deck:importCancel', payload: { token: ask.token } });
+}
+
+/** A file with no button that opens something or types a text comes in at once; one with them asks first. */
+function hearPreview(preview: DeckImportPreview) {
+  const asks = preview.decks.some(d => d.opens.length > 0 || d.texts.length > 0);
+  if (asks) useDeck.setState({ importAsk: preview });
+  else postToEngine({ type: 'deck:importConfirm', payload: { token: preview.token } });
+}
 
 let send: ((message: OutgoingMessage) => void) | null = null;
 let mounts = 0;
@@ -61,6 +88,7 @@ export function useDeckSync() {
       if (message.type === 'deck:state') receive(message.payload);
       // None edited comes without the field (the bridge leaves nulls out).
       else if (message.type === 'deck:editing') useDeck.setState({ editing: message.payload.deckId ?? null });
+      else if (message.type === 'deck:importPreview') hearPreview(message.payload);
     });
     bridge.send({ type: 'deck:get', payload: {} });
     return () => {

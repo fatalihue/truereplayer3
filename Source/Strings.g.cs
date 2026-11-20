@@ -1182,6 +1182,26 @@ namespace TrueReplayer.Services
         public static string DeckMenuHide => IsPt ? "Esconder por agora" : "Hide for now";
         /// <summary>engine-deck.recordName · {{deck}} {{n}}</summary>
         public static string DeckRecordName(string deck, string n) => IsPt ? $"{deck} {n}" : $"{deck} {n}";
+        /// <summary>engine-deck.picker.export · Export the deck</summary>
+        public static string DeckPickerExport => IsPt ? "Exportar o deck" : "Export the deck";
+        /// <summary>engine-deck.picker.import · Import a deck</summary>
+        public static string DeckPickerImport => IsPt ? "Importar um deck" : "Import a deck";
+        /// <summary>engine-deck.picker.filter · TR3 deck</summary>
+        public static string DeckPickerFilter => IsPt ? "Deck do TR3" : "TR3 deck";
+        /// <summary>engine-deck.file.notDeck · This file is not a TR3 deck.</summary>
+        public static string DeckFileNotDeck => IsPt ? "Este arquivo não é um deck do TR3." : "This file is not a TR3 deck.";
+        /// <summary>engine-deck.file.unreadable · The deck file could not be read: {{reason}}</summary>
+        public static string DeckFileUnreadable(string reason) => IsPt ? $"Não foi possível ler o arquivo do deck: {reason}" : $"The deck file could not be read: {reason}";
+        /// <summary>engine-deck.example.name · Media and system</summary>
+        public static string DeckExampleName => IsPt ? "Mídia e sistema" : "Media and system";
+        /// <summary>engine-deck.example.clipboard · Clipboard</summary>
+        public static string DeckExampleClipboard => IsPt ? "Clipboard" : "Clipboard";
+        /// <summary>engine-deck.example.snip · Snip</summary>
+        public static string DeckExampleSnip => IsPt ? "Recorte" : "Snip";
+        /// <summary>engine-deck.example.files · Files</summary>
+        public static string DeckExampleFiles => IsPt ? "Arquivos" : "Files";
+        /// <summary>engine-deck.example.calculator · Calculator</summary>
+        public static string DeckExampleCalculator => IsPt ? "Calculadora" : "Calculator";
         /// <summary>engine-errors.fileInUse · the file is in use by another program</summary>
         public static string ErrorsFileInUse => IsPt ? "o arquivo está em uso por outro programa" : "the file is in use by another program";
         /// <summary>engine-errors.accessDenied · Windows denied access to the file or folder</summary>

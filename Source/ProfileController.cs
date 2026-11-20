@@ -295,6 +295,25 @@ namespace TrueReplayer.Controllers
                 DefaultExt = "png",
             }, "save image");
 
+        /// <summary>Deck (branch deck, Fase 7): where a deck's .trdeck goes. Null on Cancel.</summary>
+        public Task<string?> PickDeckExportPathAsync(string suggestedName)
+            => ShowFileDialogAsync(new WinForms.SaveFileDialog
+            {
+                Title = S.DeckPickerExport,
+                Filter = $"{S.DeckPickerFilter} (*.trdeck)|*.trdeck",
+                FileName = suggestedName,
+                DefaultExt = "trdeck",
+            }, "export deck");
+
+        /// <summary>Deck (branch deck, Fase 7): a .trdeck to import. Null on Cancel.</summary>
+        public Task<string?> PickDeckFileAsync()
+            => ShowFileDialogAsync(new WinForms.OpenFileDialog
+            {
+                Title = S.DeckPickerImport,
+                Filter = $"{S.DeckPickerFilter} (*.trdeck)|*.trdeck|{S.ProfilesFilterAllFiles} (*.*)|*.*",
+                CheckFileExists = true,
+            }, "import deck");
+
         /// <summary>
         /// The system's Save dialog for a file the interface built (a theme, the remaps, the
         /// snippets), then the text written where the user chose. Returns the path, or null on

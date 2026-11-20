@@ -497,6 +497,25 @@
 .dk-picker-source:hover { background: var(--color-wash-hover); }
 .dk-picker-source:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: -1px; }
 .dk-picker .rm-hint { margin: 0; }
+/* The warning before an import (Fase 7, DeckImport.tsx): the file, what its buttons open and type, the macros it lacks. */
+.dk-import { display: flex; flex-direction: column; gap: 0.75rem; padding: 1rem; }
+.dk-import-file { display: flex; align-items: center; gap: 0.5rem; min-width: 0; font-size: var(--text-minor); }
+.dk-import-file svg { width: 0.75rem; height: 0.75rem; flex: none; color: var(--color-text-tertiary); }
+.dk-import-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--color-text-secondary); }
+.dk-import-count { flex: none; font-size: var(--text-caption); color: var(--color-text-tertiary); }
+.dk-import-intro { margin: 0; font-size: var(--text-minor); line-height: 1.25rem; color: var(--color-text-secondary); }
+.dk-import-band { display: flex; flex-direction: column; gap: 0.625rem; padding: 0.5rem 0.75rem; border-radius: 0 0.375rem 0.375rem 0; }
+.dk-import-list { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+.dk-import-title { font-size: var(--text-minor); font-weight: 600; color: var(--color-text-primary); }
+.dk-import-list ul { display: flex; flex-direction: column; gap: 0.25rem; margin: 0; padding: 0; list-style: none; }
+.dk-import-list li { display: flex; align-items: center; gap: 0.5rem; min-width: 0; font-size: var(--text-minor); line-height: 1.125rem; }
+.dk-import-list li svg { width: 0.75rem; height: 0.75rem; flex: none; color: var(--color-text-tertiary); }
+.dk-import-label { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-secondary); }
+.dk-import-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); color: var(--color-text-primary); }
+.dk-import-more { font-size: var(--text-caption); color: var(--color-text-tertiary); }
+.dk-import-note { margin: 0; font-size: var(--text-minor); line-height: 1.125rem; color: var(--color-text-tertiary); }
+.dk-empty-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.5rem; margin-top: 0.75rem; }
+.dk .dk-empty-actions .dk-empty-add { margin-top: 0; }
 /* The deck edited on screen: the head's button stays pressed until Done or Esc. */
 .dk .dk-edit { gap: 0.375rem; }
 .dk .dk-edit[aria-pressed='true'] { border-color: var(--color-accent-solid); background: color-mix(in srgb, var(--color-accent) 12%, var(--color-bg-card)); }

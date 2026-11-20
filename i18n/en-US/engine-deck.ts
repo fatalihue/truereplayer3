@@ -112,4 +112,26 @@ export default {
 
   // The name of the macro "Record here" makes: the deck's name and the first free number ("General 1").
   recordName: '{{deck}} {{n}}',
+
+  // Fase 7, the .trdeck file: the file dialogs' title and filter (the *.trdeck pattern stays in the code), and
+  // what the page says when a file cannot be imported. reason = the engine's sentence for the error (S.Reason).
+  picker: {
+    export: 'Export the deck',
+    import: 'Import a deck',
+    filter: 'TR3 deck',
+  },
+  file: {
+    notDeck: 'This file is not a TR3 deck.',
+    unreadable: 'The deck file could not be read: {{reason}}',
+  },
+
+  // The example deck (DeckService.ExampleDeck), named and labelled in the app's language as it is added. Its
+  // buttons are 80 DIP, so a label fits about 12 characters.
+  example: {
+    name: 'Media and system',
+    clipboard: 'Clipboard',     // Win+V, the clipboard's history
+    snip: 'Snip',               // Win+Shift+S, a cut of the screen
+    files: 'Files',             // Win+E, File Explorer
+    calculator: 'Calculator',
+  },
 } as const;

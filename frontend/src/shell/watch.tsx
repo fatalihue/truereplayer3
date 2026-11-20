@@ -4,7 +4,7 @@ import { useBridge } from '../bridge/BridgeContext';
 import { useMacro } from '../logic/useMacro';
 import type { IncomingMessage } from '../bridge/messageTypes';
 import { UpdateOverlay } from '../components/UpdateOverlay';
-import { t } from '../i18n';
+import { fmtNum, t } from '../i18n';
 import { useToast } from '../state/ToastContext';
 import { APP_NAME, TR2_NAME } from '../appIdentity';
 import { Tr2Knocked } from './coexist';
@@ -83,6 +83,18 @@ function hearDeck(message: IncomingMessage) {
   if (usePalette.getState().open) palette.close();
   goToTile(deckId, folder ? { kind: 'folder', id: folder } : { kind: 'page', index: Math.max(0, page) }, slot, focus);
   openPage('deck');
+}
+
+/**
+ * A deck written to a .trdeck (Deck, Fase 7), wherever the page is by then (the Save dialog may stay open a
+ * while): the file, the pictures that were not found, and Show in folder through the exports' own registry.
+ */
+function hearDeckExport(message: IncomingMessage, toast: (text: string, missing: boolean, exportId: number) => void) {
+  if (message.type !== 'deck:exported') return;
+  const p = message.payload;
+  const frases = [t('deck.file.exported', { deck: p.deck, file: p.fileName })];
+  if (p.missingImages > 0) frases.push(t('deck.file.exportedMissing', { count: p.missingImages, n: fmtNum(p.missingImages) }));
+  toast(frases.join(' '), p.missingImages > 0, p.exportId);
 }
 
 /**
@@ -184,6 +196,13 @@ export function Watch({ early }: { early: readonly IncomingMessage[] }) {
   const toast = (text: string) => showToast(text, { type: 'success', duration: 15000 });
   const toastRef = useRef(toast);
   useEffect(() => { toastRef.current = toast; });
+  // A deck exported: a disclosure (pictures left out) stays longer and is not success-green.
+  const exportToast = (text: string, missing: boolean, exportId: number) => showToast(text, {
+    type: missing ? 'info' : 'success', duration: missing ? 8000 : undefined,
+    action: { label: t('ui.toast.showInFolder'), onClick: () => macro.revealExport(exportId) },
+  });
+  const exportToastRef = useRef(exportToast);
+  useEffect(() => { exportToastRef.current = exportToast; });
   const [pending] = useState(() => {
     early.forEach(m => hear(m, refuse));
     return early;
@@ -201,6 +220,7 @@ export function Watch({ early }: { early: readonly IncomingMessage[] }) {
     hearImport(m, (text) => toastRef.current(text));
     hearTray(m, (named) => recordRef.current(named), (name) => openRef.current(name));
     hearDeck(m);
+    hearDeckExport(m, (text, missing, exportId) => exportToastRef.current(text, missing, exportId));
     hearCommit(m);
     const k = knockOf(m);
     if (k) setKnock(k);

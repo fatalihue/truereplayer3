@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as 
 import { ArrowLeft, Check, ChevronLeft, Ellipsis, Folder, LayoutGrid, MousePointerClick, Pencil, Plus, Settings, TriangleAlert } from 'lucide-react';
 import { create } from 'zustand';
 import type { DeckDeck, DeckTile } from '../../../bridge/messageTypes';
-import { t, tn } from '../../../i18n';
+import { useBridge } from '../../../bridge/BridgeContext';
+import { fmtNum, t, tn } from '../../../i18n';
 import { useToast } from '../../../state/ToastContext';
 import { Switch } from '../../inspector/fields';
 import { freeName, keycaps } from '../../library/model';
@@ -15,8 +16,9 @@ import {
   renameFolder, setEnabled, shiftPage, updateDeck,
 } from '../../deck/deckEdit';
 import { DECK_LIMITS, DECK_SIZES, hiddenTiles, isBackSlot, slotsOf, tilesOf, type DeckView } from '../../deck/deckModel';
-import { editOnScreen, useDeck, useDeckSync } from '../../deck/deckStore';
+import { addExampleDeck, editOnScreen, exportDeck, importDeck, useDeck, useDeckSync } from '../../deck/deckStore';
 import { askSettings, openDeck, pickSlot, showGeneral, showView, useDeckUi } from '../../deck/deckUi';
+import { DeckImportDialog } from './DeckImport';
 import { DeckPanel } from './DeckPanels';
 import { appsText, closeSlot, IconGlyph, labelOf, RenameField, TileFace, useShownDeck, useShownView } from './deckShared';
 import '../../inspector/editors.css';
@@ -39,6 +41,7 @@ export default function DeckPage() {
   const loaded = useDeck(s => s.loaded);
   const empty = useDeck(s => s.config.decks.length === 0);
   const general = useDeckUi(s => s.panel === 'general');
+  useImported();
   // Esc closes the place chosen, as the Teclado closes its key, and then the Deck's settings; a field keeps its own Esc.
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -64,8 +67,36 @@ export default function DeckPage() {
         {empty ? <EmptyMain /> : <Shown />}
       </div>
       {(!empty || general) && <DeckPanel />}
+      <DeckImportDialog />
     </section>
   );
+}
+
+/**
+ * Decks that came in (Fase 7: an imported .trdeck, the example): the first one opens, and a toast says what came —
+ * and what did not: the macros its buttons run that this library lacks, a hotkey taken here, a file past the limit.
+ */
+function useImported() {
+  const { subscribe } = useBridge();
+  const { showToast } = useToast();
+  useEffect(() => subscribe((m) => {
+    if (m.type !== 'deck:imported') return;
+    const { decks, left, example } = m.payload;
+    if (decks.length === 0) {
+      if (left > 0) showToast(t('deck.file.full', { max: DECK_LIMITS.decks }), { type: 'info', duration: 6000 });
+      return;
+    }
+    openDeck(decks[0].id);
+    const frases = [example
+      ? t('deck.file.exampleAdded', { deck: decks[0].name })
+      : decks.length === 1 ? t('deck.file.imported', { deck: decks[0].name }) : t('deck.file.importedMany', { count: decks.length, n: fmtNum(decks.length) })];
+    const missing = decks.reduce((n, d) => n + (d.missingMacros ?? 0), 0);
+    if (missing > 0) frases.push(t('deck.file.missingMacros', { count: missing, n: fmtNum(missing) }));
+    if (decks.some(d => d.hotkeyDropped)) frases.push(t('deck.file.hotkeyDropped'));
+    if (left > 0) frases.push(t('deck.file.full', { max: DECK_LIMITS.decks }));
+    const told = frases.length > 1;
+    showToast(frases.join(' '), { type: told ? 'info' : 'success', duration: told ? 9000 : undefined });
+  }), [subscribe, showToast]);
 }
 
 /** The nine anchors, as a place in a sentence. */
@@ -90,10 +121,12 @@ function Decks() {
   const folded = useShellBand() !== 'wide';
   const full = decks.length >= DECK_LIMITS.decks;
   const title = t('deck.list.title');
+  const [more, setMore] = useState<{ anchor: MenuAnchor; button: HTMLButtonElement; keyboard: boolean } | null>(null);
   const create = () => {
     const deck = createDeck(freeName(t('deck.list.newName'), decks.map(d => d.name)));
     if (deck) openDeck(deck.id);
   };
+  const fullTip = full ? t('deck.list.full', { max: DECK_LIMITS.decks }) : undefined;
   return (
     <aside className="dk-decks" aria-label={title}>
       <div className="lib-header">
@@ -109,6 +142,19 @@ function Decks() {
           <Plus aria-hidden="true" />
           <span>{t('common.actions.new')}</span>
         </button>
+        {/* Fase 7: a deck from a .trdeck, and the example deck. */}
+        <button type="button" className="insp-icon-button dk-list-more" aria-label={t('deck.list.more')} aria-haspopup="menu" aria-expanded={!!more}
+          data-tip={t('deck.list.more')} data-tip-pos="end"
+          onClick={(e) => setMore(more ? null : { anchor: anchorBelow(e.currentTarget, 'end'), button: e.currentTarget, keyboard: e.detail === 0 })}>
+          <Ellipsis aria-hidden="true" />
+        </button>
+        {more && (
+          <Menu anchor={more.anchor} label={t('deck.list.more')} toggle={more.button} focusFirst={more.keyboard} onClose={() => setMore(null)}
+            entries={[
+              { label: t('deck.list.import'), disabled: full, tip: fullTip, onSelect: importDeck },
+              { label: t('deck.list.example'), disabled: full, tip: fullTip, onSelect: addExampleDeck },
+            ]} />
+        )}
       </div>
       <div className="dk-master">
         <span className="dk-master-text">{t('deck.list.on')}</span>
@@ -188,15 +234,23 @@ function EmptyMain() {
       <span className="rm-empty-icon" aria-hidden="true"><LayoutGrid /></span>
       <span className="rm-empty-title">{t('deck.empty.title')}</span>
       <span className="rm-empty-text">{t('deck.empty.text')}</span>
-      <button type="button" className="insp-button dk-empty-add" data-variant="primary"
-        onClick={() => {
-          const names = useDeck.getState().config.decks.map(d => d.name);
-          const deck = createDeck(freeName(t('deck.list.newName'), names));
-          if (deck) openDeck(deck.id);
-        }}>
-        <Plus aria-hidden="true" />
-        {t('deck.empty.create')}
-      </button>
+      <div className="dk-empty-actions">
+        <button type="button" className="insp-button dk-empty-add" data-variant="primary"
+          onClick={() => {
+            const names = useDeck.getState().config.decks.map(d => d.name);
+            const deck = createDeck(freeName(t('deck.list.newName'), names));
+            if (deck) openDeck(deck.id);
+          }}>
+          <Plus aria-hidden="true" />
+          {t('deck.empty.create')}
+        </button>
+        {/* Fase 7: a deck ready to use (media, volume, a few Windows shortcuts), and one from a file. */}
+        <button type="button" className="insp-button dk-empty-example" onClick={addExampleDeck}>
+          <LayoutGrid aria-hidden="true" />
+          {t('deck.empty.example')}
+        </button>
+        <button type="button" className="insp-link dk-empty-import" onClick={importDeck}>{t('deck.list.import')}</button>
+      </div>
     </div>
   );
 }
@@ -286,6 +340,7 @@ function Head({ deck }: { deck: DeckDeck }) {
             entries={[
               { label: t('common.actions.rename'), onSelect: () => setRenaming(true) },
               { label: t('common.actions.duplicate'), disabled: full, tip: full ? t('deck.list.full', { max: DECK_LIMITS.decks }) : undefined, onSelect: duplicate },
+              { label: t('deck.head.export'), onSelect: () => exportDeck(deck.id) },
               { label: t('deck.head.settings'), icon: Settings, onSelect: () => askSettings(true) },
               'separator',
               { label: t('common.actions.delete'), danger: true, onSelect: remove },

@@ -13,6 +13,9 @@ export default {
     on: 'Decks ativados',
     none: 'Nenhum deck ainda',
     foot: 'Um deck fica por cima de todas as janelas e nunca tira o foco do app da frente.',
+    more: 'Mais',
+    import: 'Importar um deck…',
+    example: 'Adicionar o deck de exemplo',
     sub: {
       off: 'Desativado',
       summon: 'Chamado com {{key}}',
@@ -44,6 +47,51 @@ export default {
     title: 'Nenhum deck ainda',
     text: 'Um deck é um painel de botões que fica na tela, ou que vem com uma hotkey. Cada botão roda uma macro, aperta teclas, digita um texto ou abre um programa.',
     create: 'Criar um deck',
+    example: 'Começar com o exemplo',
+  },
+
+  file: {
+    exported: '{{deck}} exportado para {{file}}.',
+    exportedMissing: {
+      zero: 'Nenhuma imagem ficou de fora.',
+      one: '{{n}} imagem não encontrada ficou de fora.',
+      other: '{{n}} imagens não encontradas ficaram de fora.',
+    },
+    imported: '{{deck}} importado.',
+    importedMany: {
+      zero: 'Nenhum deck importado.',
+      one: '{{n}} deck importado.',
+      other: '{{n}} decks importados.',
+    },
+    hotkeyDropped: 'A hotkey dele já era usada aqui, então ele veio sem hotkey.',
+    missingMacros: {
+      zero: 'Todas as macros que os botões rodam estão nesta biblioteca.',
+      one: '{{n}} macro que os botões rodam não está nesta biblioteca.',
+      other: '{{n}} macros que os botões rodam não estão nesta biblioteca.',
+    },
+    full: 'O Deck já guarda {{max}} decks.',
+    exampleAdded: '{{deck}} adicionado: teclas de mídia, volume e alguns atalhos do Windows.',
+    title: 'Importar um deck',
+    decks: {
+      zero: 'nenhum deck',
+      one: '{{n}} deck',
+      other: '{{n}} decks',
+    },
+    buttons: {
+      zero: 'nenhum botão',
+      one: '{{n}} botão',
+      other: '{{n}} botões',
+    },
+    intro: 'Alguns botões deste arquivo fazem mais do que apertar teclas. Confira o que eles fazem antes de importar: um clique num deles faz isso.',
+    opens: 'Estes botões abrem:',
+    texts: 'Estes botões digitam ou colam:',
+    more: {
+      zero: 'e nenhum outro',
+      one: 'e mais {{n}}',
+      other: 'e mais {{n}}',
+    },
+    missing: 'Não estão nesta biblioteca, então os botões delas vão mostrar um aviso: {{names}}.',
+    confirm: 'Importar',
   },
 
   head: {
@@ -60,6 +108,7 @@ export default {
     edit: 'Editar na tela',
     editTip: 'Mova o deck, mude a grade e arraste os botões no próprio deck. Esc termina.',
     editing: 'Concluir a edição',
+    export: 'Exportar…',
     sub: {
       fixedAlways: '{{place}} · sempre na tela',
       fixedApps: '{{place}} · com {{apps}} na frente',

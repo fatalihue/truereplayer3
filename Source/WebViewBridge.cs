@@ -1196,6 +1196,11 @@ namespace TrueReplayer
                     case "deck:overwriteUnreadable": HandleDeckOverwriteUnreadable(); break;
                     case "deck:edit": HandleDeckEdit(payload); break;
                     case "deck:iconFrom": HandleDeckIconFrom(payload); break;
+                    case "deck:export": HandleDeckExport(payload); break;
+                    case "deck:import": HandleDeckImport(); break;
+                    case "deck:importConfirm": HandleDeckImportConfirm(payload); break;
+                    case "deck:importCancel": _deckImport = null; break;
+                    case "deck:example": HandleDeckExample(); break;
                     case "teclado:lock": HandleTecladoLock(payload); break;
                     case "teclado:export": HandleTecladoExport(payload); break;
                     case "actions:reorder": HandleActionsReorder(payload); break;
@@ -2666,6 +2671,130 @@ namespace TrueReplayer
         }
 
         internal void PushDeckState() => SendMessage("deck:state", DeckService.StatePayload());
+
+        // ── Deck, Fase 7: a deck to a .trdeck and back, and the example ──
+
+        // The file being imported, read and checked, until the page answers its preview (deck:importConfirm with
+        // this token, or deck:importCancel). A newer import replaces it.
+        private DeckFile.Parsed? _deckImport;
+        private int _deckImportToken;
+
+        /// <summary>
+        /// "Export…" of a deck's ⋯: the deck and its pictures in a .trdeck where the user chooses. The answer is
+        /// deck:exported — the page's toast, whose Show in folder goes through the exports' registry (file:revealExport).
+        /// </summary>
+        private async void HandleDeckExport(JsonElement payload)
+        {
+            try
+            {
+                string? id = payload.TryGetProperty("deckId", out var el) && el.ValueKind == JsonValueKind.String ? el.GetString() : null;
+                var live = DeckService.Current.Decks.FirstOrDefault(d => d.Id == id);
+                if (live == null) return;
+                // Copied now: the deck may change while the Save dialog is open, and the file is what it was asked as.
+                var deck = DeckService.CloneDeck(live);
+                var path = await profileController.PickDeckExportPathAsync(DeckFile.FileNameFor(deck.Name));
+                if (path == null) return;
+                var (images, missing) = await Task.Run(() => DeckFile.Write(path, deck));
+                int exportId = ++_exportSeq;
+                _recentExportPaths[exportId] = path;
+                _recentExportPaths.Remove(exportId - 8);
+                DiagnosticLog.Info($"Deck: '{deck.Name}' exported to {Path.GetFileName(path)} ({images} picture(s), {missing} missing)");
+                SendMessage("deck:exported", new { exportId, fileName = Path.GetFileName(path), deck = deck.Name, images, missingImages = missing });
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Error("Deck: the export failed", ex);
+                SendMessage("alert:show", new { message = S.BridgeAlertExportFailed(S.Reason(ex)), type = "error" });
+            }
+        }
+
+        /// <summary>
+        /// "Import a deck…": a .trdeck chosen, read and checked (DeckFile.Read). Nothing is added yet: the page gets what
+        /// the file holds — each deck, and the Open and Text buttons it carries, which it shows in a warning before
+        /// anything comes in (deck:importPreview) — and answers.
+        /// </summary>
+        private async void HandleDeckImport()
+        {
+            try
+            {
+                var path = await profileController.PickDeckFileAsync();
+                if (path == null) return;
+                string? error = null;
+                var parsed = await Task.Run(() => DeckFile.Read(path, out error));
+                if (parsed == null)
+                {
+                    SendMessage("alert:show", new { message = error ?? S.DeckFileNotDeck, type = "error" });
+                    return;
+                }
+                _deckImport = parsed;
+                int token = ++_deckImportToken;
+                DiagnosticLog.Info($"Deck: {parsed.FileName} read for import: {parsed.Decks.Count} deck(s), {parsed.Images.Count} picture(s)");
+                SendMessage("deck:importPreview", new
+                {
+                    token,
+                    fileName = parsed.FileName,
+                    room = Math.Max(0, DeckService.MaxDecks - DeckService.Current.Decks.Count),
+                    decks = parsed.Decks.Select(d =>
+                    {
+                        var tiles = DeckService.TilesOf(d).ToList();
+                        return new
+                        {
+                            name = d.Name,
+                            buttons = tiles.Count(t => t.Action.Kind != "none"),
+                            pictures = DeckService.ImagesOf(d).Count(n => parsed.Images.ContainsKey(n)),
+                            opens = tiles.Where(t => t.Action.Kind == "open" && !string.IsNullOrWhiteSpace(t.Action.Target))
+                                .Select(t => new { label = t.Label, target = t.Action.Target, args = t.Action.Args }).ToArray(),
+                            texts = tiles.Where(t => t.Action.Kind == "text" && !string.IsNullOrEmpty(t.Action.Text))
+                                .Select(t => new { label = t.Label, text = t.Action.Text, send = t.Action.Send }).ToArray(),
+                            missingMacros = tiles.Where(t => t.Action.Kind == "macro" && t.Action.Macro != null && !DeckService.IsMacroFound(t.Action.Macro))
+                                .Select(t => t.Action.Macro!).Distinct(StringComparer.Ordinal).ToArray(),
+                        };
+                    }).ToArray(),
+                });
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Error("Deck: the import failed", ex);
+                SendMessage("alert:show", new { message = S.DeckFileUnreadable(S.Reason(ex)), type = "error" });
+            }
+        }
+
+        /// <summary>The page said yes to the preview: the decks come in after the others (DeckService.AddDecks), with their pictures.</summary>
+        private void HandleDeckImportConfirm(JsonElement payload)
+        {
+            int token = payload.TryGetProperty("token", out var el) && el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var t) ? t : -1;
+            var parsed = _deckImport;
+            if (parsed == null || token != _deckImportToken) return;
+            _deckImport = null;
+            // The macros each deck's buttons run that this library does not have: their buttons show the warning.
+            var missing = parsed.Decks.Select(d => DeckService.TilesOf(d)
+                .Where(t => t.Action.Kind == "macro" && t.Action.Macro != null && !DeckService.IsMacroFound(t.Action.Macro))
+                .Select(t => t.Action.Macro!).Distinct(StringComparer.Ordinal).Count()).ToList();
+            var added = DeckService.AddDecks(parsed.Decks,
+                name => parsed.Images.TryGetValue(name, out var bytes) ? DeckFile.KeepImage(bytes) : null,
+                DeckImportHotkeyFree, out int left);
+            DiagnosticLog.Info($"Deck: {parsed.FileName} imported: {string.Join(", ", added.Select(a => $"'{a.Name}'"))}{(left > 0 ? $"; {left} left out (full)" : "")}");
+            SendMessage("deck:imported", new
+            {
+                decks = added.Select((a, i) => new { id = a.Id, name = a.Name, hotkeyDropped = a.HotkeyDropped, missingMacros = missing[i] }).ToArray(),
+                left,
+                example = false,
+            });
+        }
+
+        /// <summary>"Start with the example" (the empty Deck page, the list's ⋯): the example deck, in the app's language.</summary>
+        private void HandleDeckExample()
+        {
+            var added = DeckService.AddDecks(new[] { DeckService.ExampleDeck() }, null, _ => true, out int left);
+            DiagnosticLog.Info($"Deck: the example deck added{(added.Count > 0 ? $" as '{added[0].Name}'" : " — no room")}");
+            SendMessage("deck:imported", new { decks = added.Select(a => new { id = a.Id, name = a.Name, hotkeyDropped = false }).ToArray(), left, example = true });
+        }
+
+        /// <summary>An imported deck keeps its hotkey only when nothing here has it: the app, a macro, another deck, the Clicker.</summary>
+        private bool DeckImportHotkeyFree(string hotkey) =>
+            GetHotkeyConflict(hotkey, excludeSettingKey: null) == null
+            && !string.Equals(CurrentHotkey("cursorClickStartHotkey"), hotkey, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(CurrentHotkey("cursorClickPauseHotkey"), hotkey, StringComparison.OrdinalIgnoreCase);
 
         // Fase 6: the page's "Edit on screen" — that deck edited in its own place (its corner, its buttons dragged,
         // its menu), or none (deckId null). The answer is deck:editing, as when the deck's own Done ends it.

@@ -635,6 +635,186 @@ namespace TrueReplayer.Services
             return safe.Length > 0 ? safe : "Deck";
         }
 
+        // ── Fase 7: decks that come from outside — a .trdeck, the example ──
+
+        /// <summary>A deck copied whole (nothing shared with the one it came from).</summary>
+        public static Deck CloneDeck(Deck deck) =>
+            JsonSerializer.Deserialize<Deck>(JsonSerializer.Serialize(deck, WriteOptions), ReadOptions) ?? new Deck();
+
+        /// <summary>The buttons of a deck: its pages' and its folders'.</summary>
+        public static IEnumerable<Tile> TilesOf(Deck deck)
+        {
+            foreach (var page in deck.Pages) foreach (var t in page.Tiles) yield return t;
+            foreach (var folder in deck.Folders) foreach (var t in folder.Tiles) yield return t;
+        }
+
+        /// <summary>The pictures (Deck\images) a deck shows: its own icon's and its buttons'.</summary>
+        public static IEnumerable<string> ImagesOf(Deck deck)
+        {
+            if (deck.Icon is { Kind: "image", Path: { Length: > 0 } own }) yield return own;
+            foreach (var t in TilesOf(deck))
+                if (t.Icon is { Kind: "image", Path: { Length: > 0 } path }) yield return path;
+        }
+
+        /// <summary>A config as deck.json writes it (a .trdeck's deck.json too).</summary>
+        public static string ToJson(Config config) => JsonSerializer.Serialize(config, WriteOptions);
+
+        /// <summary>A config read from text (a .trdeck's deck.json), or null when it is not one.</summary>
+        public static Config? FromJsonText(string json)
+        {
+            try { return JsonSerializer.Deserialize<Config>(json, ReadOptions); }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Warn($"Deck: a deck.json could not be read: {ex.GetType().Name}: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>A deck that came in: its id and name as kept, and whether its hotkey stayed behind (taken here).</summary>
+        public sealed record Added(string Id, string Name, bool HotkeyDropped);
+
+        /// <summary>
+        /// Decks from outside (an imported .trdeck, the example) added after the others, in one save. Each gets ids of
+        /// its own (its pages' and folders' too, a Folder button following its folder), a name no other deck has
+        /// ("Geral 2"), its hotkey only when <paramref name="hotkeyFree"/> says no one has it, and its pictures kept
+        /// through <paramref name="keepImage"/> (a file name in Deck\images, or null: the button falls back to its
+        /// default icon). Past <see cref="MaxDecks"/>, the rest are counted in <paramref name="left"/>.
+        /// </summary>
+        public static List<Added> AddDecks(IEnumerable<Deck> incoming, Func<string, string?>? keepImage, Func<string, bool> hotkeyFree, out int left)
+        {
+            var added = new List<Added>();
+            left = 0;
+            Config next;
+            lock (_lock)
+            {
+                next = Clone(Current);
+                var hotkeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var source in incoming)
+                {
+                    if (next.Decks.Count >= MaxDecks) { left++; continue; }
+                    var d = CloneDeck(source);
+                    d.Id = NewId("d-", next.Decks.Select(x => x.Id));
+                    var pageIds = new List<string>();
+                    foreach (var p in d.Pages) { p.Id = NewId("p-", pageIds); pageIds.Add(p.Id); }
+                    var folderIds = new Dictionary<string, string>(StringComparer.Ordinal);
+                    foreach (var f in d.Folders)
+                    {
+                        string id = NewId("f-", folderIds.Values);
+                        folderIds[f.Id] = id;
+                        f.Id = id;
+                    }
+                    foreach (var t in TilesOf(d))
+                    {
+                        if (t.Action.Kind == "folder")
+                        {
+                            if (t.Action.Folder != null && folderIds.TryGetValue(t.Action.Folder, out var moved)) t.Action.Folder = moved;
+                            else t.Action = new Action { Kind = "none" };
+                        }
+                        if (t.Icon is { Kind: "image" } icon) t.Icon = KeepIcon(icon, keepImage);
+                    }
+                    if (d.Icon is { Kind: "image" } own) d.Icon = KeepIcon(own, keepImage);
+                    d.Name = FreeName(d.Name.Length > 0 ? d.Name : "Deck", next.Decks.Select(x => x.Name));
+                    bool dropped = false;
+                    if (d.Hotkey != null)
+                    {
+                        if (hotkeys.Contains(d.Hotkey) || !hotkeyFree(d.Hotkey)) { d.Hotkey = null; dropped = true; }
+                        else hotkeys.Add(d.Hotkey);
+                    }
+                    if (d.Mode == "fixed") Nudge(d, next.Decks);
+                    next.Decks.Add(d);
+                    added.Add(new Added(d.Id, d.Name, dropped));
+                }
+            }
+            if (added.Count == 0) return added;
+            Save(next);
+            try { EditedOnScreen?.Invoke(); }
+            catch (Exception ex) { DiagnosticLog.Warn($"Deck: an EditedOnScreen handler failed: {ex.GetType().Name}: {ex.Message}"); }
+            return added;
+        }
+
+        /// <summary>
+        /// A deck that comes in where a fixed deck already is (the same monitor, anchor and offset — a file imported
+        /// back, the example added twice) lands 32 DIP further in, as cascaded windows do, so both show.
+        /// </summary>
+        private static void Nudge(Deck d, List<Deck> others)
+        {
+            const double Step = 32;
+            bool Taken() => others.Any(o => o.Mode == "fixed" && o.Place.Anchor == d.Place.Anchor
+                && string.Equals(o.Place.Monitor ?? "", d.Place.Monitor ?? "", StringComparison.OrdinalIgnoreCase)
+                && Math.Abs(o.Place.Dx - d.Place.Dx) < Step / 2 && Math.Abs(o.Place.Dy - d.Place.Dy) < Step / 2);
+            double sx = d.Place.Anchor.Contains("right") ? -Step : Step;
+            double sy = d.Place.Anchor.StartsWith("bottom") ? -Step : Step;
+            for (int i = 0; i < 12 && Taken(); i++)
+            {
+                d.Place.Dx = Offset(d.Place.Dx + sx);
+                d.Place.Dy = Offset(d.Place.Dy + sy);
+            }
+        }
+
+        private static Icon? KeepIcon(Icon icon, Func<string, string?>? keepImage)
+        {
+            string? kept = icon.Path != null && keepImage != null ? keepImage(icon.Path) : null;
+            return kept != null ? new Icon { Kind = "image", Path = kept } : null;
+        }
+
+        private static string NewId(string prefix, IEnumerable<string> taken)
+        {
+            var used = new HashSet<string>(taken, StringComparer.Ordinal);
+            string id;
+            do { id = prefix + Guid.NewGuid().ToString("N")[..10]; } while (used.Contains(id));
+            return id;
+        }
+
+        /// <summary>A deck's name no other deck has: "Geral", then "Geral 2", "Geral 3"… (the page's freeName).</summary>
+        private static string FreeName(string name, IEnumerable<string> taken)
+        {
+            var used = new HashSet<string>(taken, StringComparer.CurrentCultureIgnoreCase);
+            name = Clip(name, MaxNameLength - 3);
+            if (!used.Contains(name)) return name;
+            for (int n = 2; ; n++)
+            {
+                string candidate = $"{name} {n}";
+                if (!used.Contains(candidate)) return candidate;
+            }
+        }
+
+        /// <summary>
+        /// The example deck, "Media and system" in the app's language: the media keys, the volume, three Windows
+        /// shortcuts (the clipboard's history, a cut of the screen, the files), the calculator, and TR3's Stop all.
+        /// Large buttons, so the labels fit; at the middle of the right edge, out of the way of the corners.
+        /// </summary>
+        public static Deck ExampleDeck()
+        {
+            static Icon Lucide(string name) => new() { Kind = "lucide", Name = name, Svg = DeckIcons.Svg.TryGetValue(name, out var svg) ? svg : null };
+            static Tile Keys(int slot, string combo, string? label = null, string? icon = null) =>
+                new() { Slot = slot, Label = label, Icon = icon != null ? Lucide(icon) : null, Action = new Action { Kind = "keys", Combo = combo } };
+            return new Deck
+            {
+                Name = S.DeckExampleName,
+                On = true,
+                Mode = "fixed",
+                Grid = new Grid { Cols = 4, Rows = 3, Size = "l" },
+                Place = new Place { Anchor = "right", Dx = -24, Dy = 0 },
+                Look = new Look { RestOpacity = 100, Header = true },
+                Pages =
+                {
+                    new Page
+                    {
+                        Tiles =
+                        {
+                            Keys(0, "MediaPrevTrack"), Keys(1, "MediaPlayPause"), Keys(2, "MediaNextTrack"), Keys(3, "MediaStop"),
+                            Keys(4, "VolumeDown"), Keys(5, "VolumeMute"), Keys(6, "VolumeUp"),
+                            Keys(7, "Win+V", S.DeckExampleClipboard, "clipboard"),
+                            Keys(8, "Win+Shift+S", S.DeckExampleSnip, "scissors"),
+                            Keys(9, "Win+E", S.DeckExampleFiles, "folder-open"),
+                            new Tile { Slot = 10, Label = S.DeckExampleCalculator, Icon = Lucide("calculator"), Action = new Action { Kind = "open", Target = "calc.exe" } },
+                            new Tile { Slot = 11, Action = new Action { Kind = "tr3", Command = "stopAll" } },
+                        },
+                    },
+                },
+            };
+        }
+
         /// <summary>A macro renamed in the library: every button that runs it follows. True when the config changed (and was saved).</summary>
         public static bool RenameMacro(string oldName, string newName)
         {

@@ -14,6 +14,10 @@ export default {
     on: 'Decks on',
     none: 'No deck yet',
     foot: 'A deck stays on top of every window and never takes the focus from the app in front.',
+    // Fase 7: the list's ⋯ — a deck from a .trdeck file, and the example deck ("Media and system").
+    more: 'More',
+    import: 'Import a deck…',
+    example: 'Add the example deck',
     sub: {
       off: 'Off',
       summon: 'Summoned with {{key}}',
@@ -46,6 +50,50 @@ export default {
     title: 'No deck yet',
     text: 'A deck is a panel of buttons that stays on screen, or comes with a hotkey. Each button runs a macro, sends keys, types a text or opens a program.',
     create: 'Create a deck',
+    example: 'Start with the example',   // Fase 7: the example deck, ready to use
+  },
+
+  // Fase 7: a deck to a .trdeck file and back, and the example deck. deck = a deck's name; file = the file's name;
+  // n = a number, formatted.
+  file: {
+    exported: '{{deck}} exported to {{file}}.',
+    // Pictures its buttons name that were no longer in the app's folder.
+    exportedMissing: {
+      one: '{{n}} picture was not found and stayed out.',
+      other: '{{n}} pictures were not found and stayed out.',
+    },
+    imported: '{{deck}} imported.',
+    importedMany: {
+      one: '{{n}} deck imported.',
+      other: '{{n}} decks imported.',
+    },
+    hotkeyDropped: 'Its hotkey was already in use here, so it came without one.',
+    missingMacros: {
+      one: '{{n}} macro its buttons run is not in this library.',
+      other: '{{n}} macros its buttons run are not in this library.',
+    },
+    full: 'The Deck already holds {{max}} decks.',
+    exampleAdded: '{{deck}} added: media keys, volume and a few Windows shortcuts.',
+    // The warning before an import whose buttons open things or type texts (the security warning's idea).
+    title: 'Import a deck',
+    // Beside the file's name: what it holds.
+    decks: {
+      one: '{{n}} deck',
+      other: '{{n}} decks',
+    },
+    buttons: {
+      one: '{{n}} button',
+      other: '{{n}} buttons',
+    },
+    intro: 'Some buttons in this file do more than press keys. Check what they do before importing: a click on one of them does it.',
+    opens: 'These buttons open:',
+    texts: 'These buttons type or paste:',
+    more: {
+      one: 'and {{n}} more',
+      other: 'and {{n}} more',
+    },
+    missing: 'Not in this library, so their buttons will show a warning: {{names}}.',
+    confirm: 'Import',
   },
 
   head: {
@@ -64,6 +112,7 @@ export default {
     edit: 'Edit on screen',
     editTip: 'Move it, change its grid and drag its buttons on the deck itself. Esc ends.',
     editing: 'Done editing',
+    export: 'Export…',                       // Fase 7: the deck and its pictures in a .trdeck file
     sub: {
       fixedAlways: '{{place}} · always on screen',
       fixedApps: '{{place}} · with {{apps}} in front',
