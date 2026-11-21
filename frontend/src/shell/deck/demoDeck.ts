@@ -57,7 +57,7 @@ let config: DeckConfig = {
         id: 'f-midia',
         name: 'Mídia',
         tiles: [
-          tile(1, { label: 'Tocar/pausar', icon: { kind: 'lucide', name: 'play' }, action: { kind: 'keys', combo: 'MediaPlayPause' } }),
+          tile(1, { label: 'Tocar/pausa', icon: { kind: 'lucide', name: 'play' }, action: { kind: 'keys', combo: 'MediaPlayPause' } }),
           tile(2, { label: 'Próxima', icon: { kind: 'lucide', name: 'skip-forward' }, action: { kind: 'keys', combo: 'MediaNextTrack' } }),
         ],
       }],

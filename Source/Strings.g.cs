@@ -1095,7 +1095,7 @@ namespace TrueReplayer.Services
         /// <summary>engine-deck.back · Back</summary>
         public static string DeckBack => IsPt ? "Voltar" : "Back";
         /// <summary>engine-deck.keyNames.MediaPlayPause · Play/pause</summary>
-        public static string DeckKeyNamesMediaPlayPause => IsPt ? "Tocar/pausar" : "Play/pause";
+        public static string DeckKeyNamesMediaPlayPause => IsPt ? "Tocar/pausa" : "Play/pause";
         /// <summary>engine-deck.keyNames.MediaNextTrack · Next</summary>
         public static string DeckKeyNamesMediaNextTrack => IsPt ? "Próxima" : "Next";
         /// <summary>engine-deck.keyNames.MediaPrevTrack · Previous</summary>

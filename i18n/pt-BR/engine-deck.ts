@@ -40,7 +40,7 @@ export default {
   back: 'Voltar',
 
   keyNames: {
-    MediaPlayPause: 'Tocar/pausar',
+    MediaPlayPause: 'Tocar/pausa',
     MediaNextTrack: 'Próxima',
     MediaPrevTrack: 'Anterior',
     MediaStop: 'Parar',
