@@ -94,6 +94,11 @@ namespace TrueReplayer
         // fired microseconds before ui:ready would reload a UI that had just come up fine.
         private int _watchdogEpoch = 0;
         private bool _uiReadyEverReceived = false;
+        // The page of the load going on said ui:ready already. React reports in the instant it mounts, which can be
+        // before the load's NavigationCompleted (its last resources still coming): that load is up, and the watchdog is
+        // not armed for it — armed after the ready, nothing cancelled it, and it reloaded a working page 8 s later
+        // (seen in the Deck's Fase 8 battery, ~4 % of the test sessions). Reset when a load starts.
+        private bool _uiReadyThisLoad = false;
 
         // Opened exactly once, when the one-shot startup data load below finishes — on success,
         // on failure, and on the bridge-is-null bail alike. A gate that never opens is a UI that
@@ -866,6 +871,7 @@ namespace TrueReplayer
             };
 
             // Reveal WebView and push state after page load (covers initial load + crash recovery)
+            WebView.CoreWebView2.NavigationStarting += (_, _) => _uiReadyThisLoad = false;
             WebView.CoreWebView2.NavigationCompleted += (s, e) =>
             {
                 // Frontend mount is fresh — zero out any hotkey-capture owner IDs left over
@@ -927,8 +933,10 @@ namespace TrueReplayer
 
                     // Start the ui:ready watchdog: if the UI doesn't report in before its
                     // deadline, escalate via the shared recovery path (Reload → Navigate →
-                    // one process restart → actionable dialog).
-                    ArmUIReadyWatchdog();
+                    // one process restart → actionable dialog). Not when this load's page has
+                    // reported in already (see _uiReadyThisLoad).
+                    if (_uiReadyThisLoad) Services.DiagnosticLog.Info("ui:ready came before the load's end: no watchdog for this load");
+                    else ArmUIReadyWatchdog();
                 }
             };
 
@@ -2510,6 +2518,7 @@ namespace TrueReplayer
             _starvationCreditUsedMs = 0;
             // Every later load in this process is a warm one — see FirstLoadReadyGraceMs.
             _uiReadyEverReceived = true;
+            _uiReadyThisLoad = true;
             // The page may have come back in another language (ui:language): the tray's tooltip
             // follows it now, not at the tray's next change. The menu and the panel read it when shown.
             TrayIconService.FollowLanguage();

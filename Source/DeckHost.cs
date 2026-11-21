@@ -186,8 +186,6 @@ namespace TrueReplayer.Services
                 DeckService.Changed += OnConfigChanged;
                 DeckService.MacrosChanged += OnConfigChanged;
                 _ready = true;
-                // The app goes on now (Fase 8): drawing the decks (Direct2D, DirectWrite, the emoji's font) is the thread's own.
-                started.Set();
                 SyncNow();
                 // The Teclado's game in front lets clicks through too (its keys click); its switch is a button's state.
                 _onTecladoFront = _ => OnTeclado();
@@ -196,6 +194,10 @@ namespace TrueReplayer.Services
                 TecladoService.Changed += _onTecladoService;
                 OnTeclado();
                 if (!_excludeSupported) DiagnosticLog.Warn($"Deck: Windows build {Environment.OSVersion.Version.Build} has no WDA_EXCLUDEFROMCAPTURE; the decks step aside while the engine reads the screen");
+                // After the first drawing, as in the phases before (Fase 8): signalled before it, the decks' Direct2D start
+                // ran alongside the page's first load, and the page's ui:ready came before the load's NavigationCompleted
+                // (the ui:ready watchdog, armed then, reloaded the page 8 s later — 3 of ~80 test sessions).
+                started.Set();
                 Drain();
                 while (DeckNative.GetMessageW(out var msg, IntPtr.Zero, 0, 0) > 0)
                 {
