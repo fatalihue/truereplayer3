@@ -1068,6 +1068,14 @@ namespace TrueReplayer.Services
         public static string DeckDetailParse(string reason) => IsPt ? $"O arquivo não é um JSON válido: {reason}" : $"The file is not valid JSON: {reason}";
         /// <summary>engine-deck.detail.unknown · The reason is unknown.</summary>
         public static string DeckDetailUnknown => IsPt ? "O motivo é desconhecido." : "The reason is unknown.";
+        /// <summary>engine-deck.detail.missing · The file is gone; these decks are its last good copy.</summary>
+        public static string DeckDetailMissing => IsPt ? "O arquivo sumiu; estes decks são a última cópia boa dele." : "The file is gone; these decks are its last good copy.";
+        /// <summary>engine-deck.detail.shape · The file is not a list of decks.</summary>
+        public static string DeckDetailShape => IsPt ? "O arquivo não é uma lista de decks." : "The file is not a list of decks.";
+        /// <summary>engine-deck.detail.newer · The file was written by a newer TR3 (deck format {{version}}).</summary>
+        public static string DeckDetailNewer(string version) => IsPt ? $"O arquivo foi gravado por um TR3 mais novo (formato de deck {version})." : $"The file was written by a newer TR3 (deck format {version}).";
+        /// <summary>engine-deck.saveFailed · deck.json could not be saved: {{reason}} The decks hold until TR3 closes.</summary>
+        public static string DeckSaveFailed(string reason) => IsPt ? $"Não foi possível salvar o deck.json: {reason} Os decks valem até o TR3 fechar." : $"deck.json could not be saved: {reason} The decks hold until TR3 closes.";
         /// <summary>engine-deck.command.record · Record</summary>
         public static string DeckCommandRecord => IsPt ? "Gravar" : "Record";
         /// <summary>engine-deck.command.stopAll · Stop all</summary>
@@ -1126,6 +1134,24 @@ namespace TrueReplayer.Services
         public static string DeckTipIconFailed => IsPt ? "Não foi possível tirar um ícone deste arquivo." : "Could not take an icon from this file.";
         /// <summary>engine-deck.tip.imageFailed · Could not read this picture.</summary>
         public static string DeckTipImageFailed => IsPt ? "Não foi possível ler esta imagem." : "Could not read this picture.";
+        /// <summary>engine-deck.tip.starting · TR3 is still starting. Try again in a moment.</summary>
+        public static string DeckTipStarting => IsPt ? "O TR3 ainda está abrindo. Tente de novo daqui a pouco." : "TR3 is still starting. Try again in a moment.";
+        /// <summary>engine-deck.tip.recordFailed · Could not record here: {{name}} was not created.</summary>
+        public static string DeckTipRecordFailed(string name) => IsPt ? $"Não foi possível gravar aqui: {name} não foi criada." : $"Could not record here: {name} was not created.";
+        /// <summary>engine-deck.tip.pasteFailed · Could not paste: {{reason}}</summary>
+        public static string DeckTipPasteFailed(string reason) => IsPt ? $"Não foi possível colar: {reason}" : $"Could not paste: {reason}";
+        /// <summary>engine-deck.tip.frontFailed · Could not bring {{name}} to the front.</summary>
+        public static string DeckTipFrontFailed(string name) => IsPt ? $"Não foi possível trazer {name} para a frente." : $"Could not bring {name} to the front.";
+        /// <summary>engine-deck.tip.openElevated · TR3 runs as administrator, and the Windows desktop could not open it for TR3.</summary>
+        public static string DeckTipOpenElevated => IsPt ? "O TR3 roda como administrador, e a área de trabalho do Windows não pôde abrir isto pelo TR3." : "TR3 runs as administrator, and the Windows desktop could not open it for TR3.";
+        /// <summary>engine-deck.tip.foldersFull · This deck already has {{max}} folders.</summary>
+        public static string DeckTipFoldersFull(string max) => IsPt ? $"Este deck já tem {max} pastas." : $"This deck already has {max} folders.";
+        /// <summary>engine-deck.tip.menuWaits · Menus wait while TR3 clicks.</summary>
+        public static string DeckTipMenuWaits => IsPt ? "Os menus esperam enquanto o TR3 clica." : "Menus wait while TR3 clicks.";
+        /// <summary>engine-deck.tip.summonMenu · A summoned deck is edited on the Deck page.</summary>
+        public static string DeckTipSummonMenu => IsPt ? "Um deck chamado se edita na página Deck." : "A summoned deck is edited on the Deck page.";
+        /// <summary>engine-deck.tip.dropOnPill · Open the deck, then drop on a place.</summary>
+        public static string DeckTipDropOnPill => IsPt ? "Abra o deck e solte num lugar." : "Open the deck, then drop on a place.";
         /// <summary>engine-deck.editDone · Done</summary>
         public static string DeckEditDone => IsPt ? "Concluir" : "Done";
         /// <summary>engine-deck.menu.openFolder · Open the folder</summary>

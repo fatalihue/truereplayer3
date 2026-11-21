@@ -770,6 +770,10 @@ export interface DeckState {
   pendingFile: string;
   /** Only the macros the buttons name, once the library is in (absent before). */
   macros?: Record<string, DeckMacroReport>;
+  /** Fase 8: the number of the deck:save this answers (absent when the state comes for another reason). */
+  seq?: number;
+  /** Fase 8: deck.json could not be written — the engine's sentence; absent when it was. */
+  saveFailed?: string | null;
 }
 
 /** What a deck's menu opens on the Deck page at a button (Fase 6): the field it is typed or picked in. */
@@ -787,6 +791,8 @@ export interface DeckImportPreview {
   room: number;
   decks: {
     name: string;
+    /** The hotkey that comes with it (one with a modifier, free here); absent when none would (Fase 8). */
+    hotkey?: string;
     buttons: number;
     pictures: number;
     opens: { label?: string; target: string; args?: string }[];
@@ -1250,7 +1256,7 @@ export type IncomingMessage =
   // Fase 7: a .trdeck read for import, waiting for the page's answer; the decks that came in (an import or the
   // example; left = how many did not fit); a deck written to a .trdeck (Show in folder by exportId).
   | { type: 'deck:importPreview'; payload: DeckImportPreview }
-  | { type: 'deck:imported'; payload: { decks: { id: string; name: string; hotkeyDropped?: boolean; missingMacros?: number }[]; left: number; example: boolean } }
+  | { type: 'deck:imported'; payload: { decks: { id: string; name: string; hotkeyDropped?: boolean; hotkeyBare?: boolean; missingMacros?: number }[]; left: number; example: boolean } }
   | { type: 'deck:exported'; payload: { exportId: number; fileName: string; deck: string; images: number; missingImages: number } }
   | { type: 'deck:show'; payload: { deckId: string; folder: string | null; page: number; slot: number; focus: DeckFocus | null } }
   | { type: 'clipboard:content'; payload: { text: string } }
@@ -1427,7 +1433,7 @@ export type OutgoingMessage =
   // Deck: the state when the page needs it (the opening does not carry it), the whole-config save
   // (DeckService.Save), and the explicit "replace the unreadable deck.json" the quarantine waits for.
   | { type: 'deck:get'; payload: Record<string, never> }
-  | { type: 'deck:save'; payload: { config: DeckConfig } }
+  | { type: 'deck:save'; payload: { config: DeckConfig; seq?: number } }
   | { type: 'deck:overwriteUnreadable'; payload: Record<string, never> }
   // Fase 6: a deck edited on screen (null: none), and a picture for a button from a program's icon, a picture
   // file or a cut of the screen (the engine keeps it in Deck\images and sets it; deck:state answers).

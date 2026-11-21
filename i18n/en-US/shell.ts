@@ -25,6 +25,7 @@ export default {
   refuse: {
     automations: 'Close the open dialog first, then open {{>common.pages.automations}} again.',
     browser: 'Close the open dialog first, then open {{>settings.categories.browser}} again.',
+    deck: 'Close the open dialog first, then choose {{>engine-deck.menu.editInTr3}} on the deck again.',   // a deck's menu on screen (Fase 8)
   },
 
   // A importação do TrueReplayer 2: o diálogo, o cartão do primeiro uso e o aviso da abertura seguinte.

@@ -21,7 +21,7 @@ import { COMMIT_EDITORS, loadDragGhost, loadEmpties, loadRunProgress, loadStepGh
 import { dock } from './dock/dockState';
 import { hearUpdate } from './updates';
 
-type Door = 'automations' | 'browser';
+type Door = 'automations' | 'browser' | 'deck';
 
 /** A dialog the shell is in the middle of (a confirmation, a name it asks for); Ctrl+K is not one. */
 const dialogOpen = () => [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].some(d => !d.classList.contains('pal'));
@@ -75,10 +75,14 @@ function hearTray(message: IncomingMessage, record: (name?: string) => boolean, 
 /**
  * A deck's menu (Deck, Fase 6) asked for the Deck page at a button, the engine having brought the window up:
  * the button chosen there, with the field its menu came for (Keys…, Text…, All macros…), or the deck itself.
- * Over a dialog it waits, as the tray's doors do.
+ * Over a dialog it refuses and says so, as the tray's doors do (Fase 8): the page would open under it.
  */
-function hearDeck(message: IncomingMessage) {
-  if (message.type !== 'deck:show' || dialogOpen()) return;
+function hearDeck(message: IncomingMessage, refuse: (door: Door) => void) {
+  if (message.type !== 'deck:show') return;
+  if (dialogOpen()) {
+    refuse('deck');
+    return;
+  }
   const { deckId, folder, page, slot, focus } = message.payload;
   if (usePalette.getState().open) palette.close();
   goToTile(deckId, folder ? { kind: 'folder', id: folder } : { kind: 'page', index: Math.max(0, page) }, slot, focus);
@@ -189,7 +193,8 @@ export function Watch({ early }: { early: readonly IncomingMessage[] }) {
   const recordRef = useRef(record);
   useEffect(() => { recordRef.current = record; });
   const { showToast } = useToast();
-  const refuse = (door: Door) => showToast(door === 'automations' ? t('shell.refuse.automations') : t('shell.refuse.browser'), 'info');
+  const refuse = (door: Door) => showToast(
+    door === 'automations' ? t('shell.refuse.automations') : door === 'browser' ? t('shell.refuse.browser') : t('shell.refuse.deck'), 'info');
   const refuseRef = useRef(refuse);
   useEffect(() => { refuseRef.current = refuse; });
   // 15 s: the notice carries an instruction (turn the automations back on), not just news.
@@ -219,7 +224,7 @@ export function Watch({ early }: { early: readonly IncomingMessage[] }) {
     hear(m, (door) => refuseRef.current(door));
     hearImport(m, (text) => toastRef.current(text));
     hearTray(m, (named) => recordRef.current(named), (name) => openRef.current(name));
-    hearDeck(m);
+    hearDeck(m, (door) => refuseRef.current(door));
     hearDeckExport(m, (text, missing, exportId) => exportToastRef.current(text, missing, exportId));
     hearCommit(m);
     const k = knockOf(m);

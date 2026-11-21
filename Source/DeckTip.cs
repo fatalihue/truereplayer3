@@ -65,6 +65,14 @@ namespace TrueReplayer.Services
             DeckNative.SetWindowPos(Hwnd, DeckNative.HWND_TOPMOST, 0, 0, 0, 0, DeckNative.SWP_NOMOVE | DeckNative.SWP_NOSIZE | DeckNative.SWP_NOACTIVATE);
         }
 
+        public bool Shown => _shown;
+
+        /// <summary>Back over the decks (Fase 8: a window that took the top went under them, and they over this).</summary>
+        public void Raise()
+        {
+            if (_shown && Hwnd != IntPtr.Zero) DeckNative.SetWindowPos(Hwnd, DeckNative.HWND_TOPMOST, 0, 0, 0, 0, DeckNative.SWP_NOMOVE | DeckNative.SWP_NOSIZE | DeckNative.SWP_NOACTIVATE);
+        }
+
         public void Hide()
         {
             if (!_shown) return;

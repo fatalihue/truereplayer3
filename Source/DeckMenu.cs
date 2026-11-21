@@ -74,13 +74,28 @@ namespace TrueReplayer.Services
         public static DeckMenu Open(IntPtr owner, List<Item> items, DeckNative.POINT at, DeckHost.MonitorInfo monitor, DeckTheme theme, bool exclude)
         {
             var menu = new DeckMenu(owner, items, monitor, theme, exclude, null);
-            menu.Measure();
-            var work = monitor.Work;
-            int x = at.X, y = at.Y;
-            if (x + menu._w > work.Right) x = at.X - menu._w;
-            if (y + menu._h > work.Bottom) y = at.Y - menu._h;
-            menu.Place(x, y);
-            return menu;
+            try
+            {
+                menu.Measure();
+                var work = monitor.Work;
+                int x = at.X, y = at.Y;
+                if (x + menu._w > work.Right) x = at.X - menu._w;
+                if (y + menu._h > work.Bottom) y = at.Y - menu._h;
+                menu.Place(x, y);
+                return menu;
+            }
+            catch
+            {
+                // Its window and its painter go with it (Fase 8).
+                menu.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>Back over the decks (a window that took the top went under them, and they over this).</summary>
+        public void Raise()
+        {
+            if (Hwnd != IntPtr.Zero) DeckNative.SetWindowPos(Hwnd, DeckNative.HWND_TOPMOST, 0, 0, 0, 0, DeckNative.SWP_NOMOVE | DeckNative.SWP_NOSIZE | DeckNative.SWP_NOACTIVATE);
         }
 
         // ── Size and place ──
@@ -284,13 +299,21 @@ namespace TrueReplayer.Services
             var items = _items[row].Submenu?.Invoke();
             if (items == null || items.Count == 0) return;
             var child = new DeckMenu(DeckNative.GetWindow(Hwnd, 4) is var owner && owner != IntPtr.Zero ? owner : IntPtr.Zero, items, _monitor, _theme, _exclude, this);
-            child.Measure();
-            var work = _monitor.Work;
-            int overlap = (int)Math.Round(4 * _scale);
-            int x = _x + _w - overlap;
-            if (x + child._w > work.Right) x = _x - child._w + overlap;
-            int y = _y + (int)Math.Round((RowTop(row) - Pad - 1) * _scale);
-            child.Place(x, y);
+            try
+            {
+                child.Measure();
+                var work = _monitor.Work;
+                int overlap = (int)Math.Round(4 * _scale);
+                int x = _x + _w - overlap;
+                if (x + child._w > work.Right) x = _x - child._w + overlap;
+                int y = _y + (int)Math.Round((RowTop(row) - Pad - 1) * _scale);
+                child.Place(x, y);
+            }
+            catch
+            {
+                child.Dispose();
+                throw;
+            }
             _child = child;
             _childOf = row;
             DeckHost.MenuOpened(child);

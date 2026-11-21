@@ -19,7 +19,12 @@ export default {
     read: 'Não foi possível abrir o arquivo: {{reason}}',
     parse: 'O arquivo não é um JSON válido: {{reason}}',
     unknown: 'O motivo é desconhecido.',
+    missing: 'O arquivo sumiu; estes decks são a última cópia boa dele.',
+    shape: 'O arquivo não é uma lista de decks.',
+    newer: 'O arquivo foi gravado por um TR3 mais novo (formato de deck {{version}}).',
   },
+
+  saveFailed: 'Não foi possível salvar o deck.json: {{reason}} Os decks valem até o TR3 fechar.',
 
   command: {
     record: 'Gravar',
@@ -58,6 +63,15 @@ export default {
     noRoom: 'Não há lugar livre aqui.',
     iconFailed: 'Não foi possível tirar um ícone deste arquivo.',
     imageFailed: 'Não foi possível ler esta imagem.',
+    starting: 'O TR3 ainda está abrindo. Tente de novo daqui a pouco.',
+    recordFailed: 'Não foi possível gravar aqui: {{name}} não foi criada.',
+    pasteFailed: 'Não foi possível colar: {{reason}}',
+    frontFailed: 'Não foi possível trazer {{name}} para a frente.',
+    openElevated: 'O TR3 roda como administrador, e a área de trabalho do Windows não pôde abrir isto pelo TR3.',
+    foldersFull: 'Este deck já tem {{max}} pastas.',
+    menuWaits: 'Os menus esperam enquanto o TR3 clica.',
+    summonMenu: 'Um deck chamado se edita na página Deck.',
+    dropOnPill: 'Abra o deck e solte num lugar.',
   },
 
   editDone: 'Concluir',

@@ -1147,9 +1147,11 @@ export type Chaves = {
   'deck.file.exportedMissing': { count: number; n: string | number };
   'deck.file.imported': { deck: string | number };
   'deck.file.importedMany': { count: number; n: string | number };
-  'deck.file.hotkeyDropped': never;
+  'deck.file.hotkeyDropped': { deck: string | number };
+  'deck.file.hotkeyBare': { deck: string | number };
   'deck.file.missingMacros': { count: number; n: string | number };
   'deck.file.full': { max: string | number };
+  'deck.file.room': { count: number; max: string | number; n: string | number; total: string | number };
   'deck.file.exampleAdded': { deck: string | number };
   'deck.file.title': never;
   'deck.file.decks': { count: number; n: string | number };
@@ -1159,6 +1161,8 @@ export type Chaves = {
   'deck.file.texts': never;
   'deck.file.more': { count: number; n: string | number };
   'deck.file.missing': { names: string | number };
+  'deck.file.hotkeys': { list: string | number };
+  'deck.file.hotkeyOf': { deck: string | number; key: string | number };
   'deck.file.confirm': never;
   'deck.head.fixed': never;
   'deck.head.summon': never;
@@ -1202,6 +1206,12 @@ export type Chaves = {
   'deck.board.labelFolder': { deck: string | number; folder: string | number };
   'deck.board.tile': { label: string | number; n: string | number };
   'deck.board.tileNoLabel': { n: string | number };
+  'deck.board.withState': { name: string | number; state: string | number };
+  'deck.board.stateMissing': never;
+  'deck.board.stateRunning': never;
+  'deck.board.stateRecording': never;
+  'deck.board.stateOn': never;
+  'deck.board.stateOff': never;
   'deck.board.empty': { n: string | number };
   'deck.board.emptyTip': never;
   'deck.board.back': never;
@@ -1242,6 +1252,7 @@ export type Chaves = {
   'deck.panel.moveTo': never;
   'deck.panel.delete': never;
   'deck.panel.deleted': { label: string | number };
+  'deck.panel.deletedUnnamed': never;
   'deck.panel.noRoom': never;
   'deck.panel.pageFull': { n: string | number };
   'deck.panel.wherePage': { deck: string | number; n: string | number; page: string | number };
@@ -1254,6 +1265,7 @@ export type Chaves = {
   'deck.macro.swap': never;
   'deck.macro.openEditor': never;
   'deck.macro.recordNew': never;
+  'deck.macro.recordBusy': never;
   'deck.macro.newName': { deck: string | number; n: string | number };
   'deck.macro.folder': { folder: string | number };
   'deck.macro.steps': { count: number };
@@ -1325,6 +1337,7 @@ export type Chaves = {
   'deck.look.icon': never;
   'deck.look.chooseIcon': never;
   'deck.look.iconDefault': never;
+  'deck.look.macroEmoji': never;
   'deck.look.lucide': never;
   'deck.look.emoji': never;
   'deck.look.image': never;
@@ -3202,6 +3215,7 @@ export type Chaves = {
   'shell.keys.reverted': never;
   'shell.refuse.automations': never;
   'shell.refuse.browser': never;
+  'shell.refuse.deck': never;
   'shell.import.title': { tr2: string | number };
   'shell.import.intro': { tr2: string | number };
   'shell.import.notFound': { tr2: string | number };
@@ -3794,7 +3808,7 @@ export type Tabelas = {
   'deck.open': 'label' | 'placeholder' | 'browse' | 'browseTip' | 'args' | 'argsPlaceholder' | 'focus' | 'hint';
   'deck.tr3.commands': 'record' | 'stopAll' | 'clicker' | 'teclado' | 'remaps' | 'automations' | 'shortcuts' | 'show';
   'deck.tr3.hints': 'record' | 'stopAll' | 'clicker' | 'teclado' | 'remaps' | 'automations' | 'shortcuts' | 'show';
-  'deck.look': 'label' | 'text' | 'textPlaceholder' | 'icon' | 'chooseIcon' | 'iconDefault' | 'lucide' | 'emoji' | 'image' | 'useDefault' | 'color' | 'noColor' | 'colorEmoji';
+  'deck.look': 'label' | 'text' | 'textPlaceholder' | 'icon' | 'chooseIcon' | 'iconDefault' | 'macroEmoji' | 'lucide' | 'emoji' | 'image' | 'useDefault' | 'color' | 'noColor' | 'colorEmoji';
   'deck.icons.groups': 'media' | 'system' | 'files' | 'games' | 'arrows' | 'edit';
   'deck.settings.sizes': 's' | 'm' | 'l';
   'deck.settings.opacities': 'o100' | 'o85' | 'o70' | 'o50' | 'o0';
@@ -3899,7 +3913,7 @@ export type Tabelas = {
   'settings.hotkeys.clickerPause': 'label' | 'hint' | 'words';
   'settings.hotkeys.clip': 'label' | 'hint' | 'words';
   'settings.hotkeys.screenText': 'label' | 'hint' | 'words';
-  'shell.refuse': 'automations' | 'browser';
+  'shell.refuse': 'automations' | 'browser' | 'deck';
   'teclado.games': 'title' | 'inFront' | 'locked' | 'none' | 'foot';
   'teclado.add': 'label' | 'addExe' | 'filter' | 'loading' | 'none' | 'typed' | 'typedPlaceholder';
   'teclado.empty': 'title' | 'text';

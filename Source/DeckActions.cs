@@ -24,14 +24,19 @@ namespace TrueReplayer.Services
         private static readonly BlockingCollection<System.Action> _work = new();
         private static readonly object _lock = new();
         private static Thread? _worker;
+        // A press being done now (Shutdown waits for it).
+        private static volatile bool _busy;
         // "Stop all" ends a text still being typed.
         private static CancellationTokenSource _typing = new();
-        // One paste at a time: a second one would take the first one's text for the user's clipboard.
-        private static readonly SemaphoreSlim _pasting = new(1, 1);
 
         // Test houses only (deck-acoes-real.mjs, with TRUEREPLAYER3_TEST_DECK=1, the Deck's test switch): Open always
         // goes through the shell's own ShellExecute, the path an elevated app takes, so the probe can see it work.
         private static readonly bool TestShellOpen = Environment.GetEnvironmentVariable("TRUEREPLAYER3_TEST_DECK") == "1";
+
+        // How long the line waits for an Open (Fase 8): longer, it goes on in its own time.
+        private const int OpenWaitMs = 5000;
+        // How long the line waits for a paste the UI thread does.
+        private const int PasteWaitMs = 10000;
 
         private static void Queue(System.Action job)
         {
@@ -43,8 +48,10 @@ namespace TrueReplayer.Services
                     {
                         foreach (var next in _work.GetConsumingEnumerable())
                         {
+                            _busy = true;
                             try { next(); }
                             catch (Exception ex) { DiagnosticLog.Warn($"Deck: a button's work failed: {ex.GetType().Name}: {ex.Message}"); }
+                            finally { _busy = false; }
                         }
                     }) { IsBackground = true, Name = "Deck work" };
                     // The shell's COM objects (a shortcut's target, the desktop's ShellExecute) want a single-threaded apartment.
@@ -55,17 +62,43 @@ namespace TrueReplayer.Services
             _work.Add(job);
         }
 
-        /// <summary>"Stop all": a text still being typed stops.</summary>
+        /// <summary>"Stop all": a text still being typed stops, and the presses still waiting in the line go (Fase 8).</summary>
         public static void StopTyping()
         {
             var old = Interlocked.Exchange(ref _typing, new CancellationTokenSource());
             old.Cancel();
+            int dropped = 0;
+            while (_work.TryTake(out _)) dropped++;
+            if (dropped > 0) DiagnosticLog.Info($"Deck: Stop all dropped {dropped} press(es) still waiting");
+        }
+
+        /// <summary>
+        /// The app closing (Fase 8): the presses waiting go, a text being typed stops, and the one being done gets a moment to
+        /// end — a combo cut between its down and its up would leave Ctrl, Alt or Win down in Windows.
+        /// </summary>
+        public static void Shutdown(int waitMs)
+        {
+            StopTyping();
+            long until = Environment.TickCount64 + waitMs;
+            while (_busy && Environment.TickCount64 < until) Thread.Sleep(10);
+        }
+
+        /// <summary>
+        /// A summoned deck's pick comes with its hotkey's keys still down (Fase 8): what the button sends waits for them to
+        /// come up — 2 s at most, as a macro started by a hotkey does —, or Ctrl held would turn Alt+Tab into Ctrl+Alt+Tab
+        /// and a text's Enter into Ctrl+Enter.
+        /// </summary>
+        private static void WaitUp(string? held)
+        {
+            if (string.IsNullOrEmpty(held)) return;
+            try { ActionReplayer.WaitForComboReleaseAsync(held, CancellationToken.None).GetAwaiter().GetResult(); }
+            catch (Exception ex) { DiagnosticLog.Warn($"Deck: waiting for {held} to come up failed: {ex.GetType().Name}: {ex.Message}"); }
         }
 
         // ── Keys ──
 
         /// <summary>The button's combo, pressed and let go in the window in front.</summary>
-        public static void Keys(string deckId, int slot, DeckService.Tile tile)
+        public static void Keys(string deckId, int slot, DeckService.Tile tile, string? held = null)
         {
             string? combo = tile.Action.Combo;
             if (string.IsNullOrEmpty(combo)) return;
@@ -76,6 +109,7 @@ namespace TrueReplayer.Services
                     DeckHost.Fail(deckId, slot, tile, S.DeckTipKeysInvalid(combo: combo));
                     return;
                 }
+                WaitUp(held);
                 InputHookManager.DeckSendCombo(strokes);
                 DiagnosticLog.Info($"Deck: sent {combo}");
             });
@@ -84,12 +118,13 @@ namespace TrueReplayer.Services
         // ── Text ──
 
         /// <summary>The button's text, typed in the window in front one character at a time.</summary>
-        public static void TypeText(string text)
+        public static void TypeText(string text, string? held = null)
         {
             if (string.IsNullOrEmpty(text)) return;
             var token = _typing.Token;
             Queue(() =>
             {
+                WaitUp(held);
                 InputHookManager.DeckType(text, token);
                 DiagnosticLog.Info($"Deck: typed {text.Length} character(s){(token.IsCancellationRequested ? " (stopped)" : "")}");
             });
@@ -97,35 +132,57 @@ namespace TrueReplayer.Services
 
         /// <summary>
         /// The button's text, pasted in the window in front the way Send Text pastes: the text on the clipboard, Ctrl+V,
-        /// a moment for the target to read it (ActionReplayer.PasteSettleMs), and the user's clipboard back. Called on
-        /// the UI thread, the clipboard's; notifyClipboard keeps the clipboard automations from firing on it.
+        /// a moment for the target to read it (ActionReplayer.PasteSettleMs), and the user's clipboard back. Fase 8: in the
+        /// line, as every other press (a text typed after it never lands in the middle, and Stop all drops it while it
+        /// waits); the clipboard's part on the UI thread, the clipboard's; a failure said over the button.
+        /// notifyClipboard keeps the clipboard automations from firing on it.
         /// </summary>
-        public static async void Paste(string text, DispatcherQueue ui, System.Action notifyClipboard)
+        public static void Paste(string deckId, int slot, DeckService.Tile tile, string text, string? held, DispatcherQueue ui, System.Action notifyClipboard)
         {
             if (string.IsNullOrEmpty(text)) return;
-            await _pasting.WaitAsync();
-            try
+            Queue(() =>
             {
-                notifyClipboard();
-                var original = await ActionReplayer.ReadClipboardSnapshotAsync(ui, includeHtml: false);
-                var nonText = original.Text == null ? await ActionReplayer.ReadClipboardNonTextAsync(ui) : null;
-                var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
-                // CF_UNICODETEXT is CRLF: a Win32 edit box breaks no line on a lone LF.
-                package.SetText(text.Replace("\r\n", "\n").Replace("\n", "\r\n"));
-                Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
-                await Task.Delay(50);
-                await Task.Run(InputHookManager.DeckSendPaste);
-                await Task.Delay(ActionReplayer.PasteSettleMs);
-                notifyClipboard();
-                ActionReplayer.RestoreClipboard(ui, original, nonText);
+                WaitUp(held);
+                var done = new TaskCompletionSource<Exception?>(TaskCreationOptions.RunContinuationsAsynchronously);
+                bool queued = ui.TryEnqueue(async () =>
+                {
+                    try
+                    {
+                        await PasteOnUi(text, ui, notifyClipboard);
+                        done.TrySetResult(null);
+                    }
+                    catch (Exception ex) { done.TrySetResult(ex); }
+                });
+                if (!queued) done.TrySetResult(new InvalidOperationException("the app is closing"));
+                if (!done.Task.Wait(PasteWaitMs))
+                {
+                    DiagnosticLog.Warn("Deck: a paste takes long; the line goes on");
+                    return;
+                }
+                if (done.Task.Result is { } error)
+                {
+                    DiagnosticLog.Error("Deck: pasting failed", error);
+                    DeckHost.Fail(deckId, slot, tile, S.DeckTipPasteFailed(reason: S.Reason(error)));
+                    return;
+                }
                 DiagnosticLog.Info($"Deck: pasted {text.Length} character(s)");
-            }
-            catch (Exception ex)
-            {
-                // async void: nothing may escape.
-                DiagnosticLog.Error("Deck: pasting failed", ex);
-            }
-            finally { _pasting.Release(); }
+            });
+        }
+
+        private static async Task PasteOnUi(string text, DispatcherQueue ui, System.Action notifyClipboard)
+        {
+            notifyClipboard();
+            var original = await ActionReplayer.ReadClipboardSnapshotAsync(ui, includeHtml: false);
+            var nonText = original.Text == null ? await ActionReplayer.ReadClipboardNonTextAsync(ui) : null;
+            var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+            // CF_UNICODETEXT is CRLF: a Win32 edit box breaks no line on a lone LF.
+            package.SetText(text.Replace("\r\n", "\n").Replace("\n", "\r\n"));
+            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+            await Task.Delay(50);
+            await Task.Run(InputHookManager.DeckSendPaste);
+            await Task.Delay(ActionReplayer.PasteSettleMs);
+            notifyClipboard();
+            ActionReplayer.RestoreClipboard(ui, original, nonText);
         }
 
         // ── Open ──
@@ -133,7 +190,8 @@ namespace TrueReplayer.Services
         /// <summary>
         /// Opens a program, file, folder or address, as Win+R would. With "bring to the front", a program already open
         /// comes to the front instead of opening again. When the app runs elevated, the desktop's shell opens it, so what
-        /// it opens does not run elevated too.
+        /// it opens does not run elevated too. Fase 8: on a thread of its own, which the line waits for 5 s at most — a
+        /// path on a network that is gone, or a shell that hangs, never holds the presses after it.
         /// </summary>
         public static void Open(string deckId, int slot, DeckService.Tile tile)
         {
@@ -144,28 +202,50 @@ namespace TrueReplayer.Services
             bool front = a.Focus == true;
             Queue(() =>
             {
-                if (front && TryFront(target))
+                var opening = new Thread(() =>
                 {
-                    DiagnosticLog.Info($"Deck: brought {Path.GetFileName(target)} to the front");
-                    return;
-                }
-                if (!TryLaunch(target, args, out string error))
-                {
-                    DeckHost.Fail(deckId, slot, tile, S.DeckTipOpenFailed(reason: error));
-                    return;
-                }
-                DiagnosticLog.Info($"Deck: opened {target}");
+                    try { OpenNow(deckId, slot, tile, target, args, front); }
+                    catch (Exception ex) { DiagnosticLog.Warn($"Deck: opening {target} failed: {ex.GetType().Name}: {ex.Message}"); }
+                }) { IsBackground = true, Name = "Deck open" };
+                opening.SetApartmentState(ApartmentState.STA);
+                opening.Start();
+                if (!opening.Join(OpenWaitMs)) DiagnosticLog.Warn($"Deck: opening {target} takes long; the line goes on");
             });
         }
 
-        /// <summary>A program's window already open, brought to the front. False when the target is not a program or none is open.</summary>
-        private static bool TryFront(string target)
+        private static void OpenNow(string deckId, int slot, DeckService.Tile tile, string target, string? args, bool front)
         {
-            string? exe = ExeOf(target);
-            if (exe == null) return false;
+            if (front)
+            {
+                switch (TryFront(target, out var exe))
+                {
+                    case FrontResult.Brought:
+                        DiagnosticLog.Info($"Deck: brought {exe} to the front");
+                        return;
+                    case FrontResult.Refused:
+                        // Open, but Windows kept it from coming forward (Fase 8): another copy of it is not what the button says.
+                        DeckHost.Flash(deckId, slot, S.DeckTipFrontFailed(name: Path.GetFileNameWithoutExtension(exe ?? target)));
+                        return;
+                }
+            }
+            if (!TryLaunch(target, args, out string error))
+            {
+                DeckHost.Fail(deckId, slot, tile, S.DeckTipOpenFailed(reason: error));
+                return;
+            }
+            DiagnosticLog.Info($"Deck: opened {target}");
+        }
+
+        private enum FrontResult { NotOpen, Brought, Refused }
+
+        /// <summary>A program's window already open, brought to the front: whether it is open, and whether it came.</summary>
+        private static FrontResult TryFront(string target, out string? exe)
+        {
+            exe = ExeOf(target);
+            if (exe == null) return FrontResult.NotOpen;
             var hwnd = ActionReplayer.FindWindowExcludingSelf(new Models.WindowTarget { ProcessName = exe }, null);
-            if (hwnd == IntPtr.Zero) return false;
-            return WindowActivation.ActivateAsync(hwnd).GetAwaiter().GetResult();
+            if (hwnd == IntPtr.Zero) return FrontResult.NotOpen;
+            return WindowActivation.ActivateAsync(hwnd).GetAwaiter().GetResult() ? FrontResult.Brought : FrontResult.Refused;
         }
 
         /// <summary>The .exe a target runs (through a shortcut too), or null for an address, a document or a folder.</summary>
@@ -182,10 +262,28 @@ namespace TrueReplayer.Services
             try
             {
                 // The shell reports nothing back: a path that is not there is said here, before it is asked.
-                if (Path.IsPathRooted(target) && !File.Exists(target) && !Directory.Exists(target))
+                bool file = Path.IsPathRooted(target) && File.Exists(target);
+                if (Path.IsPathRooted(target) && !file && !Directory.Exists(target))
                     throw new FileNotFoundException(null, target);
-                if ((ProcessIntegrity.SelfElevated || TestShellOpen) && ShellExecuteFromDesktop(target, args)) return true;
-                var psi = new ProcessStartInfo { FileName = target, Arguments = args ?? "", UseShellExecute = true };
+                if (ProcessIntegrity.SelfElevated || TestShellOpen)
+                {
+                    if (ShellExecuteFromDesktop(target, args)) return true;
+                    // Elevated, the app's own ShellExecute would open it elevated too (Fase 8): said, not done.
+                    if (ProcessIntegrity.SelfElevated)
+                    {
+                        error = S.DeckTipOpenElevated;
+                        return false;
+                    }
+                }
+                var psi = new ProcessStartInfo
+                {
+                    FileName = target,
+                    Arguments = args ?? "",
+                    UseShellExecute = true,
+                    // A program starts in its own folder, as from Explorer and the elevated path (Fase 8): a .bat that names
+                    // its files by relative paths finds them.
+                    WorkingDirectory = file ? Path.GetDirectoryName(target) ?? "" : "",
+                };
                 Process.Start(psi)?.Dispose();
                 return true;
             }

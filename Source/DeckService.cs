@@ -209,35 +209,48 @@ namespace TrueReplayer.Services
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         };
 
+        // Fase 8: the lock guards the config and the quarantine's state in memory only. The disk is the writer's
+        // (Persist, off the lock), and the library is a picture swapped whole (_lib): the Deck's thread, which reads
+        // both on every draw, never waits on a file a sync agent holds.
         private static readonly object _lock = new();
 
-        public static Config Current { get; private set; } = new();
+        private static volatile Config _current = new();
+
+        /// <summary>The config as kept. Never changed in place: every edit swaps in a new one.</summary>
+        public static Config Current => _current;
 
         /// <summary>
-        /// deck.json is there and could not be read or parsed (a sync agent, an antivirus, a hand edit).
-        /// Not set for a file that is simply absent. While it is set, <see cref="Save"/> never touches deck.json.
+        /// deck.json is there and could not be read or parsed (a sync agent, an antivirus, a hand edit), or it is gone
+        /// while its last good copy holds decks. Not set for a new install. While it is set, nothing writes over
+        /// deck.json: the edits go to deck.pending.json.
         /// </summary>
         public static bool LoadFailed { get; private set; }
 
-        /// <summary><see cref="Current"/> came from deck.bak.json because deck.json was unreadable.</summary>
+        /// <summary><see cref="Current"/> came from deck.bak.json (or deck.pending.json, the newer of the two) because deck.json was unreadable.</summary>
         public static bool LoadedFromBackup { get; private set; }
 
         /// <summary>Why <see cref="LoadFailed"/> is set, in one line, for the page's notice; said when read, so it follows the interface's language.</summary>
-        public static string? LoadFailureDetail => LoadFailed ? FailureDetail(_loadError, _loadErrorIsParse) : null;
+        public static string? LoadFailureDetail => LoadFailed ? FailureDetail(_loadError, _loadKind, _loadVersion) : null;
+
+        private enum LoadKind { None, Read, Parse, Shape, Newer, Missing }
 
         private static Exception? _loadError;
-        private static bool _loadErrorIsParse;
+        private static LoadKind _loadKind;
+        private static int _loadVersion;
 
-        /// <summary>Raised after every Load and Save (the native decks follow it from phase 2).</summary>
+        /// <summary>Raised after every Load and every change kept (the native decks follow it from phase 2).</summary>
         public static event System.Action? Changed;
 
-        // The library's macro names, as the last list load saw them (ProfileController), for the report; and
-        // each one's emoji, which a button without an icon of its own shows (DeckWindow).
-        private static HashSet<string> _library = new(StringComparer.Ordinal);
-        private static Dictionary<string, string> _emoji = new(StringComparer.Ordinal);
-        private static bool _libraryKnown;
-        // The library's names, the most recently changed first (Fase 6: the button's menu).
-        private static List<string> _recent = new();
+        /// <summary>
+        /// The library as the last list load saw it (ProfileController): the macros' names, for the report; each one's
+        /// emoji, which a button without an icon of its own shows (DeckWindow); the names, the most recently changed
+        /// first (Fase 6: the button's menu). Swapped whole, never changed in place, so it is read without the lock.
+        /// </summary>
+        private sealed record Library(HashSet<string> Names, Dictionary<string, string> Emoji, List<string> Recent, bool Known);
+        private static volatile Library _lib = new(new(StringComparer.Ordinal), new(StringComparer.Ordinal), new(), false);
+
+        /// <summary>The library has been listed once (before it, nothing is said missing, and Record here waits).</summary>
+        public static bool LibraryKnown => _lib.Known;
 
         /// <summary>Raised after an edit made on the decks themselves (a deck dragged to a new place): the page's state is stale.</summary>
         public static event System.Action? EditedOnScreen;
@@ -254,144 +267,250 @@ namespace TrueReplayer.Services
 
         private static string SiblingPath(string fileName) => System.IO.Path.Combine(System.IO.Path.GetDirectoryName(GetPath())!, fileName);
 
+        /// <summary>What a load read: the config to show and the quarantine's state; the text of a good file, for its backup.</summary>
+        private sealed record LoadResult(Config Config, bool Failed, bool FromCopy, Exception? Error, LoadKind Kind, int Version, string? GoodJson);
+
         public static void Load()
         {
+            // Read off the lock; what was read goes in at the end, in one hold.
+            var read = ReadDeckFile(GetPath());
             lock (_lock)
             {
-                var path = GetPath();
-                LoadFailed = false;
-                LoadedFromBackup = false;
-                _loadError = null;
-                _loadErrorIsParse = false;
-
-                if (!File.Exists(path))
-                {
-                    // A new install, or no deck yet: an empty config, and Save is free to create the file.
-                    Current = new Config();
-                    Raise();
-                    return;
-                }
-
-                bool parseFailed = false;
-                if (TryReadText(path, out var json, out var error))
-                {
-                    var parsed = TryParse(json, out var parseError);
-                    if (parsed != null)
-                    {
-                        Current = Normalize(parsed);
-                        WriteBackupIfChanged(json);
-                        Raise();
-                        return;
-                    }
-                    error = parseError;
-                    parseFailed = true;
-                }
-
-                LoadFailed = true;
-                _loadError = error;
-                _loadErrorIsParse = parseFailed;
+                _current = read.Config;
+                LoadFailed = read.Failed;
+                LoadedFromBackup = read.FromCopy;
+                _loadError = read.Error;
+                _loadKind = read.Kind;
+                _loadVersion = read.Version;
+            }
+            if (read.Failed)
+            {
                 DiagnosticLog.Error(
-                    $"deck.json could not be read — it will NOT be overwritten; edits this session go to {PendingFileName}",
-                    error ?? new IOException("unknown read failure"));
-                // Said in a Windows notification too: Load runs in the window's ctor, and decks that do not
-                // show up with nothing on screen to say why look like the feature broke.
-                if (TryLoadBackup(out var backup))
+                    $"deck.json could not be read ({read.Kind}) — it will NOT be overwritten; edits this session go to {PendingFileName}",
+                    read.Error ?? new IOException(read.Kind.ToString()));
+                // Said in a Windows notification too: Load runs in the window's ctor, and decks that do not show up
+                // with nothing on screen to say why look like the feature broke.
+                if (read.FromCopy)
                 {
-                    Current = backup;
-                    LoadedFromBackup = true;
-                    int count = backup.Decks.Count;
+                    int count = read.Config.Decks.Count;
                     Announce(S.DeckUnreadableTitle, S.DeckUnreadableBackup(n: S.Num(count), pending: PendingFileName, count: count));
                 }
-                else
-                {
-                    Current = new Config();
-                    Announce(S.DeckUnreadableTitle, S.DeckUnreadableNoBackup);
-                }
-                Raise();
+                else Announce(S.DeckUnreadableTitle, S.DeckUnreadableNoBackup);
             }
+            Raise();
+            if (read.GoodJson != null) WriteBackupIfChanged(read.GoodJson);
+            if (!read.Failed) SweepImagesLater();
         }
+
+        private static LoadResult ReadDeckFile(string path)
+        {
+            if (!File.Exists(path))
+            {
+                // No deck.json: a new install, or no deck yet — unless a last good copy holds decks. Then the file went
+                // (a sync agent, a hand), and the copy shows in quarantine (Fase 8): the first save must not write an
+                // empty list over it.
+                if (TryLoadCopy(out var copy) && copy.Decks.Count > 0)
+                    return new LoadResult(copy, true, true, null, LoadKind.Missing, 0, null);
+                return new LoadResult(new Config(), false, false, null, LoadKind.None, 0, null);
+            }
+            if (!TryReadText(path, out var json, out var error))
+                return Quarantined(error, LoadKind.Read, 0);
+            var parsed = TryParse(json, out var parseError, out var kind, out int version);
+            if (parsed != null) return new LoadResult(Normalize(parsed), false, false, null, LoadKind.None, 0, json);
+            return Quarantined(parseError, kind, version);
+        }
+
+        private static LoadResult Quarantined(Exception? error, LoadKind kind, int version) =>
+            TryLoadCopy(out var copy)
+                ? new LoadResult(copy, true, true, error, kind, version, null)
+                : new LoadResult(new Config(), true, false, error, kind, version, null);
 
         /// <param name="overwriteUnreadableFile">Only a deliberate user choice may pass true (the page's "Replace the file").</param>
         public static void Save(Config incoming, bool overwriteUnreadableFile = false)
         {
-            lock (_lock)
-            {
-                // The edit takes effect in this session either way, as in RemapService and TecladoService.
-                Current = Normalize(incoming);
-                try
-                {
-                    var json = JsonSerializer.Serialize(Current, WriteOptions);
-                    if (LoadFailed && !overwriteUnreadableFile)
-                    {
-                        // Quarantine: writing back what we hold would delete everything the unreadable file still has.
-                        if (Current.Decks.Count > 0)
-                        {
-                            FileHelper.WriteAllTextAtomic(SiblingPath(PendingFileName), json);
-                            DiagnosticLog.Warn($"Deck: deck.json is unreadable, so the change was written to {PendingFileName} instead.");
-                        }
-                        else
-                        {
-                            DiagnosticLog.Warn("Deck: change NOT written — deck.json is unreadable and the list is empty. Live for this session only.");
-                        }
-                    }
-                    else
-                    {
-                        FileHelper.WriteAllTextAtomic(GetPath(), json);
-                        WriteBackupIfChanged(json);
-                        if (LoadFailed)
-                        {
-                            LoadFailed = false;
-                            LoadedFromBackup = false;
-                            _loadError = null;
-                            _loadErrorIsParse = false;
-                            DiagnosticLog.Info("deck.json overwritten on explicit request — load-failure quarantine cleared.");
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    DiagnosticLog.Error("deck.json save failed", ex);
-                }
-                Raise();
-            }
-        }
-
-        public static void SetEnabled(bool enabled)
-        {
-            Config next;
-            lock (_lock)
-            {
-                next = Clone(Current);
-                next.Enabled = enabled;
-            }
-            Save(next);
+            var next = Normalize(incoming);
+            lock (_lock) Commit(next, overwriteUnreadableFile);
+            Raise();
         }
 
         /// <summary>
-        /// The config as the page receives it (camelCase, nulls left out), the quarantine's state, and what
-        /// each macro a button names is in the library (absent until the first list load).
+        /// One change, whole: the config copied, changed and kept in one hold of the lock (Fase 8: an edit made on a deck
+        /// and one from the page never drop each other), then written off it. False when nothing changed.
         /// </summary>
-        public static object StatePayload()
+        private static bool Mutate(Func<Config, bool> change)
         {
             lock (_lock)
             {
-                Dictionary<string, object>? macros = null;
-                if (_libraryKnown)
-                {
-                    macros = new Dictionary<string, object>(StringComparer.Ordinal);
-                    foreach (var name in MacrosNamed(Current))
-                        macros[name] = new { found = _library.Contains(name) };
-                }
-                return new
-                {
-                    config = JsonSerializer.SerializeToElement(Current, WriteOptions),
-                    loadFailed = LoadFailed,
-                    loadedFromBackup = LoadedFromBackup,
-                    loadFailureDetail = LoadFailureDetail,
-                    pendingFile = PendingFileName,
-                    macros,
-                };
+                var next = Clone(_current);
+                if (!change(next)) return false;
+                Commit(Normalize(next), overwriteUnreadableFile: false);
             }
+            Raise();
+            return true;
+        }
+
+        // In the lock: the config kept, and its writing handed to the writer. The edit takes effect in this session
+        // either way, as in RemapService and TecladoService.
+        private static void Commit(Config next, bool overwriteUnreadableFile)
+        {
+            _current = next;
+            if (LoadFailed && overwriteUnreadableFile)
+            {
+                LoadFailed = false;
+                LoadedFromBackup = false;
+                _loadError = null;
+                _loadKind = LoadKind.None;
+                DiagnosticLog.Info("deck.json to be overwritten on explicit request — load-failure quarantine cleared.");
+                Persist(next, WriteTarget.Replace);
+            }
+            else Persist(next, LoadFailed ? WriteTarget.Pending : WriteTarget.File);
+        }
+
+        public static void SetEnabled(bool enabled) => Mutate(c =>
+        {
+            if (c.Enabled == enabled) return false;
+            c.Enabled = enabled;
+            return true;
+        });
+
+        // ── The writer (Fase 8): one thread at a time writes, the newest config only, in the order they were kept ──
+
+        private enum WriteTarget { File, Pending, Replace }
+
+        private static readonly object _writeGate = new();
+        private static (Config Config, WriteTarget Target)? _toWrite;
+        private static bool _writing;
+        private static volatile string? _saveFailed;
+
+        /// <summary>The last write of deck.json failed: why, for the page (the decks hold for this session only). Null once one works.</summary>
+        public static string? SaveFailed => _saveFailed;
+
+        /// <summary>Raised when a write fails, or works again after one failed (the page's state is stale).</summary>
+        public static event System.Action? SaveStatusChanged;
+
+        private static void Persist(Config config, WriteTarget target)
+        {
+            lock (_writeGate)
+            {
+                // A replace asked for stays asked for, with a newer edit on top of it.
+                if (_toWrite is { Target: WriteTarget.Replace } && target == WriteTarget.File) target = WriteTarget.Replace;
+                _toWrite = (config, target);
+                if (_writing) return;
+                _writing = true;
+            }
+            ThreadPool.QueueUserWorkItem(_ => WriteLoop());
+        }
+
+        private static void WriteLoop()
+        {
+            while (true)
+            {
+                (Config Config, WriteTarget Target) job;
+                lock (_writeGate)
+                {
+                    if (_toWrite is not { } next)
+                    {
+                        _writing = false;
+                        Monitor.PulseAll(_writeGate);
+                        return;
+                    }
+                    job = next;
+                    _toWrite = null;
+                }
+                Write(job.Config, job.Target);
+            }
+        }
+
+        private static void Write(Config config, WriteTarget target)
+        {
+            string? failed = null;
+            try
+            {
+                var json = JsonSerializer.Serialize(config, WriteOptions);
+                if (target == WriteTarget.Pending)
+                {
+                    // Quarantine: writing back what we hold would delete everything the unreadable file still has.
+                    if (config.Decks.Count > 0)
+                    {
+                        FileHelper.WriteAllTextAtomic(SiblingPath(PendingFileName), json);
+                        DiagnosticLog.Warn($"Deck: deck.json is unreadable, so the change was written to {PendingFileName} instead.");
+                    }
+                    else DiagnosticLog.Warn("Deck: change NOT written — deck.json is unreadable and the list is empty. Live for this session only.");
+                }
+                else
+                {
+                    FileHelper.WriteAllTextAtomic(GetPath(), json);
+                    WriteBackupIfChanged(json);
+                    // Replaced: the session's pending edits are in deck.json now, and an old copy must not come back later.
+                    if (target == WriteTarget.Replace)
+                    {
+                        try { File.Delete(SiblingPath(PendingFileName)); }
+                        catch (Exception ex) { DiagnosticLog.Warn($"Deck: {PendingFileName} could not be removed: {ex.GetType().Name}: {ex.Message}"); }
+                        DiagnosticLog.Info("deck.json overwritten on explicit request.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Error("deck.json save failed", ex);
+                failed = S.DeckSaveFailed(reason: S.Reason(ex));
+            }
+            if (string.Equals(failed, _saveFailed, StringComparison.Ordinal)) return;
+            _saveFailed = failed;
+            try { SaveStatusChanged?.Invoke(); }
+            catch (Exception ex) { DiagnosticLog.Warn($"Deck: a SaveStatusChanged handler failed: {ex.GetType().Name}: {ex.Message}"); }
+        }
+
+        /// <summary>Waits for what is still to be written (the app closing), <paramref name="timeoutMs"/> at most.</summary>
+        public static void Flush(int timeoutMs = 4000)
+        {
+            long until = Environment.TickCount64 + timeoutMs;
+            lock (_writeGate)
+            {
+                while (_writing)
+                {
+                    long left = until - Environment.TickCount64;
+                    if (left <= 0 || !Monitor.Wait(_writeGate, (int)left)) break;
+                }
+            }
+        }
+
+        /// <summary>
+        /// The config as the page receives it (camelCase, nulls left out), the quarantine's state, what each macro a
+        /// button names is in the library (absent until the first list load), and — Fase 8 — the number of the page's
+        /// save this answers (<paramref name="seq"/>) and a write that failed.
+        /// </summary>
+        public static object StatePayload(int? seq = null)
+        {
+            Config config;
+            bool failed, fromCopy;
+            string? detail;
+            lock (_lock)
+            {
+                config = _current;
+                failed = LoadFailed;
+                fromCopy = LoadedFromBackup;
+                detail = LoadFailureDetail;
+            }
+            var lib = _lib;
+            Dictionary<string, object>? macros = null;
+            if (lib.Known)
+            {
+                macros = new Dictionary<string, object>(StringComparer.Ordinal);
+                foreach (var name in MacrosNamed(config))
+                    macros[name] = new { found = lib.Names.Contains(name) };
+            }
+            return new
+            {
+                config = JsonSerializer.SerializeToElement(config, WriteOptions),
+                loadFailed = failed,
+                loadedFromBackup = fromCopy,
+                loadFailureDetail = detail,
+                pendingFile = PendingFileName,
+                macros,
+                seq,
+                saveFailed = _saveFailed,
+            };
         }
 
         /// <summary>Raised after the library changed in a way the buttons' report shows (the page's state is stale).</summary>
@@ -404,26 +523,24 @@ namespace TrueReplayer.Services
         /// </summary>
         public static void LibraryChanged(IEnumerable<(string Name, string? Emoji, DateTime? Updated)> entries)
         {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            var emoji = new Dictionary<string, string>(StringComparer.Ordinal);
+            var dated = new List<(string Name, DateTime Updated)>();
+            foreach (var (name, e, updated) in entries)
+            {
+                if (!names.Add(name)) continue;
+                if (!string.IsNullOrWhiteSpace(e)) emoji[name] = e.Trim();
+                dated.Add((name, updated ?? DateTime.MinValue));
+            }
+            var recent = dated.OrderByDescending(d => d.Updated).ThenBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase).Select(d => d.Name).ToList();
             bool raise;
             lock (_lock)
             {
-                var next = new HashSet<string>(StringComparer.Ordinal);
-                var emoji = new Dictionary<string, string>(StringComparer.Ordinal);
-                var dated = new List<(string Name, DateTime Updated)>();
-                foreach (var (name, e, updated) in entries)
-                {
-                    if (!next.Add(name)) continue;
-                    if (!string.IsNullOrWhiteSpace(e)) emoji[name] = e.Trim();
-                    dated.Add((name, updated ?? DateTime.MinValue));
-                }
-                _recent = dated.OrderByDescending(d => d.Updated).ThenBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase).Select(d => d.Name).ToList();
-                var named = MacrosNamed(Current);
+                var old = _lib;
                 // A name the buttons use came or went, or its emoji changed (the deck draws it).
-                raise = !_libraryKnown || named.Any(n => _library.Contains(n) != next.Contains(n)
-                    || !string.Equals(_emoji.GetValueOrDefault(n), emoji.GetValueOrDefault(n), StringComparison.Ordinal));
-                _library = next;
-                _emoji = emoji;
-                _libraryKnown = true;
+                raise = !old.Known || MacrosNamed(_current).Any(n => old.Names.Contains(n) != names.Contains(n)
+                    || !string.Equals(old.Emoji.GetValueOrDefault(n), emoji.GetValueOrDefault(n), StringComparison.Ordinal));
+                _lib = new Library(names, emoji, recent, true);
             }
             if (!raise) return;
             try { MacrosChanged?.Invoke(); }
@@ -433,27 +550,28 @@ namespace TrueReplayer.Services
         /// <summary>Is the macro in the library? True until the library is first known, so nothing shows missing at startup.</summary>
         public static bool IsMacroFound(string name)
         {
-            lock (_lock) return !_libraryKnown || _library.Contains(name);
+            var lib = _lib;
+            return !lib.Known || lib.Names.Contains(name);
         }
 
         /// <summary>The macro's own emoji (the library's), or null.</summary>
-        public static string? MacroEmoji(string name)
-        {
-            lock (_lock) return _emoji.GetValueOrDefault(name);
-        }
+        public static string? MacroEmoji(string name) => _lib.Emoji.GetValueOrDefault(name);
 
         /// <summary>A deck dragged to a new place on screen (DeckWindow): kept, and the page told.</summary>
         public static void SetPlace(string deckId, Place place)
         {
-            Config next;
-            lock (_lock)
+            bool changed = Mutate(c =>
             {
-                next = Clone(Current);
-                var deck = next.Decks.FirstOrDefault(d => d.Id == deckId);
-                if (deck == null) return;
+                var deck = c.Decks.FirstOrDefault(d => d.Id == deckId);
+                if (deck == null) return false;
                 deck.Place = place;
-            }
-            Save(next);
+                return true;
+            });
+            if (changed) TellEditedOnScreen();
+        }
+
+        private static void TellEditedOnScreen()
+        {
             try { EditedOnScreen?.Invoke(); }
             catch (Exception ex) { DiagnosticLog.Warn($"Deck: an EditedOnScreen handler failed: {ex.GetType().Name}: {ex.Message}"); }
         }
@@ -461,23 +579,22 @@ namespace TrueReplayer.Services
         // ── Fase 6: edits made on the decks themselves (the edit mode, the button's menu, a file dropped) ──
 
         /// <summary>
-        /// An edit made on screen: applied to a copy of the deck, saved (the windows follow Changed), and the page told.
-        /// False when the deck is gone or nothing changed.
+        /// An edit made on screen: applied to a copy of the deck and kept (the windows follow Changed), and the page told.
+        /// False when the deck is gone or nothing changed. <paramref name="change"/> runs in the lock: no disk in it.
         /// </summary>
         public static bool EditDeck(string deckId, Func<Deck, bool> change)
         {
-            Config next;
-            lock (_lock)
+            bool changed = Mutate(c =>
             {
-                next = Clone(Current);
-                var deck = next.Decks.FirstOrDefault(d => d.Id == deckId);
-                if (deck == null || !change(deck)) return false;
-            }
-            Save(next);
-            try { EditedOnScreen?.Invoke(); }
-            catch (Exception ex) { DiagnosticLog.Warn($"Deck: an EditedOnScreen handler failed: {ex.GetType().Name}: {ex.Message}"); }
-            return true;
+                var deck = c.Decks.FirstOrDefault(d => d.Id == deckId);
+                return deck != null && change(deck);
+            });
+            if (changed) TellEditedOnScreen();
+            return changed;
         }
+
+        /// <summary>A button's action as text, to tell whether it is still what it was (Record here links only then).</summary>
+        public static string ActionKey(Action? action) => JsonSerializer.Serialize(action ?? new Action(), WriteOptions);
 
         /// <summary>The buttons of a page (folder null) or of a folder of a deck — the list itself, to change in an edit; null when there is no such place.</summary>
         public static List<Tile>? TilesAt(Deck deck, string? folder, int page) =>
@@ -599,10 +716,7 @@ namespace TrueReplayer.Services
         }
 
         /// <summary>The library's macros, the most recently changed first (the button's menu offers the first twelve).</summary>
-        public static List<string> RecentMacros(int count)
-        {
-            lock (_lock) return _recent.Take(count).ToList();
-        }
+        public static List<string> RecentMacros(int count) => _lib.Recent.Take(count).ToList();
 
         /// <summary>
         /// The first macro name of a series the library does not have yet ("Geral 1", "Geral 2"…): what "Record here"
@@ -610,16 +724,16 @@ namespace TrueReplayer.Services
         /// </summary>
         public static string FreeMacroName(Func<int, string> nameOf)
         {
-            lock (_lock)
+            var taken = new HashSet<string>(_lib.Names, StringComparer.OrdinalIgnoreCase);
+            // A name a button already runs is taken too (Fase 8): its macro gone, a new one of that name would answer
+            // that button as well.
+            taken.UnionWith(MacrosNamed(_current));
+            for (int n = 1; n < 100000; n++)
             {
-                var taken = new HashSet<string>(_library, StringComparer.OrdinalIgnoreCase);
-                for (int n = 1; n < 100000; n++)
-                {
-                    string name = nameOf(n);
-                    if (!taken.Contains(name)) return name;
-                }
-                return nameOf(100000);
+                string name = nameOf(n);
+                if (!taken.Contains(name)) return name;
             }
+            return nameOf(100000);
         }
 
         /// <summary>
@@ -670,28 +784,31 @@ namespace TrueReplayer.Services
             }
         }
 
-        /// <summary>A deck that came in: its id and name as kept, and whether its hotkey stayed behind (taken here).</summary>
-        public sealed record Added(string Id, string Name, bool HotkeyDropped);
+        /// <summary>
+        /// A deck that came in: its id and name as kept, and whether its hotkey stayed behind — taken here, or (Fase 8,
+        /// <paramref name="HotkeyBare"/>) one with no Ctrl, Alt or Win, which would take its key from every app.
+        /// </summary>
+        public sealed record Added(string Id, string Name, bool HotkeyDropped, bool HotkeyBare = false);
 
         /// <summary>
         /// Decks from outside (an imported .trdeck, the example) added after the others, in one save. Each gets ids of
         /// its own (its pages' and folders' too, a Folder button following its folder), a name no other deck has
         /// ("Geral 2"), its hotkey only when <paramref name="hotkeyFree"/> says no one has it, and its pictures kept
         /// through <paramref name="keepImage"/> (a file name in Deck\images, or null: the button falls back to its
-        /// default icon). Past <see cref="MaxDecks"/>, the rest are counted in <paramref name="left"/>.
+        /// default icon). Past <see cref="MaxDecks"/>, the rest are counted in <paramref name="left"/>. Fase 8: the
+        /// hotkey stays only when it takes no key from typing (<see cref="IsQuietHotkey"/>); <paramref name="keepImage"/>
+        /// runs in the lock, so it only looks up pictures kept before.
         /// </summary>
         public static List<Added> AddDecks(IEnumerable<Deck> incoming, Func<string, string?>? keepImage, Func<string, bool> hotkeyFree, out int left)
         {
             var added = new List<Added>();
-            left = 0;
-            Config next;
-            lock (_lock)
+            int over = 0;
+            bool changed = Mutate(next =>
             {
-                next = Clone(Current);
                 var hotkeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var source in incoming)
                 {
-                    if (next.Decks.Count >= MaxDecks) { left++; continue; }
+                    if (next.Decks.Count >= MaxDecks) { over++; continue; }
                     var d = CloneDeck(source);
                     d.Id = NewId("d-", next.Decks.Select(x => x.Id));
                     var pageIds = new List<string>();
@@ -714,21 +831,22 @@ namespace TrueReplayer.Services
                     }
                     if (d.Icon is { Kind: "image" } own) d.Icon = KeepIcon(own, keepImage);
                     d.Name = FreeName(d.Name.Length > 0 ? d.Name : "Deck", next.Decks.Select(x => x.Name));
-                    bool dropped = false;
+                    bool dropped = false, bare = false;
+                    d.Hotkey = HotkeyCombo(d.Hotkey);
                     if (d.Hotkey != null)
                     {
-                        if (hotkeys.Contains(d.Hotkey) || !hotkeyFree(d.Hotkey)) { d.Hotkey = null; dropped = true; }
+                        bare = !IsQuietHotkey(d.Hotkey);
+                        if (bare || hotkeys.Contains(d.Hotkey) || !hotkeyFree(d.Hotkey)) { d.Hotkey = null; dropped = true; }
                         else hotkeys.Add(d.Hotkey);
                     }
                     if (d.Mode == "fixed") Nudge(d, next.Decks);
                     next.Decks.Add(d);
-                    added.Add(new Added(d.Id, d.Name, dropped));
+                    added.Add(new Added(d.Id, d.Name, dropped, bare));
                 }
-            }
-            if (added.Count == 0) return added;
-            Save(next);
-            try { EditedOnScreen?.Invoke(); }
-            catch (Exception ex) { DiagnosticLog.Warn($"Deck: an EditedOnScreen handler failed: {ex.GetType().Name}: {ex.Message}"); }
+                return added.Count > 0;
+            });
+            left = over;
+            if (changed) TellEditedOnScreen();
             return added;
         }
 
@@ -819,27 +937,35 @@ namespace TrueReplayer.Services
         public static bool RenameMacro(string oldName, string newName)
         {
             if (string.IsNullOrEmpty(oldName) || string.IsNullOrEmpty(newName) || oldName == newName) return false;
-            Config next;
             lock (_lock)
             {
                 // The library is renaming this macro: the name moves in the report's list now, so the buttons
                 // never show it missing between the rename and the list's next load (which then finds no
                 // change and stays quiet). Both callers rename before that load: the watcher's ahead of its
-                // debounced reload, the app's ahead of its refresh.
-                if (_library.Remove(oldName)) _library.Add(newName);
-                if (_emoji.Remove(oldName, out var e)) _emoji[newName] = e;
+                // debounced reload, the app's ahead of its refresh. A new picture of the library (Fase 8: the
+                // Deck's thread may be reading the old one).
+                var lib = _lib;
+                if (lib.Names.Contains(oldName) || lib.Emoji.ContainsKey(oldName))
+                {
+                    var names = new HashSet<string>(lib.Names, StringComparer.Ordinal);
+                    if (names.Remove(oldName)) names.Add(newName);
+                    var emoji = new Dictionary<string, string>(lib.Emoji, StringComparer.Ordinal);
+                    if (emoji.Remove(oldName, out var e)) emoji[newName] = e;
+                    _lib = lib with { Names = names, Emoji = emoji, Recent = lib.Recent.Select(n => n == oldName ? newName : n).ToList() };
+                }
+            }
+            // On a copy (Fase 8): the config the decks are drawing is never changed under them.
+            return Mutate(c =>
+            {
                 bool changed = false;
-                foreach (var tile in AllTiles(Current))
+                foreach (var tile in AllTiles(c))
                 {
                     if (tile.Action.Kind != "macro" || !string.Equals(tile.Action.Macro, oldName, StringComparison.Ordinal)) continue;
                     tile.Action.Macro = newName;
                     changed = true;
                 }
-                if (!changed) return false;
-                next = Current;
-            }
-            Save(next);
-            return true;
+                return changed;
+            });
         }
 
         /// <summary>The library macros the buttons run, each once, in the order the decks name them.</summary>
@@ -895,7 +1021,7 @@ namespace TrueReplayer.Services
                 Enabled = raw?.Enabled ?? true,
                 ShowInCaptures = raw?.ShowInCaptures ?? false,
                 BusyPress = Pick(raw?.BusyPress, BusyPresses, "swap"),
-                ToggleAllHotkey = Combo(raw?.ToggleAllHotkey),
+                ToggleAllHotkey = HotkeyCombo(raw?.ToggleAllHotkey),
             };
             if (raw?.Decks == null) return config;
             var ids = new HashSet<string>(StringComparer.Ordinal);
@@ -909,7 +1035,7 @@ namespace TrueReplayer.Services
                     Icon = NormalizeIcon(d.Icon),
                     On = d.On,
                     Mode = Pick(d.Mode, new[] { "fixed", "summon" }, "fixed"),
-                    Hotkey = Combo(d.Hotkey),
+                    Hotkey = HotkeyCombo(d.Hotkey),
                     ShowWhen = NormalizeShowWhen(d.ShowWhen),
                     Summon = new Summon
                     {
@@ -1096,6 +1222,58 @@ namespace TrueReplayer.Services
             return c.Length is > 0 and <= MaxComboLength ? c : null;
         }
 
+        /// <summary>
+        /// A hotkey as the hook composes it (InputHookManager: Win+Ctrl+Alt+Shift, then the key; a letter in capitals,
+        /// F1–F24 as such), so a hand edit or an imported "alt+ctrl+f9" matches the keys pressed (Fase 8). A combo with
+        /// a part of its own (a mouse button) stays as written. Null when it is not one.
+        /// </summary>
+        public static string? HotkeyCombo(string? combo)
+        {
+            var c = Combo(combo);
+            if (c == null) return null;
+            var (prefix, key) = TrueReplayer.Helpers.KeyUtils.SplitCombo(c);
+            if (key.Length == 0) return null;
+            bool win = false, ctrl = false, alt = false, shift = false;
+            foreach (var p in prefix)
+            {
+                switch (p.ToLowerInvariant())
+                {
+                    case "win": win = true; break;
+                    case "ctrl": ctrl = true; break;
+                    case "alt": alt = true; break;
+                    case "shift": shift = true; break;
+                    default: return c;
+                }
+            }
+            if (key.Length == 1) key = key.ToUpperInvariant();
+            else if (FKey.IsMatch(key)) key = "F" + key[1..];
+            var sb = new System.Text.StringBuilder();
+            if (win) sb.Append("Win+");
+            if (ctrl) sb.Append("Ctrl+");
+            if (alt) sb.Append("Alt+");
+            if (shift) sb.Append("Shift+");
+            return sb.Append(key).ToString();
+        }
+
+        private static readonly Regex FKey = new("^[fF]([1-9]|1[0-9]|2[0-4])$", RegexOptions.CultureInvariant);
+        private static readonly Regex HighFKey = new("^[fF](1[3-9]|2[0-4])$", RegexOptions.CultureInvariant);
+        private static readonly HashSet<string> QuietKeys = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "MediaPlayPause", "MediaNextTrack", "MediaPrevTrack", "MediaStop", "VolumeUp", "VolumeDown", "VolumeMute",
+        };
+
+        /// <summary>
+        /// A hotkey that takes no key from typing: one with Ctrl, Alt or Win, or a key nothing types with (F13–F24, the
+        /// media and volume keys) — the page's rule (deck.hotkey.bare). An imported deck keeps only such a hotkey (Fase 8).
+        /// </summary>
+        public static bool IsQuietHotkey(string combo)
+        {
+            var (prefix, key) = TrueReplayer.Helpers.KeyUtils.SplitCombo(combo);
+            if (prefix.Any(p => p.Equals("Ctrl", StringComparison.OrdinalIgnoreCase) || p.Equals("Alt", StringComparison.OrdinalIgnoreCase)
+                || p.Equals("Win", StringComparison.OrdinalIgnoreCase))) return true;
+            return prefix.Count == 0 && (QuietKeys.Contains(key) || HighFKey.IsMatch(key));
+        }
+
         private static string Clip(string s, int max) => s.Length > max ? s[..max] : s;
         private static string? ClipOrNull(string? s, int max) => string.IsNullOrEmpty(s) ? null : Clip(s, max);
 
@@ -1121,10 +1299,15 @@ namespace TrueReplayer.Services
 
         // ── The file ──────────────────────────────────────────────────────────────────────────────
 
-        private static string FailureDetail(Exception? ex, bool isParse) =>
-            ex == null ? S.DeckDetailUnknown
-            : isParse ? S.DeckDetailParse(ex.Message)
-            : S.DeckDetailRead(S.Reason(ex));
+        private static string FailureDetail(Exception? ex, LoadKind kind, int version) => kind switch
+        {
+            LoadKind.Missing => S.DeckDetailMissing,
+            LoadKind.Newer => S.DeckDetailNewer(version: S.Num(version)),
+            LoadKind.Shape => S.DeckDetailShape,
+            LoadKind.Parse when ex != null => S.DeckDetailParse(ex.Message),
+            LoadKind.Read when ex != null => S.DeckDetailRead(S.Reason(ex)),
+            _ => S.DeckDetailUnknown,
+        };
 
         // A Windows notification, the one surface this service reaches on its own (the window's ctor,
         // before WebView2). Its button opens the Deck page. Never lets a failure break a load.
@@ -1191,27 +1374,113 @@ namespace TrueReplayer.Services
             return false;
         }
 
-        private static Config? TryParse(string json, out Exception? error)
+        /// <summary>
+        /// A deck list read from text. Fase 8: it must be an object with its "decks" — "null", "{}" or another file's
+        /// JSON is not one, and taken as an empty list it would write that over the backup — and of a schema this TR3
+        /// knows: a newer one's fields would be lost on the next write.
+        /// </summary>
+        private static Config? TryParse(string json, out Exception? error, out LoadKind kind, out int version)
         {
             error = null;
-            try { return JsonSerializer.Deserialize<Config>(json, ReadOptions) ?? new Config(); }
-            catch (Exception ex) { error = ex; return null; }
-        }
-
-        private static bool TryLoadBackup(out Config config)
-        {
-            config = new Config();
+            kind = LoadKind.Parse;
+            version = 0;
             try
             {
-                var backupPath = SiblingPath(BackupFileName);
-                if (!File.Exists(backupPath) || !TryReadText(backupPath, out var text, out _)) return false;
-                var parsed = TryParse(text, out _);
-                if (parsed == null) return false;
-                config = Normalize(parsed);
-                DiagnosticLog.Info($"Deck recovered from {BackupFileName}: {config.Decks.Count} decks.");
+                using (var doc = JsonDocument.Parse(json))
+                {
+                    var root = doc.RootElement;
+                    if (root.ValueKind != JsonValueKind.Object || !TryProperty(root, "decks", out var decks) || decks.ValueKind != JsonValueKind.Array)
+                    {
+                        kind = LoadKind.Shape;
+                        return null;
+                    }
+                    if (TryProperty(root, "version", out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int n) && n > SchemaVersion)
+                    {
+                        kind = LoadKind.Newer;
+                        version = n;
+                        return null;
+                    }
+                }
+                return JsonSerializer.Deserialize<Config>(json, ReadOptions);
+            }
+            catch (Exception ex)
+            {
+                error = ex;
+                kind = LoadKind.Parse;
+                return null;
+            }
+        }
+
+        // As the reader takes the names (PropertyNameCaseInsensitive).
+        private static bool TryProperty(JsonElement obj, string name, out JsonElement value)
+        {
+            foreach (var p in obj.EnumerateObject())
+                if (string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)) { value = p.Value; return true; }
+            value = default;
+            return false;
+        }
+
+        /// <summary>A copy kept beside deck.json (the backup, the pending edits), read and checked; null when it is not a good one.</summary>
+        private static Config? ReadCopy(string fileName)
+        {
+            try
+            {
+                var path = SiblingPath(fileName);
+                if (!File.Exists(path) || !TryReadText(path, out var text, out _)) return null;
+                var parsed = TryParse(text, out _, out _, out _);
+                return parsed == null ? null : Normalize(parsed);
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// The last good copy of the decks: the backup, or the edits a quarantine kept in deck.pending.json when that file
+        /// is the newer one (Fase 8: they were lost at the next opening).
+        /// </summary>
+        private static bool TryLoadCopy(out Config config)
+        {
+            config = new Config();
+            DateTime When(string name) { try { return File.GetLastWriteTimeUtc(SiblingPath(name)); } catch { return DateTime.MinValue; } }
+            var candidates = new[] { PendingFileName, BackupFileName }.OrderByDescending(When);
+            foreach (var name in candidates)
+            {
+                var copy = ReadCopy(name);
+                if (copy == null || (name == PendingFileName && copy.Decks.Count == 0)) continue;
+                config = copy;
+                DiagnosticLog.Info($"Deck recovered from {name}: {copy.Decks.Count} decks.");
                 return true;
             }
-            catch { return false; }
+            return false;
+        }
+
+        /// <summary>
+        /// The pictures of Deck\images no deck shows any more (an icon changed, a deck deleted, a drop with no room),
+        /// cleaned once the decks are loaded (Fase 8). Never in quarantine: the unreadable file may name them. The ones
+        /// the copies name stay, and the new ones (an icon on its way to its button).
+        /// </summary>
+        private static void SweepImagesLater()
+        {
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    var dir = DeckImages.DirPath;
+                    if (!Directory.Exists(dir)) return;
+                    var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var config in new[] { _current, ReadCopy(BackupFileName), ReadCopy(PendingFileName) })
+                        if (config != null) foreach (var deck in config.Decks) keep.UnionWith(ImagesOf(deck));
+                    int removed = 0;
+                    foreach (var file in Directory.EnumerateFiles(dir, "img-*.png"))
+                    {
+                        if (keep.Contains(System.IO.Path.GetFileName(file))) continue;
+                        if (DateTime.UtcNow - File.GetLastWriteTimeUtc(file) < TimeSpan.FromMinutes(10)) continue;
+                        try { File.Delete(file); removed++; }
+                        catch (Exception ex) { DiagnosticLog.Warn($"Deck: {System.IO.Path.GetFileName(file)} could not be removed: {ex.GetType().Name}: {ex.Message}"); }
+                    }
+                    if (removed > 0) DiagnosticLog.Info($"Deck: {removed} picture(s) no deck shows were removed from Deck\\images.");
+                }
+                catch (Exception ex) { DiagnosticLog.Warn($"Deck: the pictures could not be swept: {ex.GetType().Name}: {ex.Message}"); }
+            });
         }
 
         // Compares first: the folder is often cloud-synced, and rewriting the same bytes is an upload for nothing.

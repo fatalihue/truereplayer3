@@ -67,12 +67,18 @@ export default {
       one: '{{n}} deck imported.',
       other: '{{n}} decks imported.',
     },
-    hotkeyDropped: 'Its hotkey was already in use here, so it came without one.',
+    hotkeyDropped: 'The hotkey of {{deck}} was already in use here, so it came without one.',
+    hotkeyBare: 'The hotkey of {{deck}} had no Ctrl, Alt or Win, so it came without one.',   // Fase 8
     missingMacros: {
-      one: '{{n}} macro its buttons run is not in this library.',
-      other: '{{n}} macros its buttons run are not in this library.',
+      one: '{{n}} macro the buttons run is not in this library.',
+      other: '{{n}} macros the buttons run are not in this library.',
     },
     full: 'The Deck already holds {{max}} decks.',
+    // Fase 8: room for some of the file's decks only (the first ones come in). total = the file's decks.
+    room: {
+      one: 'Only the first of the {{total}} decks comes in: the Deck holds {{max}}.',
+      other: 'Only the first {{n}} of the {{total}} decks come in: the Deck holds {{max}}.',
+    },
     exampleAdded: '{{deck}} added: media keys, volume and a few Windows shortcuts.',
     // The warning before an import whose buttons open things or type texts (the security warning's idea).
     title: 'Import a deck',
@@ -93,6 +99,9 @@ export default {
       other: 'and {{n}} more',
     },
     missing: 'Not in this library, so their buttons will show a warning: {{names}}.',
+    // Fase 8: the hotkeys the decks bring (list = "Ctrl+Alt+D for Geral and …").
+    hotkeys: 'Hotkeys that come with it: {{list}}.',
+    hotkeyOf: '{{key}} for {{deck}}',
     confirm: 'Import',
   },
 
@@ -151,6 +160,13 @@ export default {
     labelFolder: '{{deck}}, folder {{folder}}',
     tile: '{{label}}, place {{n}}',
     tileNoLabel: 'Button in place {{n}}',
+    // Fase 8: what the face shows of the button's state, read after its name. name = the line above.
+    withState: '{{name}}, {{state}}',
+    stateMissing: 'its macro does not exist',
+    stateRunning: 'running',
+    stateRecording: 'recording',
+    stateOn: 'on',
+    stateOff: 'off',
     empty: 'Empty place {{n}}',
     emptyTip: 'Add a button',
     back: '{{>engine-deck.back}}',
@@ -208,6 +224,7 @@ export default {
     moveTo: 'Move to',
     delete: 'Delete button',
     deleted: '{{label}} deleted',
+    deletedUnnamed: 'Button deleted',   // a button with no label of its own nor a default one
     noRoom: 'This grid has no free place for a copy.',
     pageFull: 'Page {{n}} has no free place.',
     wherePage: '{{deck}} · page {{page}} · place {{n}}',
@@ -223,6 +240,7 @@ export default {
     swap: 'Change',
     openEditor: 'Open in the editor',
     recordNew: 'Record a new one',
+    recordBusy: 'Not while TR3 records, plays or is in Clicker mode.',
     newName: '{{deck}} {{n}}',  // a macro gravada para um botão: "Geral 3"
     folder: 'In {{folder}}',
     steps: { zero: 'No steps', one: '{{count}} step', other: '{{count}} steps' },
@@ -322,6 +340,7 @@ export default {
     icon: 'Icon',
     chooseIcon: 'Choose an icon',
     iconDefault: 'The action\'s icon',
+    macroEmoji: 'The macro\'s emoji',   // a macro button with no icon of its own shows its macro's emoji
     lucide: 'Icon from the list',
     emoji: 'Emoji',
     image: 'Picture',                        // a program's icon, a picture file or a cut of the screen
@@ -414,7 +433,7 @@ export default {
     toggleAll: 'Show and hide every deck',
     toggleAllHint: 'Hides the fixed decks for now, and brings them back.',
     busy: 'A macro button with another macro running',
-    busyOptions: { swap: 'Swap', stop: 'Stop', ignore: 'Wait' },
+    busyOptions: { swap: 'Swap', stop: 'Stop', ignore: 'Ignore' },   // ignore: nothing runs (the tip of the press says so)
     captures: 'Show in screen captures',
     capturesOff: 'Off: the decks stay out of screenshots, recordings and streams, and out of what Wait Image and Screen Text read.',
     capturesOn: 'On: the decks show in captures; while the app reads the screen, they move out of the way.',
@@ -437,7 +456,7 @@ export default {
     takenAll: 'the hotkey of every deck',
     takenClickerStart: 'the Clicker\'s start hotkey',
     takenClickerPause: 'the Clicker\'s pause hotkey',
-    bare: 'Without Ctrl, Alt, Shift or Win, {{key}} stops typing everywhere while the Deck is on.',
+    bare: 'Without Ctrl, Alt or Win, {{key}} stops reaching every other app while the Deck is on.',
   },
 
   // A seção "Deck" nas configurações da macro.

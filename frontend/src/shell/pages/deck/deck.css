@@ -28,7 +28,12 @@
 }
 .dk-decks .lib-header { gap: 0.25rem; }
 .dk-decks .lib-title { flex: 1; }
-.dk-gear[aria-pressed='true'] { background: color-mix(in srgb, var(--color-accent) 12%, transparent) !important; color: var(--color-text-primary); }
+/* Pressed: the 12 % wash and the 40 % border of the accent, two channels (the guidelines' on state). */
+.dk-gear[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent) !important;
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent) !important;
+  color: var(--color-text-primary);
+}
 .dk-master {
   display: flex;
   align-items: center;
@@ -86,7 +91,9 @@
 }
 .dk-avatar-icon { width: 0.9375rem; height: 0.9375rem; }
 .dk-avatar-emoji { font-size: 1rem; line-height: 1; }
-.dk-deck-row[data-off] .dk-avatar, .dk-deck-row[data-off] .dk-deck-text { opacity: 0.5; }
+/* A deck off: its avatar dims and its line says so; the text keeps its ink, so "Off" still reads (Fase 8). */
+.dk-deck-row[data-off] .dk-avatar { opacity: 0.5; }
+.dk-deck-row[data-off] .dk-deck-name { color: var(--color-text-secondary); }
 .dk-deck-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .dk-deck-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dk-deck-row[aria-current='true'] .dk-deck-name { font-weight: 600; }
@@ -152,6 +159,7 @@
 }
 .dk-pages { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; }
 .dk-page { min-width: 1.75rem; justify-content: center; font-variant-numeric: tabular-nums; }
+.dk-page[data-drop] { outline: 2px dashed var(--color-accent-solid); outline-offset: 2px; }   /* a button dragged over it */
 .dk-page-add { min-width: 1.75rem; justify-content: center; }
 .dk-page-add svg { width: 0.75rem; height: 0.75rem; }
 .dk-page-add:disabled { opacity: 0.5; cursor: default; }
@@ -177,7 +185,7 @@
   background: var(--color-bg-surface);
   box-shadow: var(--shadow-overlay);
 }
-.dk-deck[data-off] { opacity: 0.55; }
+.dk-deck[data-off] { opacity: 0.7; }
 .dk-deck-head { display: flex; align-items: center; gap: 0.5rem; height: 22px; padding: 0 8px; color: var(--color-text-primary); font-size: 11px; font-weight: 600; }
 .dk-deck-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dk-dots { display: flex; gap: 4px; }
@@ -198,20 +206,21 @@
   cursor: pointer;
   touch-action: none;
 }
-.dk-tile { background: var(--color-bg-card); transition: transform 0.08s ease-out; }
+.dk-tile { background: var(--color-bg-card); }
+html[data-animations='true'] .dk-tile { transition: transform 0.08s ease-out; }
 .dk-tile:hover { border-color: var(--color-border-strong); }
 .dk-tile:active:not([data-back]) { transform: scale(0.97); }
 .dk-slot { display: grid; place-items: center; background: transparent; }
 .dk-slot-plus { width: 1rem; height: 1rem; color: var(--color-text-tertiary); opacity: 0; }
 .dk-slot:hover .dk-slot-plus, .dk-slot:focus-visible .dk-slot-plus, .dk-slot[aria-pressed='true'] .dk-slot-plus { opacity: 1; }
 .dk-slot:hover { border-color: var(--color-border-strong); }
-.dk-tile[aria-pressed='true'], .dk-slot[aria-pressed='true'] { outline: 2px solid var(--color-accent-solid); outline-offset: 2px; }
+/* The place chosen: its border in the accent, 2 px, inside. The focus: the ring outside it. Both can show at once. */
+.dk-tile[aria-pressed='true'], .dk-slot[aria-pressed='true'] { border-color: var(--color-accent-solid); box-shadow: inset 0 0 0 1px var(--color-accent-solid); }
 .dk-tile:focus-visible, .dk-slot:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 2px; }
 .dk-tile[data-dragging] { opacity: 0.4; }
 .dk-tile[data-drop], .dk-slot[data-drop] { outline: 2px dashed var(--color-accent-solid); outline-offset: 2px; }
 .dk-tile[data-unset] { border-style: dashed; }
 .dk-tile[data-back] { cursor: pointer; }
-:root[data-animations='off'] .dk-tile { transition: none; }
 
 /* The face: the icon at 11/64 of the side, 26/64 wide; the label from 42/64, one line. */
 .dk-icon {
@@ -326,7 +335,7 @@
   border-radius: 4px;
   background: var(--color-bg-surface);
   color: var(--color-text-primary);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   line-height: 1;
 }
@@ -498,7 +507,7 @@
 .dk-picker-source:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: -1px; }
 .dk-picker .rm-hint { margin: 0; }
 /* The warning before an import (Fase 7, DeckImport.tsx): the file, what its buttons open and type, the macros it lacks. */
-.dk-import { display: flex; flex-direction: column; gap: 0.75rem; padding: 1rem; }
+.dk-import { display: flex; flex: 1; flex-direction: column; gap: 0.75rem; min-height: 0; overflow-y: auto; padding: 1rem; }
 .dk-import-file { display: flex; align-items: center; gap: 0.5rem; min-width: 0; font-size: var(--text-minor); }
 .dk-import-file svg { width: 0.75rem; height: 0.75rem; flex: none; color: var(--color-text-tertiary); }
 .dk-import-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--color-text-secondary); }
@@ -508,10 +517,11 @@
 .dk-import-list { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
 .dk-import-title { font-size: var(--text-minor); font-weight: 600; color: var(--color-text-primary); }
 .dk-import-list ul { display: flex; flex-direction: column; gap: 0.25rem; margin: 0; padding: 0; list-style: none; }
-.dk-import-list li { display: flex; align-items: center; gap: 0.5rem; min-width: 0; font-size: var(--text-minor); line-height: 1.125rem; }
-.dk-import-list li svg { width: 0.75rem; height: 0.75rem; flex: none; color: var(--color-text-tertiary); }
+.dk-import-list li { display: flex; align-items: flex-start; gap: 0.5rem; min-width: 0; font-size: var(--text-minor); line-height: 1.125rem; }
+.dk-import-list li svg { width: 0.75rem; height: 0.75rem; flex: none; margin-top: 0.1875rem; color: var(--color-text-tertiary); }
 .dk-import-label { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-secondary); }
-.dk-import-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); color: var(--color-text-primary); }
+.dk-import-value { flex: 1; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; font-family: var(--font-mono); color: var(--color-text-primary); }
+.dk-import-args { display: block; color: var(--color-text-secondary); }
 .dk-import-more { font-size: var(--text-caption); color: var(--color-text-tertiary); }
 .dk-import-note { margin: 0; font-size: var(--text-minor); line-height: 1.125rem; color: var(--color-text-tertiary); }
 .dk-empty-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.5rem; margin-top: 0.75rem; }

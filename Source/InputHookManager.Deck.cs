@@ -196,12 +196,50 @@ namespace TrueReplayer
                 _deckRecSkip &= ~bit;
                 return true;
             }
+            // A mark its release never cleared (a gate up between them) goes with the next press of that button (Fase 8).
+            _deckRecSkip &= ~bit;
             var hits = _deckHits;
-            if (hits.Hwnds.Length == 0) return false;
+            if (hits.Hwnds.Length == 0 && hits.Menus.Length == 0) return false;
             if (hits.Pass && !DeckPhysical(m.flags, m.dwExtraInfo)) return false;
-            if (DeckAt(hits, m.pt.x, m.pt.y) < 0) return false;
+            // A deck's menu is the deck's too (Fase 8): its item, recorded, would be clicked in whatever app is there on replay.
+            if (DeckAt(hits, m.pt.x, m.pt.y) < 0 && !OnDeckMenu(hits, m.pt.x, m.pt.y)) return false;
             _deckRecSkip |= bit;
             return true;
+        }
+
+        private static bool OnDeckMenu(DeckHits hits, int x, int y)
+        {
+            foreach (var r in hits.Menus) if (r.Contains(x, y)) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// The mouse's hook died, or the session went away and came back (Fase 8): a press a deck took has no release to come
+        /// this way any more. The deck lets go of it now, and nothing is left owed, left out of a recording, or said to be on
+        /// a deck. Hook thread.
+        /// </summary>
+        private static void DeckForgetMouse()
+        {
+            var mailbox = _deckHits.Mailbox;
+            for (int b = 0; b < 2; b++)
+            {
+                if (_deckOwed[b] == IntPtr.Zero) continue;
+                if (mailbox != IntPtr.Zero && DeckNative.GetCursorPos(out var p))
+                    DeckNative.PostMessageW(mailbox, WM_DECK_BUTTON + (uint)(b * 2 + 1), _deckOwed[b], DeckPoint(p.X, p.Y));
+                _deckOwed[b] = IntPtr.Zero;
+            }
+            _deckOwedAny = false;
+            _deckRecSkip = 0;
+            _deckMoveOn = false;
+        }
+
+        /// <summary>The keyboard's share (Fase 8): no key is owed, and a summoned deck closes — its keys' releases are gone.</summary>
+        private static void DeckForgetKeys()
+        {
+            Array.Clear(_deckKeyOwed);
+            _deckKeysOwed = 0;
+            _deckTestMods.Clear();
+            if (_summonOpen != null) CloseDeckSummon("session");
         }
 
         /// <summary>
@@ -251,9 +289,31 @@ namespace TrueReplayer
         internal sealed record DeckSummonKey(string DeckId, bool Hold);
 
         private static volatile IReadOnlyDictionary<string, DeckSummonKey> _deckSummons = new Dictionary<string, DeckSummonKey>(StringComparer.Ordinal);
+        // The keys the summon hotkeys end on, by VK (Fase 8): any other key is let go at once, without composing its combo.
+        // A hotkey whose key has no VK of its own here (a media key's name) makes every key composed, as before.
+        private static volatile bool[] _deckSummonVks = new bool[256];
+        private static volatile bool _deckSummonAnyKey;
 
         /// <summary>The summon hotkeys (DeckService, at every load and save), swapped whole.</summary>
-        internal static void SetDeckSummons(IReadOnlyDictionary<string, DeckSummonKey> map) => _deckSummons = map;
+        internal static void SetDeckSummons(IReadOnlyDictionary<string, DeckSummonKey> map)
+        {
+            var vks = new bool[256];
+            bool any = false;
+            foreach (var combo in map.Keys)
+            {
+                var (_, key) = KeyUtils.SplitCombo(combo);
+                // Only a key whose name the layout never changes (a letter, a digit, F1–F24, a named key), and that comes back
+                // to the same name from its VK — the hook's own naming. A symbol's name follows the layout: with one, every
+                // key is composed, as before.
+                bool symbol = key.Length == 1 && !char.IsLetterOrDigit(key[0]);
+                if (!symbol && key.Length > 0 && KeyUtils.TryResolveVirtualKeyCode(key, out ushort vk) && vk is > 0 and < 256
+                    && string.Equals(GetKeyName(vk), key, StringComparison.OrdinalIgnoreCase)) vks[vk] = true;
+                else any = true;
+            }
+            _deckSummonVks = vks;
+            _deckSummonAnyKey = any;
+            _deckSummons = map;
+        }
 
         // The hook thread's own: the deck summoned (null: none), and the hotkey's key while it is held (its release
         // picks, for a deck that shows while the hotkey is held).
@@ -356,8 +416,10 @@ namespace TrueReplayer
             // The app's hotkey being typed into its capture box: no deck is called, nothing is read.
             if (CaptureHotkeyMode) return false;
 
-            // A deck edited on screen, or a deck's menu open (Fase 6): Esc is theirs — the menu closes, or the edit ends.
-            if (_deckEscWanted && vk == 0x1B && _summonOpen == null)
+            // A deck edited on screen, or a deck's menu open (Fase 6): Esc is theirs — the menu closes, or the edit ends. Fase 8:
+            // not while the app's own window is in front (a picker, a dialog of the page), a capture overlay is open (its Esc
+            // cancels it), or the app's gates are up.
+            if (_deckEscWanted && vk == 0x1B && _summonOpen == null && !SuppressAllHotkeys && !DeckHost.OverlayOpen && !DeckOwnWindowInFront())
             {
                 OweDeckKey(vk);
                 var mailbox = _deckHits.Mailbox;
@@ -373,6 +435,9 @@ namespace TrueReplayer
                 if (IsDeckPickKey(vk))
                 {
                     OweDeckKey(vk);
+                    // Alt or Win held with the pick (Fase 8): the pick is swallowed, so Windows would see them alone when they
+                    // come up, and open the app's menu or Start.
+                    if (ShouldCancelMenuFor(ComposeDeckKey(vk))) InjectMenuCancelKey();
                     if (vk == 0x1B) CloseDeckSummon("Esc");
                     else DeckHost.SummonKey(vk);
                     return true;
@@ -390,10 +455,15 @@ namespace TrueReplayer
             }
 
             if (_deckSummons.Count == 0 || IsDeckModifier(vk)) return false;
+            if (combo == null && !_deckSummonAnyKey && !_deckSummonVks[vk]) return false;
             combo ??= ComposeDeckKey(vk);
             if (!_deckSummons.TryGetValue(combo, out var summon)) return false;
             // The gates of the app's hotkeys: a dialog of the app's up, a recording's gate, the general pause.
             if (SuppressAllHotkeys || IgnoreProfileHotkeys || !UserProfile.Current.ProfileKeyEnabled) return false;
+            // A key Windows already holds down (Fase 8): this is the auto-repeat of a press that went through raw while a gate
+            // was up — taken now, its release would be swallowed and the app keep the key down. (A low-level hook reads the
+            // key state as it was before this event; the Teclado's rule.)
+            if (NativeMethods.GetAsyncKeyState(vk) < 0) return false;
             OweDeckKey(vk);
             _summonOpen = summon.DeckId;
             _summonHold = summon.Hold;
@@ -426,6 +496,15 @@ namespace TrueReplayer
         internal const uint WM_DECK_ESCAPE = DeckNative.WM_APP + 8, WM_DECK_MENU_OUT = DeckNative.WM_APP + 9;
 
         private static volatile bool _deckEscWanted;
+
+        // Is a window of this app in front (its page, a dialog of it)? Asked for an Esc only.
+        private static bool DeckOwnWindowInFront()
+        {
+            var front = NativeMethods.GetForegroundWindow();
+            if (front == IntPtr.Zero) return false;
+            NativeMethods.GetWindowThreadProcessId(front, out uint pid);
+            return pid == (uint)Environment.ProcessId;
+        }
 
         /// <summary>The Deck's thread: a deck is edited on screen, or a menu is open (Esc is theirs), or neither.</summary>
         internal static void SetDeckEscape(bool wanted) => _deckEscWanted = wanted;

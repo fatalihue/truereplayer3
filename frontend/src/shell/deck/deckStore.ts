@@ -8,7 +8,7 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 import { useBridge } from '../../bridge/BridgeContext';
-import type { DeckConfig, DeckImportPreview, DeckMacroReport, DeckState, OutgoingMessage } from '../../bridge/messageTypes';
+import type { DeckConfig, DeckImportPreview, DeckMacroReport, DeckState, IncomingMessage, OutgoingMessage } from '../../bridge/messageTypes';
 
 export interface DeckStoreState {
   /** The engine's config (deck:state). */
@@ -26,6 +26,8 @@ export interface DeckStoreState {
   editing: string | null;
   /** A .trdeck whose Open and Text buttons wait to be seen before it comes in (Fase 7), or null. */
   importAsk: DeckImportPreview | null;
+  /** deck.json could not be written (Fase 8): the engine's sentence, or null. The decks hold for this session only. */
+  saveFailed: string | null;
 }
 
 export const EMPTY_DECK_CONFIG: DeckConfig = { version: 1, enabled: true, showInCaptures: false, busyPress: 'swap', decks: [] };
@@ -40,6 +42,7 @@ export const useDeck = create<DeckStoreState>(() => ({
   macros: {},
   editing: null,
   importAsk: null,
+  saveFailed: null,
 }));
 
 /** A deck edited on screen, or none (the engine answers with deck:editing). */
@@ -69,36 +72,61 @@ function hearPreview(preview: DeckImportPreview) {
   else postToEngine({ type: 'deck:importConfirm', payload: { token: preview.token } });
 }
 
+// The bridge's send and one subscription, kept for the app's whole life once a Deck screen needed them (Fase 8):
+// an Undo clicked after leaving the page, or a link made after it ("Record a new one" lands on Macros), still
+// reaches the engine, and the store keeps following it — an edit made on a deck on screen included.
 let send: ((message: OutgoingMessage) => void) | null = null;
-let mounts = 0;
+let listening = false;
 
-/** A message to the engine, through the bridge the Deck's screens mounted (deckEdit's edits go out by it). */
+// Every deck:save carries a number, and the engine's deck:state echoes it (Fase 8). The answer to an older save,
+// coming while a newer one is on its way, would put the page back to before the newer edit — and the next edit,
+// made from there, would drop it: such an answer is taken for its report only.
+let saveSeq = 0;
+let ackedSeq = 0;
+let lastSaveAt = 0;
+
+/** A message to the engine, through the bridge the Deck's screens brought (deckEdit's edits go out by it). */
 export const postToEngine = (message: OutgoingMessage) => send?.(message);
 
+/** The whole config to the engine (deckEdit.commit), numbered. */
+export function saveConfig(config: DeckConfig) {
+  saveSeq++;
+  lastSaveAt = performance.now();
+  postToEngine({ type: 'deck:save', payload: { config, seq: saveSeq } });
+}
+
+function hear(message: IncomingMessage) {
+  if (message.type === 'deck:state') receive(message.payload);
+  // None edited comes without the field (the bridge leaves nulls out).
+  else if (message.type === 'deck:editing') useDeck.setState({ editing: message.payload.deckId ?? null });
+  else if (message.type === 'deck:importPreview') hearPreview(message.payload);
+}
+
 /**
- * Mounted by each screen that shows decks: keeps the bridge's send for the edits, takes deck:state into
- * the store, and asks for it once at mount — the engine does not push it with the opening.
+ * Mounted by each screen that shows decks (the Deck page, the macro's Deck section): the first one starts the
+ * subscription, and the config is asked for (deck:get) until it has come — the engine does not push it with the
+ * opening, and pushes every change after it.
  */
 export function useDeckSync() {
   const bridge = useBridge();
   useEffect(() => {
     send = bridge.send;
-    mounts++;
-    const off = bridge.subscribe((message) => {
-      if (message.type === 'deck:state') receive(message.payload);
-      // None edited comes without the field (the bridge leaves nulls out).
-      else if (message.type === 'deck:editing') useDeck.setState({ editing: message.payload.deckId ?? null });
-      else if (message.type === 'deck:importPreview') hearPreview(message.payload);
-    });
-    bridge.send({ type: 'deck:get', payload: {} });
-    return () => {
-      off();
-      if (--mounts === 0) send = null;
-    };
+    if (!listening) {
+      listening = true;
+      bridge.subscribe(hear);
+    }
+    if (!useDeck.getState().loaded) bridge.send({ type: 'deck:get', payload: {} });
   }, [bridge]);
 }
 
 function receive(state: DeckState) {
+  if (typeof state.seq === 'number') ackedSeq = Math.max(ackedSeq, state.seq);
+  // A newer save is on its way (for a few seconds at most: an answer that never came does not hold the page).
+  const behind = ackedSeq < saveSeq && performance.now() - lastSaveAt < 3000;
+  if (behind) {
+    useDeck.setState({ macros: state.macros ?? useDeck.getState().macros });
+    return;
+  }
   const s = useDeck.getState();
   useDeck.setState({
     config: state.config ?? EMPTY_DECK_CONFIG,
@@ -108,5 +136,6 @@ function receive(state: DeckState) {
     loadFailureDetail: state.loadFailureDetail ?? null,
     pendingFile: state.pendingFile || s.pendingFile,
     macros: state.macros ?? {},
+    saveFailed: state.saveFailed ?? null,
   });
 }

@@ -24,18 +24,18 @@ import { Menu, type MenuEntry } from '../../Menu';
 import { anchorBelow, type MenuAnchor } from '../../menuAnchor';
 import { Popover } from '../../Popover';
 import { whenOpen } from '../../recordNew';
-import { useApp, useShell } from '../../store';
+import { useApp } from '../../store';
 import { openPage } from '../../ui';
 import {
   addFolder, deckById, deleteTile, duplicateTile, moveTileToPage, patchTile, setEnabled, setGeneral, setTile, updateDeck,
 } from '../../deck/deckEdit';
 import {
-  ACTION_KINDS, DECK_COMMANDS, DECK_LIMITS, defaultIconName, isBackSlot, SPECIAL_KEYS, tilesOf, type ActionKind, type DeckView,
+  ACTION_KINDS, DECK_COMMANDS, DECK_LIMITS, defaultIconName, isBackSlot, macrosNamed, SPECIAL_KEYS, tilesOf, type ActionKind, type DeckView,
 } from '../../deck/deckModel';
 import { postToEngine, useDeck } from '../../deck/deckStore';
-import { askSettings, pickSlot, showGeneral, showView, useDeckUi, useFocusAsk } from '../../deck/deckUi';
+import { askSettings, goToTile, pickSlot, showGeneral, showView, useDeckUi, useFocusAsk } from '../../deck/deckUi';
 import { hotkeysOf } from '../remaps/remapModel';
-import { closeSlot, defaultLabel, IconGlyph, labelOf, TileIcon, useShownDeck, useShownView, viewKey } from './deckShared';
+import { closeSlot, defaultLabel, focusLater, focusPlace, IconGlyph, labelOf, TileIcon, useShownDeck, useShownView, viewKey } from './deckShared';
 
 // The icon set of the picker: a chunk of its own, brought when the picker is first pointed at (rule 6).
 const loadIconSet = () => import('../../deck/deckIconSet');
@@ -77,22 +77,30 @@ function whereOf(deck: DeckDeck, view: DeckView, slot: number): string {
 
 /**
  * The arrows in a group of radios, as the Teclado's functions: they move to the next option that is not
- * disabled, round, and choose it; Home and End go to the ends.
+ * disabled, round, and choose it; Home and End go to the ends. Where choosing costs something — a button's
+ * kind starts its action over — `choose` is false: the arrows only move, and Enter or Space choose (Fase 8).
+ * `cols` makes the group a grid (the nine anchors): up and down move a row.
  */
-function radioKeys(e: ReactKeyboardEvent<HTMLDivElement>) {
+function radioKeys(e: ReactKeyboardEvent<HTMLDivElement>, choose = true, cols = 0) {
   const items = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]:not(:disabled)'));
   if (items.length === 0) return;
   const at = Math.max(0, items.indexOf(document.activeElement as HTMLButtonElement));
+  const n = items.length;
   const next = e.key === 'Home' ? 0
-    : e.key === 'End' ? items.length - 1
-    : e.key === 'ArrowDown' || e.key === 'ArrowRight' ? (at + 1) % items.length
-    : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? (at - 1 + items.length) % items.length
+    : e.key === 'End' ? n - 1
+    : cols && e.key === 'ArrowDown' ? (at + cols) % n
+    : cols && e.key === 'ArrowUp' ? (at - cols + n) % n
+    : e.key === 'ArrowDown' || e.key === 'ArrowRight' ? (at + 1) % n
+    : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? (at - 1 + n) % n
     : null;
   if (next === null) return;
   e.preventDefault();
   items[next].focus();
-  items[next].click();
+  if (choose) items[next].click();
 }
+
+// The kind just chosen on an empty place: the button's panel that takes its place puts the focus back on it (Fase 8).
+let focusKind: ActionKind | null = null;
 
 /** The action a kind starts with: a button still being set up does nothing until it names what it does. */
 function startAction(kind: ActionKind, deck: DeckDeck): DeckAction {
@@ -111,11 +119,22 @@ function whyNot(kind: ActionKind, view: DeckView): string | null {
   return kind === 'folder' && view.kind === 'folder' ? t('deck.folder.inside') : null;
 }
 
-/** The kinds, as a group of radios with the icon of each (the Teclado's functions). */
+/**
+ * The kinds, as a group of radios with the icon of each (the Teclado's functions). Choosing a kind starts the
+ * button's action over, so the arrows only move here, and Enter or Space choose.
+ */
 function KindList({ value, view, onPick }: { value: ActionKind | null; view: DeckView; onPick: (kind: ActionKind) => void }) {
   const first = value ?? ACTION_KINDS[0];
+  const ref = useRef<HTMLDivElement>(null);
+  // Chosen on an empty place, the panel was another one: the focus comes back to the kind (a Macro's picker
+  // takes it itself, being what comes next).
+  useEffect(() => {
+    if (!focusKind || focusKind !== value) return;
+    if (focusKind !== 'macro') ref.current?.querySelector<HTMLElement>(`[data-kind="${focusKind}"]`)?.focus();
+    focusKind = null;
+  }, [value]);
   return (
-    <div className="dk-kinds" role="radiogroup" aria-label={t('deck.panel.does')} onKeyDown={radioKeys}>
+    <div ref={ref} className="dk-kinds" role="radiogroup" aria-label={t('deck.panel.does')} onKeyDown={(e) => radioKeys(e, false)}>
       {ACTION_KINDS.map((k) => {
         const Icon = KIND_ICON[k];
         const off = whyNot(k, view);
@@ -136,6 +155,7 @@ function KindList({ value, view, onPick }: { value: ActionKind | null; view: Dec
 
 function NewButtonPanel({ deck, view, slot }: { deck: DeckDeck; view: DeckView; slot: number }) {
   const pick = (kind: ActionKind) => {
+    focusKind = kind;
     const action = startAction(kind, deck);
     // A Folder with no folder yet makes the first one, named as the deck's next.
     if (kind === 'folder' && action.kind === 'none') {
@@ -204,24 +224,32 @@ function ButtonPanel({ deck, view, tile }: { deck: DeckDeck; view: DeckView; til
     patch({ action: startAction(k, deck) });
   };
   const label = labelOf(tile, deck);
+  // Each of these closes or changes the panel the ⋯ was in: the focus goes to the place in the drawing (Fase 8).
   const remove = () => {
     const undo = deleteTile(deck.id, view, slot);
-    pickSlot(null);
-    showToast(t('deck.panel.deleted', { label: label || t('deck.panel.thisButton') }), {
+    closeSlot();
+    showToast(label ? t('deck.panel.deleted', { label }) : t('deck.panel.deletedUnnamed'), {
       type: 'success', duration: 10000, action: { label: t('common.actions.undo'), onClick: undo },
     });
   };
   const duplicate = () => {
     const at = duplicateTile(deck.id, view, slot);
     if (at === null) showToast(t('deck.panel.noRoom'), { type: 'info', duration: 6000 });
-    else pickSlot(at);
+    else {
+      pickSlot(at);
+      focusPlace(at);
+    }
   };
   const otherPages: MenuEntry[] = deck.pages.map((_, i) => ({
     label: t('deck.bar.page', { n: i + 1 }),
     disabled: view.kind === 'page' && view.index === i,
     onSelect: () => {
-      if (moveTileToPage(deck.id, view, slot, i)) showView({ kind: 'page', index: i });
-      else showToast(t('deck.panel.pageFull', { n: i + 1 }), { type: 'info', duration: 6000 });
+      const at = moveTileToPage(deck.id, view, slot, i);
+      if (at >= 0) {
+        // The button goes on being the one chosen, on the page it went to.
+        goToTile(deck.id, { kind: 'page', index: i }, at);
+        focusPlace(at);
+      } else showToast(t('deck.panel.pageFull', { n: i + 1 }), { type: 'info', duration: 6000 });
     },
   }));
   return (
@@ -266,25 +294,13 @@ function ButtonPanel({ deck, view, tile }: { deck: DeckDeck; view: DeckView; til
 
 interface OptionsProps { deck: DeckDeck; view: DeckView; tile: DeckTile; setAction: (a: Partial<DeckAction>) => void }
 
-/** Runs `then` once the library has the macro (a name the engine refuses never comes): at most a minute. */
-function whenInLibrary(name: string, then: () => void) {
-  const has = (profiles: { name: string }[]) => profiles.some(p => p.name === name);
-  if (has(useShell.getState().app.profiles)) { then(); return; }
-  let timer = 0;
-  const stop = useShell.subscribe((s) => {
-    if (!has(s.app.profiles)) return;
-    stop();
-    clearTimeout(timer);
-    then();
-  });
-  timer = window.setTimeout(stop, 60000);
-}
-
 /** Macro: a macro of TR3's library, the way to TR3's editor, and a new one recorded for this button. */
-function MacroOptions({ deck, view, tile, setAction }: OptionsProps) {
+function MacroOptions({ deck, tile, setAction }: OptionsProps) {
   const profiles = useApp(a => a.profiles);
   const order = useApp(a => a.profileOrder);
   const busy = useDeck(s => s.config.busyPress);
+  // A recording can start only with TR3 at rest and out of Clicker mode: otherwise "Record a new one" waits.
+  const canRecord = useApp(a => a.status === 'ready' && !a.settings.useCursorClick);
   const name = tile.action.macro ?? null;
   const missing = useDeck(s => (name ? s.macros[name]?.found === false : false));
   const { send } = useBridge();
@@ -308,21 +324,14 @@ function MacroOptions({ deck, view, tile, setAction }: OptionsProps) {
     send({ type: 'profile:open', payload: { name: chosen.name } });
     openPage('macros');
   };
-  // A new macro for this button: created in the library, linked here, and open in the editor recording
-  // from its first step (the Teclado's "Record a new one"). In Clicker mode the engine refuses a recording,
-  // so the macro only opens.
+  // A new macro for this button: linked here at once (the button shows it missing for the moment it takes to be
+  // made — the link goes out while this page is still here to send it), created in the library, and open in the
+  // editor recording from its first step (the Teclado's "Record a new one").
   const recordNew = () => {
-    const app = useShell.getState().app;
     const base = t('deck.macro.newName', { deck: deck.name, n: tile.slot + 1 }).replace(/[\\/:*?"<>|]/g, '').replace(/[. ]+$/, '').trim();
-    const macro = freeName(base || deck.name, names);
-    const where = { deck: deck.id, view, slot: tile.slot };
-    whenInLibrary(macro, () => {
-      const now = deckById(where.deck);
-      const cur = now && tilesOf(now, where.view).find(x => x.slot === where.slot);
-      if (cur && cur.action.kind === 'macro') patchTile(where.deck, where.view, where.slot, { action: { kind: 'macro', macro } });
-    });
-    if (app.status === 'ready' && !app.settings.useCursorClick)
-      whenOpen(macro, true, () => send({ type: 'recording:toggle', payload: { insertIndex: 0 } }));
+    const macro = freeName(base || deck.name, [...names, ...macrosNamed(useDeck.getState().config)]);
+    setAction({ macro });
+    whenOpen(macro, true, () => send({ type: 'recording:toggle', payload: { insertIndex: 0 } }));
     send({ type: 'profile:create', payload: { name: macro } });
     openPage('macros');
   };
@@ -353,7 +362,7 @@ function MacroOptions({ deck, view, tile, setAction }: OptionsProps) {
       {missing && name && <p className="rm-msg" data-tone="warn">{t('deck.macro.missing', { name })}</p>}
       <div className="insp-line">
         <button type="button" className="insp-button" disabled={!chosen} onClick={openInEditor}>{t('deck.macro.openEditor')}</button>
-        <button type="button" className="insp-button" onClick={recordNew}>
+        <button type="button" className="insp-button" disabled={!canRecord} data-tip={canRecord ? undefined : t('deck.macro.recordBusy')} onClick={recordNew}>
           <span className="dk-rec" aria-hidden="true" />
           {t('deck.macro.recordNew')}
         </button>
@@ -491,7 +500,8 @@ function OpenOptions({ deck, view, tile, setAction }: OptionsProps) {
     <section ref={ref} className="rm-sec" aria-label={t('deck.open.label')}>
       <span className="rm-label">{t('deck.open.label')}</span>
       <div className="insp-line">
-        <DraftField stepId={id} field="target" label={t('deck.open.label')} kind="mono" empty="clear" maxLength={DECK_LIMITS.target}
+        {/* parse: a mono field sends nothing for an empty box, and an emptied target or argument must go (Fase 8). */}
+        <DraftField stepId={id} field="target" label={t('deck.open.label')} kind="mono" empty="clear" maxLength={DECK_LIMITS.target} parse={(s) => s.trim()}
           placeholder={t('deck.open.placeholder')} stored={tile.action.target ?? ''} onApply={(target) => setAction({ target: target.trim() || undefined })} />
         <button type="button" className="insp-button" disabled={browse.waiting} data-tip={t('deck.open.browseTip')}
           onClick={() => browse.ask(requestId => tools.pickFile({ requestId, kind: 'executable' }))}>
@@ -500,7 +510,7 @@ function OpenOptions({ deck, view, tile, setAction }: OptionsProps) {
         </button>
       </div>
       <span className="dk-field-label">{t('deck.open.args')}</span>
-      <DraftField stepId={id} field="args" label={t('deck.open.args')} kind="mono" empty="clear" maxLength={DECK_LIMITS.args}
+      <DraftField stepId={id} field="args" label={t('deck.open.args')} kind="mono" empty="clear" maxLength={DECK_LIMITS.args} parse={(s) => s.trim()}
         placeholder={t('deck.open.argsPlaceholder')} stored={tile.action.args ?? ''} onApply={(args) => setAction({ args: args.trim() || undefined })} />
       <div className="insp-row">
         <Switch label={t('deck.open.focus')} checked={!!tile.action.focus} onChange={(focus) => setAction({ focus: focus || undefined })} />
@@ -590,7 +600,11 @@ function LookSection({ deck, view, tile, patch }: { deck: DeckDeck; view: DeckVi
     type: 'deck:iconFrom',
     payload: { deckId: deck.id, folder: view.kind === 'folder' ? view.id : null, page: view.kind === 'page' ? view.index : 0, slot: tile.slot, source },
   });
-  const iconName = !tile.icon ? t('deck.look.iconDefault')
+  // A macro button with no icon of its own shows the macro's emoji (DeckWindow.DrawIcon): the panel says so, and a
+  // colour does not show over it (Fase 8).
+  const macro = tile.action.kind === 'macro' && !tile.icon ? tile.action.macro ?? null : null;
+  const macroEmoji = useApp(a => (macro ? a.profiles.find(p => p.name === macro)?.iconEmoji || null : null));
+  const iconName = !tile.icon ? (macroEmoji ? t('deck.look.macroEmoji') : t('deck.look.iconDefault'))
     : emoji ? t('deck.look.emoji') : tile.icon.kind === 'image' ? t('deck.look.image') : t('deck.look.lucide');
   return (
     <section className="rm-sec" aria-label={t('deck.look.label')}>
@@ -608,7 +622,9 @@ function LookSection({ deck, view, tile, patch }: { deck: DeckDeck; view: DeckVi
             if (picker) { setPicker(null); return; }
             openPicker(e.currentTarget, e.detail === 0);
           }}>
-          {emoji ? <span className="dk-emoji-small">{tile.icon?.value}</span> : <IconGlyph icon={tile.icon} fallback={defaultIconName(tile.action)} />}
+          {emoji ? <span className="dk-emoji-small">{tile.icon?.value}</span>
+            : macroEmoji ? <span className="dk-emoji-small">{macroEmoji}</span>
+            : <IconGlyph icon={tile.icon} fallback={defaultIconName(tile.action)} />}
         </button>
         <span className="dk-icon-name">{iconName}</span>
         {tile.icon && <button type="button" className="insp-link" onClick={() => patch({ icon: undefined })}>{t('deck.look.useDefault')}</button>}
@@ -624,7 +640,7 @@ function LookSection({ deck, view, tile, patch }: { deck: DeckDeck; view: DeckVi
       <div className="insp-line">
         {tile.color && <button type="button" className="insp-link" onClick={() => patch({ color: undefined })}>{t('deck.look.noColor')}</button>}
       </div>
-      {tile.color && emoji && <p className="rm-hint">{t('deck.look.colorEmoji')}</p>}
+      {tile.color && (emoji || macroEmoji) && <p className="rm-hint">{t('deck.look.colorEmoji')}</p>}
     </section>
   );
 }
@@ -738,11 +754,15 @@ function DeckSettingsPanel({ deck }: { deck: DeckDeck }) {
   const [adding, setAdding] = useState<{ anchor: MenuAnchor; button: HTMLButtonElement } | null>(null);
   const [picker, setPicker] = useState<{ anchor: MenuAnchor; button: HTMLButtonElement; keyboard: boolean } | null>(null);
   const apps = deck.showWhen.apps;
+  // "With these apps" with no app yet stays a choice of the page (Fase 8): the engine keeps a deck with no app as
+  // "always" (DeckService.NormalizeShowWhen), so it is saved with the first app picked.
+  const [wantsApps, setWantsApps] = useState(false);
+  const when: 'always' | 'apps' = deck.showWhen.kind === 'apps' || wantsApps ? 'apps' : 'always';
   const opacities = tn('deck.settings.opacities');
   const sizes = tn('deck.settings.sizes');
   return (
     <aside className="rm-panel dk-panel" data-resting={!asked || undefined} aria-label={t('deck.settings.label', { deck: deck.name })}>
-      <PanelHead icon={<Settings />} title={deck.name} sub={t('deck.settings.sub')} onClose={() => askSettings(false)} narrowClose />
+      <PanelHead icon={<Settings />} title={deck.name} sub={t('deck.settings.sub')} onClose={() => { askSettings(false); focusLater('.dk-more'); }} narrowClose />
       <div className="rm-panel-body">
         <section className="rm-sec" aria-label={t('deck.settings.mode')}>
           <span className="rm-label">{t('deck.settings.mode')}</span>
@@ -776,10 +796,13 @@ function DeckSettingsPanel({ deck }: { deck: DeckDeck }) {
         ) : (
           <section className="rm-sec" aria-label={t('deck.settings.when')}>
             <span className="rm-label">{t('deck.settings.when')}</span>
-            <Segmented<'always' | 'apps'> label={t('deck.settings.when')} value={deck.showWhen.kind}
+            <Segmented<'always' | 'apps'> label={t('deck.settings.when')} value={when}
               options={[{ value: 'always', label: t('deck.settings.always') }, { value: 'apps', label: t('deck.settings.apps') }]}
-              onChange={(kind) => set({ showWhen: { ...deck.showWhen, kind } })} />
-            {deck.showWhen.kind === 'apps' && (
+              onChange={(kind) => {
+                setWantsApps(kind === 'apps');
+                if (kind === 'always' || apps.length > 0) set({ showWhen: { ...deck.showWhen, kind } });
+              }} />
+            {when === 'apps' && (
               <>
                 <div className="dk-apps">
                   {apps.map(exe => (
@@ -815,17 +838,18 @@ function DeckSettingsPanel({ deck }: { deck: DeckDeck }) {
         <section className="rm-sec" aria-label={t('deck.settings.grid')}>
           <span className="rm-label">{t('deck.settings.grid')}</span>
           <div className="dk-grid-fields">
-            <label className="dk-num">
-              <span>{t('deck.settings.cols')}</span>
+            {/* A div: the DraftField is a <label> of its own, and its label prop names it. */}
+            <div className="dk-num">
+              <span aria-hidden="true">{t('deck.settings.cols')}</span>
               <DraftField stepId={`deck:${deck.id}`} field="cols" label={t('deck.settings.cols')} kind="int" min={1} max={DECK_LIMITS.grid}
                 stored={String(deck.grid.cols)} onApply={(v) => set({ grid: { ...deck.grid, cols: Number(v) } })} />
-            </label>
+            </div>
             <span className="dk-times" aria-hidden="true">×</span>
-            <label className="dk-num">
-              <span>{t('deck.settings.rows')}</span>
+            <div className="dk-num">
+              <span aria-hidden="true">{t('deck.settings.rows')}</span>
               <DraftField stepId={`deck:${deck.id}`} field="rows" label={t('deck.settings.rows')} kind="int" min={1} max={DECK_LIMITS.grid}
                 stored={String(deck.grid.rows)} onApply={(v) => set({ grid: { ...deck.grid, rows: Number(v) } })} />
-            </label>
+            </div>
           </div>
           <span className="dk-field-label">{t('deck.settings.size')}</span>
           <Segmented<'s' | 'm' | 'l'> label={t('deck.settings.size')} value={deck.grid.size}
@@ -839,6 +863,7 @@ function DeckSettingsPanel({ deck }: { deck: DeckDeck }) {
           <span className="dk-field-label">{t('deck.settings.icon')}</span>
           <div className="dk-icon-row">
             <button type="button" className="dk-icon-pick" aria-label={t('deck.settings.icon')} aria-haspopup="dialog" aria-expanded={!!picker}
+              data-tip={t('deck.settings.icon')}
               onPointerEnter={() => { void preload(loadIconSet); }}
               onClick={(e) => {
                 if (picker) { setPicker(null); return; }
@@ -875,7 +900,8 @@ function DeckSettingsPanel({ deck }: { deck: DeckDeck }) {
         {!summon && (
           <section className="rm-sec" aria-label={t('deck.settings.place')}>
             <span className="rm-label">{t('deck.settings.place')}</span>
-            <div className="dk-anchors" role="radiogroup" aria-label={t('deck.settings.place')} onKeyDown={radioKeys}>
+            {/* A 3×3 grid: up and down move a row. */}
+            <div className="dk-anchors" role="radiogroup" aria-label={t('deck.settings.place')} onKeyDown={(e) => radioKeys(e, true, 3)}>
               {ANCHOR_GRID.map(a => (
                 <button key={a} type="button" role="radio" className="dk-anchor" aria-checked={deck.place.anchor === a}
                   aria-label={ANCHORS[a]} data-tip={ANCHORS[a]} tabIndex={deck.place.anchor === a ? 0 : -1}
@@ -958,7 +984,11 @@ function GeneralPanel() {
   const busy = tn('deck.general.busyOptions');
   return (
     <aside className="rm-panel dk-panel" aria-label={t('deck.general.label')}>
-      <PanelHead icon={<LayoutGrid />} title={t('deck.page')} sub={t('deck.general.sub')} onClose={() => showGeneral(false)} />
+      <PanelHead icon={<LayoutGrid />} title={t('deck.page')} sub={t('deck.general.sub')} onClose={() => {
+        showGeneral(false);
+        // The gear opened them: the focus goes back to it (Fase 8).
+        focusLater('.dk-gear');
+      }} />
       <div className="rm-panel-body">
         <section className="rm-sec" aria-label={t('deck.list.on')}>
           <SwitchRow label={t('deck.list.on')} hint={t('deck.general.onHint')} checked={config.enabled} onChange={setEnabled} />
@@ -1023,6 +1053,8 @@ function DeckHotkeyField({ value, label, except, onChange }: {
       if (NOT_A_KEY.has(key) || /^Mouse/i.test(key)) { setRefused(t('deck.hotkey.mouse')); return; }
       if (isPureModifier(combo)) { setHeld(combo); return; }
       stop();
+      // Esc alone gives the change up (Fase 8): as a hotkey it would take Esc from every app.
+      if (combo === 'Escape') { setRefused(null); return; }
       const l = latest.current;
       if (combo.toLowerCase() === l.value.toLowerCase()) { setRefused(null); return; }
       const taken = takenBy(combo, l);
@@ -1036,7 +1068,10 @@ function DeckHotkeyField({ value, label, except, onChange }: {
       capture.release(owner);
     };
   }, [listening, capture, owner]);
-  const bare = !!value && splitCombo(value).length === 1 && /^[A-Z0-9]$/.test(value);
+  // Without Ctrl, Alt or Win the key is taken from every app (a letter, Space, Enter, an arrow, F5, Shift+A…);
+  // F13–F24 and the media and volume keys are the ones nothing types with (Fase 8).
+  const bare = !!value && !splitCombo(value).some(p => /^(Ctrl|Alt|Win|AltGr|LeftCtrl|RightCtrl|LeftAlt|RightAlt)$/i.test(p))
+    && !/^F(1[3-9]|2[0-4])$/i.test(value) && !SPECIAL_NAMES.has(value);
   return (
     <>
       <div className="dk-hk" data-listening={listening || undefined}>

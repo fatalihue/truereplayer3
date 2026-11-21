@@ -722,6 +722,8 @@ namespace TrueReplayer
             _onDeckMacros = () => { if (!_disposed && _deckWatched) PushDeckState(); };
             DeckService.MacrosChanged += _onDeckMacros;
             DeckService.EditedOnScreen += _onDeckMacros;
+            // Fase 8: a write of deck.json that failed (or works again) is said on the page.
+            DeckService.SaveStatusChanged += _onDeckMacros;
 
             // Watch for browser extension events
             if (browserBridge != null)
@@ -2655,12 +2657,15 @@ namespace TrueReplayer
         private void HandleDeckSave(JsonElement payload)
         {
             _deckWatched = true;
+            // Fase 8: the number of the page's save, echoed in the answer. An answer to an older save that comes while a
+            // newer one is on its way is taken by the page for its report only (it would undo the newer edit).
+            int? seq = payload.TryGetProperty("seq", out var sEl) && sEl.ValueKind == JsonValueKind.Number && sEl.TryGetInt32(out var s) ? s : null;
             if (payload.TryGetProperty("config", out var cEl) && cEl.ValueKind == JsonValueKind.Object
                 && DeckService.FromJson(cEl) is { } config)
             {
                 DeckService.Save(config);
             }
-            PushDeckState();
+            PushDeckState(seq);
         }
 
         // The explicit "replace the unreadable deck.json" the quarantine waits for (the page's notice).
@@ -2670,7 +2675,7 @@ namespace TrueReplayer
             PushDeckState();
         }
 
-        internal void PushDeckState() => SendMessage("deck:state", DeckService.StatePayload());
+        internal void PushDeckState(int? seq = null) => SendMessage("deck:state", DeckService.StatePayload(seq));
 
         // ── Deck, Fase 7: a deck to a .trdeck and back, and the example ──
 
@@ -2737,9 +2742,14 @@ namespace TrueReplayer
                     decks = parsed.Decks.Select(d =>
                     {
                         var tiles = DeckService.TilesOf(d).ToList();
+                        // Fase 8: the hotkey that would come with it (one that takes no key from typing and that nothing
+                        // here has), shown in the warning; a hotkey that stays behind is said by the toast.
+                        string? hotkey = DeckService.HotkeyCombo(d.Hotkey);
+                        if (hotkey != null && (!DeckService.IsQuietHotkey(hotkey) || !DeckImportHotkeyFree(hotkey))) hotkey = null;
                         return new
                         {
                             name = d.Name,
+                            hotkey,
                             buttons = tiles.Count(t => t.Action.Kind != "none"),
                             pictures = DeckService.ImagesOf(d).Count(n => parsed.Images.ContainsKey(n)),
                             opens = tiles.Where(t => t.Action.Kind == "open" && !string.IsNullOrWhiteSpace(t.Action.Target))
@@ -2760,26 +2770,44 @@ namespace TrueReplayer
         }
 
         /// <summary>The page said yes to the preview: the decks come in after the others (DeckService.AddDecks), with their pictures.</summary>
-        private void HandleDeckImportConfirm(JsonElement payload)
+        private async void HandleDeckImportConfirm(JsonElement payload)
         {
-            int token = payload.TryGetProperty("token", out var el) && el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var t) ? t : -1;
-            var parsed = _deckImport;
-            if (parsed == null || token != _deckImportToken) return;
-            _deckImport = null;
-            // The macros each deck's buttons run that this library does not have: their buttons show the warning.
-            var missing = parsed.Decks.Select(d => DeckService.TilesOf(d)
-                .Where(t => t.Action.Kind == "macro" && t.Action.Macro != null && !DeckService.IsMacroFound(t.Action.Macro))
-                .Select(t => t.Action.Macro!).Distinct(StringComparer.Ordinal).Count()).ToList();
-            var added = DeckService.AddDecks(parsed.Decks,
-                name => parsed.Images.TryGetValue(name, out var bytes) ? DeckFile.KeepImage(bytes) : null,
-                DeckImportHotkeyFree, out int left);
-            DiagnosticLog.Info($"Deck: {parsed.FileName} imported: {string.Join(", ", added.Select(a => $"'{a.Name}'"))}{(left > 0 ? $"; {left} left out (full)" : "")}");
-            SendMessage("deck:imported", new
+            try
             {
-                decks = added.Select((a, i) => new { id = a.Id, name = a.Name, hotkeyDropped = a.HotkeyDropped, missingMacros = missing[i] }).ToArray(),
-                left,
-                example = false,
-            });
+                int token = payload.TryGetProperty("token", out var el) && el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var t) ? t : -1;
+                var parsed = _deckImport;
+                if (parsed == null || token != _deckImportToken) return;
+                _deckImport = null;
+                // The macros each deck's buttons run that this library does not have: their buttons show the warning.
+                var missing = parsed.Decks.Select(d => DeckService.TilesOf(d)
+                    .Where(t => t.Action.Kind == "macro" && t.Action.Macro != null && !DeckService.IsMacroFound(t.Action.Macro))
+                    .Select(t => t.Action.Macro!).Distinct(StringComparer.Ordinal).Count()).ToList();
+                // The pictures first, off this thread and off the Deck's lock (Fase 8): each picture of the file once,
+                // however many buttons show it, and only those of the decks there is room for.
+                int room = Math.Max(0, DeckService.MaxDecks - DeckService.Current.Decks.Count);
+                var wanted = parsed.Decks.Take(room).SelectMany(DeckService.ImagesOf).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                var kept = await Task.Run(() =>
+                {
+                    var map = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var name in wanted)
+                        map[name] = parsed.Images.TryGetValue(name, out var bytes) ? DeckFile.KeepImage(bytes) : null;
+                    return map;
+                });
+                var added = DeckService.AddDecks(parsed.Decks, name => kept.GetValueOrDefault(name), DeckImportHotkeyFree, out int left);
+                DiagnosticLog.Info($"Deck: {parsed.FileName} imported: {string.Join(", ", added.Select(a => $"'{a.Name}'"))}{(left > 0 ? $"; {left} left out (full)" : "")}");
+                SendMessage("deck:imported", new
+                {
+                    decks = added.Select((a, i) => new { id = a.Id, name = a.Name, hotkeyDropped = a.HotkeyDropped, hotkeyBare = a.HotkeyBare, missingMacros = missing[i] }).ToArray(),
+                    left,
+                    example = false,
+                });
+            }
+            catch (Exception ex)
+            {
+                // async void: nothing may escape.
+                DiagnosticLog.Error("Deck: the import failed", ex);
+                SendMessage("alert:show", new { message = S.DeckFileUnreadable(S.Reason(ex)), type = "error" });
+            }
         }
 
         /// <summary>"Start with the example" (the empty Deck page, the list's ⋯): the example deck, in the app's language.</summary>
@@ -2892,55 +2920,73 @@ namespace TrueReplayer
                 "deck icon capture overlay", overlayHost.IsAlive, overlayHost.RequestCancel);
             if (interaction == null)
             {
-                ReportOverlayRefused(S.BridgeCaptureWhatButtonIcon);
+                // Said where it was asked (Fase 8): in the page's alert, or over the button on the deck.
+                if (fromPage) ReportOverlayRefused(S.BridgeCaptureWhatButtonIcon);
+                else fail(S.BridgeAlertCaptureStuck(what: S.BridgeCaptureWhatButtonIcon, holder: Services.InteractionScope.Describe(Services.InteractionScope.ExclusiveOwner)));
                 return null;
             }
             var mainHwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
             bool putAway = NativeMethods.IsWindowVisible(mainHwnd) && !NativeMethods.IsIconic(mainHwnd);
-            // From a deck, TR3 is behind the app in front: it goes and comes back without taking the foreground.
-            int restore = fromPage ? NativeMethods.SW_RESTORE : NativeMethods.SW_SHOWNOACTIVATE;
+            // From a deck, TR3 is behind the app in front: it goes and comes back without taking the foreground, and as it
+            // was (Fase 8: hidden and shown — a restore from minimized without activating lost the maximized state).
+            int away = fromPage ? NativeMethods.SW_MINIMIZE : NativeMethods.SW_HIDE;
+            int restore = fromPage ? NativeMethods.SW_RESTORE : NativeMethods.SW_SHOWNA;
+            bool back = !putAway;
+            // Once, whatever happens below (Fase 8: an overlay that failed left TR3 away).
+            void BringBack()
+            {
+                if (back) return;
+                back = true;
+                dispatcherQueue.TryEnqueue(() => NativeMethods.ShowWindow(mainHwnd, restore));
+            }
             if (putAway)
             {
-                NativeMethods.ShowWindow(mainHwnd, fromPage ? NativeMethods.SW_MINIMIZE : NativeMethods.SW_SHOWMINNOACTIVE);
+                NativeMethods.ShowWindow(mainHwnd, away);
                 await Task.Delay(400);
             }
-            System.Drawing.Bitmap screenshot;
             try
             {
-                screenshot = ScreenCaptureService.CaptureVirtualScreen();
-            }
-            catch (Exception ex)
-            {
-                DiagnosticLog.Error("Deck icon capture screenshot failed", ex);
-                if (putAway) NativeMethods.ShowWindow(mainHwnd, restore);
-                fail(S.DeckTipImageFailed);
-                return null;
-            }
-            try
-            {
-                string deckName = DeckService.Current.Decks.FirstOrDefault(d => d.Id == r.DeckId)?.Name ?? "";
-                var selection = await overlayHost.RunAsync(() => new ScreenOverlayForm(screenshot,
-                    bar: new CaptureBar(S.BridgeCaptureTitleButtonIcon, S.BridgeCaptureForDeck(name: deckName), S.BridgeCaptureHintButtonIcon)));
-                if (putAway) dispatcherQueue.TryEnqueue(() => NativeMethods.ShowWindow(mainHwnd, restore));
-                if (selection?.CroppedImage == null) return null;
+                System.Drawing.Bitmap screenshot;
                 try
                 {
-                    return DeckImages.Save(selection.CroppedImage);
+                    screenshot = ScreenCaptureService.CaptureVirtualScreen();
                 }
                 catch (Exception ex)
                 {
-                    DiagnosticLog.Error($"Deck icon capture save failed ['{r.DeckId}' slot {r.Slot}]", ex);
+                    DiagnosticLog.Error("Deck icon capture screenshot failed", ex);
                     fail(S.DeckTipImageFailed);
                     return null;
                 }
+                try
+                {
+                    string deckName = DeckService.Current.Decks.FirstOrDefault(d => d.Id == r.DeckId)?.Name ?? "";
+                    var selection = await overlayHost.RunAsync(() => new ScreenOverlayForm(screenshot,
+                        bar: new CaptureBar(S.BridgeCaptureTitleButtonIcon, S.BridgeCaptureForDeck(name: deckName), S.BridgeCaptureHintButtonIcon)));
+                    BringBack();
+                    if (selection?.CroppedImage == null) return null;
+                    try
+                    {
+                        return DeckImages.Save(selection.CroppedImage);
+                    }
+                    catch (Exception ex)
+                    {
+                        DiagnosticLog.Error($"Deck icon capture save failed ['{r.DeckId}' slot {r.Slot}]", ex);
+                        fail(S.DeckTipImageFailed);
+                        return null;
+                    }
+                    finally
+                    {
+                        selection.CroppedImage.Dispose();
+                    }
+                }
                 finally
                 {
-                    selection.CroppedImage.Dispose();
+                    screenshot.Dispose();
                 }
             }
             finally
             {
-                screenshot.Dispose();
+                BringBack();
             }
         }
 
@@ -15918,7 +15964,7 @@ namespace TrueReplayer
                 if (_onBrowserConnectionChanged != null) browserBridge.ConnectionChanged -= _onBrowserConnectionChanged;
                 if (_onTecladoFront != null) TecladoFront.Changed -= _onTecladoFront;
                 if (_onTecladoMacros != null) TecladoService.MacrosChanged -= _onTecladoMacros;
-                if (_onDeckMacros != null) { DeckService.MacrosChanged -= _onDeckMacros; DeckService.EditedOnScreen -= _onDeckMacros; }
+                if (_onDeckMacros != null) { DeckService.MacrosChanged -= _onDeckMacros; DeckService.EditedOnScreen -= _onDeckMacros; DeckService.SaveStatusChanged -= _onDeckMacros; }
                 if (_onBrowserExtensionVersionMismatch != null) browserBridge.ExtensionVersionMismatch -= _onBrowserExtensionVersionMismatch;
                 if (_onBrowserElementClicked != null) browserBridge.ElementClicked -= _onBrowserElementClicked;
                 if (_onBrowserTypingCaptured != null) browserBridge.TypingCaptured -= _onBrowserTypingCaptured;

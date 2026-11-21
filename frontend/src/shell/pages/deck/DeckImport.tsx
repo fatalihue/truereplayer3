@@ -7,19 +7,23 @@ import type { LucideIcon } from 'lucide-react';
 import { AlertTriangle, ExternalLink, FolderOpen, Type } from 'lucide-react';
 import { DialogFooter, DialogShell } from '../../../components/common/DialogShell';
 import { fmtNum, LANG, t } from '../../../i18n';
+import { keycaps } from '../../library/model';
 import { DECK_LIMITS } from '../../deck/deckModel';
 import { answerImport, useDeck } from '../../deck/deckStore';
 
 /** What a list shows before "and N more": enough to judge the file, short enough to read. */
 const SHOWN = 6;
+/** The macros the library lacks, named before "and N more". */
+const MISSING_SHOWN = 8;
+/** How much of a text the list shows; a longer one shows whole in the tip (Fase 8: what it types is read first). */
+const TEXT_SHOWN = 400;
 
-/** A text on one line, the line breaks shown, cut at a readable length. */
-const oneLine = (text: string) => {
-  const flat = text.replace(/\r?\n/g, ' ⏎ ').replace(/\t/g, ' ⇥ ');
-  return flat.length > 120 ? flat.slice(0, 119) + '…' : flat;
-};
+/** A text with its line breaks and tabs shown as marks, as the keys it presses. */
+const marked = (text: string) => text.replace(/\r?\n/g, ' ⏎ ').replace(/\t/g, ' ⇥ ');
 
-function List({ title, icon: Icon, items }: { title: string; icon: LucideIcon; items: { label?: string; value: string }[] }) {
+interface Item { label?: string; value: string; args?: string; whole?: string }
+
+function List({ title, icon: Icon, items }: { title: string; icon: LucideIcon; items: Item[] }) {
   const rest = items.length - SHOWN;
   return (
     <div className="dk-import-list">
@@ -29,7 +33,11 @@ function List({ title, icon: Icon, items }: { title: string; icon: LucideIcon; i
           <li key={i}>
             <Icon aria-hidden="true" />
             {item.label && <span className="dk-import-label">{item.label}</span>}
-            <span className="dk-import-value">{item.value}</span>
+            {/* Whole, wrapped (Fase 8): the arguments of a program are what most needs reading. */}
+            <span className="dk-import-value" data-tip={item.whole}>
+              {item.value}
+              {item.args && <span className="dk-import-args">{item.args}</span>}
+            </span>
           </li>
         ))}
       </ul>
@@ -41,11 +49,21 @@ function List({ title, icon: Icon, items }: { title: string; icon: LucideIcon; i
 export function DeckImportDialog() {
   const ask = useDeck(s => s.importAsk);
   if (!ask) return null;
-  const opens = ask.decks.flatMap(d => d.opens).map(o => ({ label: o.label, value: o.args ? `${o.target} ${o.args}` : o.target }));
-  const texts = ask.decks.flatMap(d => d.texts).map(x => ({ label: x.label, value: oneLine(x.text) }));
+  const opens: Item[] = ask.decks.flatMap(d => d.opens).map(o => ({ label: o.label, value: o.target, args: o.args || undefined }));
+  const texts: Item[] = ask.decks.flatMap(d => d.texts).map((x) => {
+    const text = marked(x.text);
+    return text.length > TEXT_SHOWN ? { label: x.label, value: text.slice(0, TEXT_SHOWN - 1) + '…', whole: text } : { label: x.label, value: text };
+  });
   const missing = [...new Set(ask.decks.flatMap(d => d.missingMacros))];
+  const missingRest = missing.length - MISSING_SHOWN;
+  const missingNames = new Intl.ListFormat(LANG, { type: missingRest > 0 ? 'unit' : 'conjunction' }).format(missing.slice(0, MISSING_SHOWN))
+    + (missingRest > 0 ? ` ${t('deck.file.more', { count: missingRest, n: fmtNum(missingRest) })}` : '');
   const buttons = ask.decks.reduce((n, d) => n + d.buttons, 0);
   const full = ask.room <= 0;
+  // Room for some of the file's decks only: the first ones come in (DeckService.AddDecks), and it is said before.
+  const some = !full && ask.room < ask.decks.length;
+  // The hotkeys that come with them (Fase 8: a deck's hotkey takes its keys from every app).
+  const hotkeys = ask.decks.filter(d => d.hotkey).map(d => t('deck.file.hotkeyOf', { key: keycaps(d.hotkey!), deck: d.name }));
   const no = () => answerImport(false);
   // On the body, as the shell's dialogs (Overlays): inside the page, the shell's container query would hold the
   // fixed scrim in the page's own layer, under the deck drawn there.
@@ -54,6 +72,8 @@ export function DeckImportDialog() {
       icon={<AlertTriangle size={14} style={{ color: 'var(--color-warning-ink)' }} />}
       title={t('deck.file.title')}
       size="lg"
+      // Never past the window: the lists scroll, the footer stays (Fase 8).
+      cardClassName="max-h-[calc(90vh/var(--ui-zoom))]"
       onClose={no}
       // Read before going on: a stray click on the scrim does not dismiss it (Cancel or Esc do).
       closeOnBackdrop={false}
@@ -73,9 +93,17 @@ export function DeckImportDialog() {
           {texts.length > 0 && <List title={t('deck.file.texts')} icon={Type} items={texts} />}
         </div>
         {missing.length > 0 && (
-          <p className="dk-import-note">{t('deck.file.missing', { names: new Intl.ListFormat(LANG, { type: 'conjunction' }).format(missing) })}</p>
+          <p className="dk-import-note">{t('deck.file.missing', { names: missingNames })}</p>
+        )}
+        {hotkeys.length > 0 && (
+          <p className="dk-import-note">{t('deck.file.hotkeys', { list: new Intl.ListFormat(LANG, { type: 'conjunction' }).format(hotkeys) })}</p>
         )}
         {full && <p className="rm-msg" data-tone="warn">{t('deck.file.full', { max: DECK_LIMITS.decks })}</p>}
+        {some && (
+          <p className="rm-msg" data-tone="warn">
+            {t('deck.file.room', { count: ask.room, n: fmtNum(ask.room), total: fmtNum(ask.decks.length), max: DECK_LIMITS.decks })}
+          </p>
+        )}
       </div>
     </DialogShell>,
     document.body,

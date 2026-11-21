@@ -6,7 +6,7 @@ import {
   SkipBack, SkipForward, Square, TriangleAlert, Type, Volume1, Volume2, VolumeX, Zap, type LucideIcon,
 } from 'lucide-react';
 import type { DeckDeck, DeckIcon, DeckTile } from '../../../bridge/messageTypes';
-import { tn } from '../../../i18n';
+import { t, tn } from '../../../i18n';
 import { SWATCH_CHECK_INK } from '../../../themes';
 import { keycaps, lightSwatch } from '../../library/model';
 import { useMk } from '../../mk/mkStore';
@@ -32,11 +32,19 @@ export function useShownView(deck: DeckDeck | null): DeckView {
 /** The view as a key: a field typed in one grid's button never lands in another's. */
 export const viewKey = (view: DeckView) => (view.kind === 'page' ? `p${view.index}` : `f:${view.id}`);
 
+/** The focus to a control of the page once what an action drew is in (Fase 8): a place, the gear, the deck's ⋯. */
+export function focusLater(selector: string) {
+  setTimeout(() => document.querySelector<HTMLElement>(selector)?.focus({ preventScroll: true }), 0);
+}
+
+/** The focus to a place of the grid, once the grid drawn after an edit is in (Fase 8). */
+export const focusPlace = (slot: number) => focusLater(`.dk-grid [data-slot="${slot}"]`);
+
 /** The place chosen goes; the focus goes back to it in the grid. */
 export function closeSlot() {
   const slot = useDeckUi.getState().slot;
   pickSlot(null);
-  if (slot !== null) setTimeout(() => document.querySelector<HTMLElement>(`.dk-grid [data-slot="${slot}"]`)?.focus({ preventScroll: true }), 0);
+  if (slot !== null) focusPlace(slot);
 }
 
 /** A TR3 command's label under its icon, as the window writes it (engine-deck.command). */
@@ -144,6 +152,20 @@ export function TileFace({ tile, label }: { tile: DeckTile; label: string }) {
       {ring && <span className="dk-ring" data-ring={ring} aria-hidden="true" />}
     </>
   );
+}
+
+/** What a button's face shows of its state, in words (its accessible name, Fase 8); null when it shows none. */
+export function useTileStateText(tile: DeckTile): string | null {
+  const a = tile.action;
+  const macro = a.kind === 'macro' ? a.macro ?? null : null;
+  const missing = useDeck(s => (macro ? s.macros[macro]?.found === false : false));
+  const ring = useRing(tile);
+  const on = useSwitchState(tile);
+  if (missing) return t('deck.board.stateMissing');
+  if (ring === 'replay') return t('deck.board.stateRunning');
+  if (ring === 'record') return t('deck.board.stateRecording');
+  if (on !== null) return on ? t('deck.board.stateOn') : t('deck.board.stateOff');
+  return null;
 }
 
 /** The ring a button's state draws: a macro running (its own), the recording on Record, the Clicker clicking. */

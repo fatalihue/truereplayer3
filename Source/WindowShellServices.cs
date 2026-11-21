@@ -62,6 +62,10 @@ namespace TrueReplayer.Services
             // Deck (branch deck): the decks' windows and thread end before the CLR does, for the window
             // subclass's reason below — their WndProc is a managed thunk too.
             Guard("deck windows", DeckHost.Stop);
+            // Deck, Fase 8: a combo being sent ends before the process does (its keys would stay down).
+            Guard("deck work", () => DeckActions.Shutdown(400));
+            // Deck, Fase 8: deck.json is written off the edits' thread; what is still on its way goes in first.
+            Guard("deck file", () => DeckService.Flush(3000));
             // The original WndProc goes back before the process starts dying: with the subclass
             // left installed, the WM_DESTROY/WM_NCDESTROY still to come would re-enter a managed
             // thunk after Environment.Exit(0) has begun tearing the CLR down.

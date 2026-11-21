@@ -115,6 +115,10 @@ namespace TrueReplayer.Services
             _resizing = _tileDragging = false;
             _previewCols = _previewRows = -1;
             _tileFrom = _tileTarget = _pageTarget = -1;
+            // A press the edit was in the middle of (Esc, the page, Done) runs nothing on its release (Fase 8).
+            _pressed = -1;
+            _pressedControl = _pressedHeader = _dragArmed = _dragging = false;
+            if (DeckNative.GetCapture() == Hwnd) DeckNative.ReleaseCapture();
             if (on)
             {
                 _collapsedNow = _edgeHiddenNow = false;
@@ -160,6 +164,15 @@ namespace TrueReplayer.Services
         public void Update(DeckService.Deck deck, bool excludeFromCapture)
         {
             _deck = deck;
+            // No longer a deck the hotkey calls (Fase 8: turned fixed on the page): it takes the mouse again, at its own place.
+            if (!IsSummonDeck && (_mouseOff || _summonAt != null))
+            {
+                _mouseOff = false;
+                _summonAt = null;
+                ApplyClickThrough();
+            }
+            // The pictures it no longer shows go from the painter.
+            _painter.KeepImages(DeckService.ImagesOf(deck).Select(n => Path.Combine(DeckImages.DirPath, n)).ToHashSet(StringComparer.OrdinalIgnoreCase));
             if (_page >= deck.Pages.Count) _page = 0;
             if (_folder != null && !deck.Folders.Any(f => f.Id == _folder)) _folder = null;
             // A switch that changed while the mouse is away takes effect now; with the mouse on the deck, when it leaves.
@@ -190,12 +203,36 @@ namespace TrueReplayer.Services
                 StopTimers();
                 _inside = _tracking = _dragArmed = _dragging = false;
                 _hover = _pressed = _selected = -1;
+                // Nothing of a gesture is left for when it shows again (Fase 8): a press the hook brought, the corner, a
+                // button carried — a release still to come runs nothing, and the grid is the file's.
+                _routedPress = _resizing = _tileDragging = _pressedControl = _pressedHeader = false;
+                _tileFrom = _tileTarget = _pageTarget = -1;
+                _previewCols = _previewRows = -1;
+                _hiddenAt = Environment.TickCount64;
                 // Back at its pages the next time it shows.
                 _folder = null;
-                DeckHost.HideTip(this);
+                // A summoned deck's flash (why its pick did nothing) stays its time: the deck goes with the pick (Fase 8).
+                DeckHost.HideTip(this, keepFlash: IsSummonDeck);
+                if (DeckHost.HasMenu(this)) DeckHost.CloseMenus();
                 if (DeckNative.GetCapture() == Hwnd) DeckNative.ReleaseCapture();
                 DeckNative.ShowWindow(Hwnd, DeckNative.SW_HIDE);
             }
+        }
+
+        // When it last went from the screen (a summoned deck's tip after its pick, Fase 8).
+        private long _hiddenAt = long.MinValue / 2;
+
+        /// <summary>The icons drawn so far go (a new theme).</summary>
+        public void ForgetPictures() => _painter.ForgetPictures();
+
+        /// <summary>
+        /// Its menu closed (Fase 8): with the mouse gone meanwhile, the deck settles as it would have when the mouse left —
+        /// it stayed whole and opaque while the menu was open.
+        /// </summary>
+        public void MenuGone()
+        {
+            if (!_shown || !_inside) return;
+            if (!DeckNative.GetCursorPos(out var p) || !ScreenRect.Contains(p.X, p.Y)) OnLeave();
         }
 
         /// <summary>Back on top of other topmost windows (a game or a player that took the top meanwhile).</summary>
@@ -333,7 +370,8 @@ namespace TrueReplayer.Services
             if (!_shown) return;
             int slot = !_mouseOff && _hover >= 0 ? _hover : _selected;
             if (slot >= 0) Press(slot, closing: true);
-            DeckHost.CloseSummon("release", fromHook: false);
+            // The hook closed it already, when it saw the release (Fase 8: told again, it closed the next call of this deck).
+            DeckHost.CloseSummon("release", fromHook: true);
         }
 
         /// <summary>After the passthrough: the mouse left without a move of the window's own — it is a leave.</summary>
@@ -808,9 +846,10 @@ namespace TrueReplayer.Services
                     "VolumeUp" => S.DeckKeyNamesVolumeUp,
                     "VolumeDown" => S.DeckKeyNamesVolumeDown,
                     "VolumeMute" => S.DeckKeyNamesVolumeMute,
-                    _ => a.Combo,
+                    { Length: > 0 } combo => Keycaps(combo),
+                    _ => null,
                 },
-                "text" => a.Text is { Length: > 0 } s ? s.Replace('\n', ' ').Replace('\r', ' ') : null,
+                "text" => a.Text is { Length: > 0 } s ? LineBreaks.Replace(s, " ") : null,
                 "open" => a.Target is { } target ? OpenLabel(target) : null,
                 "folder" => _deck.Folders.FirstOrDefault(f => f.Id == a.Folder)?.Name,
                 "tr3" => a.Command switch
@@ -829,11 +868,44 @@ namespace TrueReplayer.Services
             };
         }
 
+        // Fase 8: the label the page writes for the same button, letter for letter (deckShared.defaultLabel).
+        private static readonly System.Text.RegularExpressions.Regex LineBreaks = new("[\r\n]+", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        /// <summary>
+        /// The keys as the page spells them (keyNames.ts, COMPACT_KEY): the way the physical keycap does — PgDn, Del,
+        /// Esc — the owner's rule of 05-09 for the whole app. The combo itself stays in the canonical names.
+        /// </summary>
+        private static readonly Dictionary<string, string> CompactKeys = new(StringComparer.Ordinal)
+        {
+            ["PageUp"] = "PgUp", ["Page Up"] = "PgUp", ["Prior"] = "PgUp",
+            ["PageDown"] = "PgDn", ["Page Down"] = "PgDn", ["Next"] = "PgDn",
+            ["ScrollLock"] = "ScrLk", ["Scroll Lock"] = "ScrLk",
+            ["CapsLock"] = "Caps", ["Caps Lock"] = "Caps",
+            ["NumLock"] = "NumLk", ["Num Lock"] = "NumLk",
+            ["PrintScreen"] = "PrtSc", ["Print Screen"] = "PrtSc",
+            ["Insert"] = "Ins",
+            ["Delete"] = "Del",
+            ["Escape"] = "Esc",
+        };
+
+        private static string Keycaps(string combo)
+        {
+            var (prefix, key) = TrueReplayer.Helpers.KeyUtils.SplitCombo(combo);
+            var parts = prefix.Select(p => CompactKeys.TryGetValue(p, out var c) ? c : p).ToList();
+            if (key.Length > 0) parts.Add(CompactKeys.TryGetValue(key, out var k) ? k : key);
+            return string.Join("+", parts);
+        }
+
+        /// <summary>An address by its host (and its port, as the page's URL.host); a path by its last name, without the extension.</summary>
         private static string OpenLabel(string target)
         {
-            if (Uri.TryCreate(target, UriKind.Absolute, out var uri) && (uri.Scheme == "http" || uri.Scheme == "https")) return uri.Host;
-            try { var name = Path.GetFileNameWithoutExtension(target.TrimEnd('\\', '/')); return name.Length > 0 ? name : target; }
-            catch { return target; }
+            if (Uri.TryCreate(target, UriKind.Absolute, out var uri) && (uri.Scheme == "http" || uri.Scheme == "https"))
+                return uri.IsDefaultPort ? uri.Host : $"{uri.Host}:{uri.Port}";
+            var trimmed = target.TrimEnd('\\', '/');
+            var file = trimmed[(Math.Max(trimmed.LastIndexOf('\\'), trimmed.LastIndexOf('/')) + 1)..];
+            int dot = file.LastIndexOf('.');
+            var name = dot > 0 ? file[..dot] : file;
+            return name.Length > 0 ? name : target;
         }
 
         private static bool LightSwatch(string hex)
@@ -874,9 +946,15 @@ namespace TrueReplayer.Services
         /// <summary>A press that did not do what its button says: the tip says why, for a moment, over that button.</summary>
         public void Flash(int slot, string message)
         {
-            if (!_shown) return;
+            // A summoned deck that went with its pick still says why over the button it was (Fase 8): the tip is a window of
+            // its own, and the deck's place is where it was.
+            if (!_shown && !(IsSummonDeck && Environment.TickCount64 - _hiddenAt < 3000))
+            {
+                DiagnosticLog.Info($"Deck: '{Id}' is not on screen: its tip does not show");
+                return;
+            }
             DeckNative.KillTimer(Hwnd, TimerTip);
-            DeckHost.ShowTip(this, message, TileScreenRect(slot), autoHideMs: 2600);
+            DeckHost.ShowTip(this, message, slot >= 0 ? TileScreenRect(slot) : ScreenRect, autoHideMs: 2600);
         }
 
         // ── The mouse ──
@@ -1035,7 +1113,12 @@ namespace TrueReplayer.Services
 
         private void OnLeave()
         {
+            // A deck off the screen has nothing to settle (Fase 8): the leave Windows sends a window hidden under the cursor
+            // took the tip a summoned deck's pick had just shown.
+            if (!_shown) return;
             if (_dragArmed || _dragging || _resizing || _tileDragging) return;
+            // Its menu open (Fase 8): the mouse went to the menu, and the deck stays as with the mouse on it (MenuGone).
+            if (DeckHost.HasMenu(this)) return;
             _inside = false;
             DeckNative.KillTimer(Hwnd, TimerTip);
             DeckHost.HideTip(this);
@@ -1211,7 +1294,8 @@ namespace TrueReplayer.Services
                 }
                 return;
             }
-            DeckHost.TileClick(Id, _folder ?? "page " + _page, slot, tile);
+            // A summoned deck's pick comes with its hotkey's keys maybe still down: what the button sends waits for them.
+            DeckHost.TileClick(Id, _folder ?? "page " + _page, slot, tile, IsSummonDeck ? _deck.Hotkey : null);
             if (IsSummonDeck && !closing && _deck.Summon.CloseAfterPick)
             {
                 DeckHost.CloseSummon("pick", fromHook: false);
@@ -1223,7 +1307,8 @@ namespace TrueReplayer.Services
         private void OnWheel(int delta)
         {
             int pages = _deck.Pages.Count;
-            if (pages <= 1 || _collapsedNow || _folder != null) return;
+            // Not while a button is carried, nor the corner (Fase 8: the drop moved the button of the page turned to).
+            if (pages <= 1 || _collapsedNow || _folder != null || _tileFrom >= 0 || _resizing) return;
             _page = (_page + (delta < 0 ? 1 : pages - 1)) % pages;
             Render();
             ArmTip();
@@ -1260,9 +1345,14 @@ namespace TrueReplayer.Services
         /// <summary>The corner dragged: the columns and rows the mouse reaches, the deck's top-left kept.</summary>
         private void ResizeTo(DeckNative.POINT cursor)
         {
-            float dx = (cursor.X - _x) / _scale, dy = (cursor.Y - _y) / _scale;
-            int cols = Math.Clamp((int)Math.Round((dx - 1 - Pad + Gap / 2f) / (Tile + Gap)), 1, DeckService.MaxGrid);
-            int rows = Math.Clamp((int)Math.Round((dy - 1 - HeaderDip - Pad + Gap / 2f) / (Tile + Gap)), 1, DeckService.MaxGrid);
+            // From the top-left the corner started at, and no more than fits from there to the work area's far edges (Fase 8:
+            // measured from where the layout had pushed the deck in, each move past the taskbar added a row, up to 8).
+            float dx = (cursor.X - _resizeLeft) / _scale, dy = (cursor.Y - _resizeTop) / _scale;
+            float roomW = (_work.Right - _resizeLeft) / _scale, roomH = (_work.Bottom - _resizeTop) / _scale;
+            int maxCols = Math.Clamp((int)Math.Floor((roomW - 2 - 2 * Pad + Gap) / (Tile + Gap)), 1, DeckService.MaxGrid);
+            int maxRows = Math.Clamp((int)Math.Floor((roomH - 2 - HeaderDip - 2 * Pad + Gap) / (Tile + Gap)), 1, DeckService.MaxGrid);
+            int cols = Math.Clamp((int)Math.Round((dx - 1 - Pad + Gap / 2f) / (Tile + Gap)), 1, maxCols);
+            int rows = Math.Clamp((int)Math.Round((dy - 1 - HeaderDip - Pad + Gap / 2f) / (Tile + Gap)), 1, maxRows);
             if (cols == _previewCols && rows == _previewRows) return;
             _previewCols = cols;
             _previewRows = rows;
@@ -1297,7 +1387,9 @@ namespace TrueReplayer.Services
                     uint n = DeckNative.DragQueryFileW(drop, i, buffer, (uint)buffer.Length);
                     if (n > 0) files.Add(new string(buffer, 0, (int)n));
                 }
-                if (files.Count > 0 && !_collapsedNow) DeckHost.DropFiles(this, files, HitTile(pt.X / _scale, pt.Y / _scale));
+                // On the pill, nothing has a place to land (Fase 8: it was dropped without a word): the tip says to open it.
+                if (files.Count > 0 && _collapsedNow) DeckHost.ShowTip(this, S.DeckTipDropOnPill, ScreenRect, autoHideMs: 2600);
+                else if (files.Count > 0) DeckHost.DropFiles(this, files, HitTile(pt.X / _scale, pt.Y / _scale));
             }
             catch (Exception ex) { DiagnosticLog.Warn($"Deck: a drop could not be read: {ex.GetType().Name}: {ex.Message}"); }
             finally { DeckNative.DragFinish(drop); }

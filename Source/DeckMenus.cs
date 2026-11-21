@@ -147,13 +147,16 @@ namespace TrueReplayer.Services
         /// <summary>A Folder button: a new folder of the deck ("Pasta", "Pasta 2"…), opened from this place.</summary>
         private static void NewFolderButton(DeckWindow window, int page, int slot)
         {
+            bool full = false;
             bool done = DeckService.EditDeck(window.Id, deck =>
             {
                 var tiles = DeckService.TilesAt(deck, null, page);
                 if (tiles == null) return false;
-                var folderId = DeckService.AddFolder(deck, S.DeckMenuFolderName);
-                if (folderId == null) return false;
                 var tile = tiles.FirstOrDefault(t => t.Slot == slot);
+                // Already a folder's button (Fase 8): it keeps its folder, and no other one is made out of sight.
+                if (tile?.Action is { Kind: "folder", Folder: { } open } && deck.Folders.Any(f => f.Id == open)) return false;
+                var folderId = DeckService.AddFolder(deck, S.DeckMenuFolderName);
+                if (folderId == null) { full = true; return false; }
                 if (tile == null)
                 {
                     tile = new DeckService.Tile { Slot = slot };
@@ -163,7 +166,7 @@ namespace TrueReplayer.Services
                 tile.Action = new DeckService.Action { Kind = "folder", Folder = folderId };
                 return true;
             });
-            if (!done) window.Flash(slot, S.DeckTipNoRoom);
+            if (!done && full) window.Flash(slot, S.DeckTipFoldersFull(max: S.Num(DeckService.MaxFolders)));
         }
     }
 }

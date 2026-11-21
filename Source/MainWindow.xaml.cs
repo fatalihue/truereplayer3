@@ -323,7 +323,7 @@ namespace TrueReplayer
                 // Fase 3: the TR3 switches a button shows (UpdateTrayIcon keeps them current), and a button
                 // pressed runs here, on this thread.
                 DeckHost.SetSwitches(deckSettings.UseCursorClick, deckSettings.ProfileKeyEnabled, deckSettings.AutomationEnabled, RemapService.Current.Enabled);
-                DeckHost.TileClicked += (deckId, slot, tile) => DispatcherQueue.TryEnqueue(() => RunDeckTile(deckId, slot, tile));
+                DeckHost.TileClicked += (deckId, slot, tile, held) => DispatcherQueue.TryEnqueue(() => RunDeckTile(deckId, slot, tile, held));
                 // Fase 6: what a deck's menu asks of the app (Record here, the Deck page at a button, a picture for
                 // one), here too; and the deck edited on screen, which the page's "Edit on screen" follows.
                 DeckHost.Requested += request => DispatcherQueue.TryEnqueue(() => OnDeckRequest(request));
@@ -2093,7 +2093,8 @@ namespace TrueReplayer
         /// TR3 commands run through the paths the tray and the hotkeys use; keys, texts and opening go to
         /// DeckActions. A folder never comes here: it opens on the deck itself.
         /// </summary>
-        private void RunDeckTile(string deckId, int slot, DeckService.Tile tile)
+        /// <param name="held">A summoned deck's hotkey, its keys maybe still down (Fase 8): what the button sends waits for them.</param>
+        private void RunDeckTile(string deckId, int slot, DeckService.Tile tile, string? held)
         {
             try
             {
@@ -2101,14 +2102,14 @@ namespace TrueReplayer
                 switch (a.Kind)
                 {
                     case "macro":
-                        if (a.Macro != null) RunMacroFromDeck(deckId, slot, tile, a.Macro);
+                        if (a.Macro != null) RunMacroFromDeck(deckId, slot, tile, a.Macro, held);
                         break;
                     case "keys":
-                        DeckActions.Keys(deckId, slot, tile);
+                        DeckActions.Keys(deckId, slot, tile, held);
                         break;
                     case "text":
-                        if (a.Send == "paste") DeckActions.Paste(a.Text ?? "", DispatcherQueue, () => triggerService?.NotifyAppClipboardActivity());
-                        else DeckActions.TypeText(a.Text ?? "");
+                        if (a.Send == "paste") DeckActions.Paste(deckId, slot, tile, a.Text ?? "", held, DispatcherQueue, () => triggerService?.NotifyAppClipboardActivity());
+                        else DeckActions.TypeText(a.Text ?? "", held);
                         break;
                     case "open":
                         DeckActions.Open(deckId, slot, tile);
@@ -2131,11 +2132,12 @@ namespace TrueReplayer
         /// and this one starts —, stop, or nothing. When it cannot start (Clicker mode, a recording, a dialog of TR3
         /// waiting, an unsaved macro open) the deck says why over the button.
         /// </summary>
-        private async void RunMacroFromDeck(string deckId, int slot, DeckService.Tile tile, string name)
+        private async void RunMacroFromDeck(string deckId, int slot, DeckService.Tile tile, string name, string? held)
         {
             try
             {
-                if (bridge == null) return;
+                // The decks show before the page is up (Fase 8): a press then is said, not lost.
+                if (bridge == null) { DeckHost.Flash(deckId, slot, S.DeckTipStarting); return; }
                 if (!DeckService.IsMacroFound(name)) { DeckHost.Flash(deckId, slot, S.DeckTipMissing(name: name)); return; }
                 if (mainController.IsRecording())
                 {
@@ -2176,8 +2178,10 @@ namespace TrueReplayer
                     if (mainController.IsReplayInProgress()) { DeckHost.Flash(deckId, slot, DeckBusyTip()); return; }
                 }
                 if (bridge.HasUnsavedActionWork && bridge.AutoSaveEnabled) await bridge.FlushAutoSaveAsync();
-                // A hotkey's combo left over from an earlier fire would hold the start until its keys are up (2 s at most).
-                InputHookManager.LastTriggerHotkey = null;
+                // The start waits for this combo's keys to be up (2 s at most), as with a hotkey. A summoned deck's own
+                // (Fase 8): picked with Ctrl still held, the macro would start with Ctrl down. Else none — a combo left over
+                // from an earlier fire would hold the start for nothing.
+                InputHookManager.LastTriggerHotkey = held;
                 DeckHost.MacroPressed(deckId, slot, name);
                 Services.DiagnosticLog.Info($"Deck: run '{name}'");
                 var result = await RunProfileTriggerAsync(name, forceInfiniteLoop: false, isWhilePressedHold: false, hotkeyKey: null, startOnly: true);
@@ -2253,32 +2257,71 @@ namespace TrueReplayer
         /// tray's "Record a new macro" does. The button shows the recording (its ring); pressed, it stops it.
         /// Refused, with the deck saying why, while TR3 records, runs or is in Clicker mode.
         /// </summary>
-        private void DeckRecordHere(DeckHost.DeckRequest r)
+        /// <remarks>
+        /// Fase 8: refused, as a macro button's press is, while a dialog of TR3 waits or the open macro has changes it
+        /// cannot save (the new macro would never be made); and a macro that never comes to the library (the page refused,
+        /// a name taken) gives the button back what it had, and the deck says so.
+        /// </remarks>
+        private async void DeckRecordHere(DeckHost.DeckRequest r)
         {
-            if (bridge == null) return;
-            if (mainController.IsRecording()) { DeckHost.Flash(r.DeckId, r.Slot, S.DeckTipRecording); return; }
-            if (bridge.UseCursorClick) { DeckHost.Flash(r.DeckId, r.Slot, S.DeckTipClicker); return; }
-            if (mainController.IsReplayInProgress()) { DeckHost.Flash(r.DeckId, r.Slot, DeckBusyTip()); return; }
-            var deck = DeckService.Current.Decks.FirstOrDefault(d => d.Id == r.DeckId);
-            if (deck == null) return;
-            string name = DeckService.FreeMacroName(n => S.DeckRecordName(deck: DeckService.MacroSafe(deck.Name), n: S.Num(n)));
-            bool linked = DeckService.EditDeck(r.DeckId, d =>
+            try
             {
-                var tiles = DeckService.TilesAt(d, r.Folder, r.Page);
-                if (tiles == null || r.Slot < 0 || r.Slot >= d.Grid.Cols * d.Grid.Rows || (r.Folder != null && r.Slot == 0)) return false;
-                var tile = tiles.FirstOrDefault(t => t.Slot == r.Slot);
-                if (tile == null)
+                if (bridge == null || !DeckService.LibraryKnown) { DeckHost.Flash(r.DeckId, r.Slot, S.DeckTipStarting); return; }
+                if (mainController.IsRecording()) { DeckHost.Flash(r.DeckId, r.Slot, S.DeckTipRecording); return; }
+                if (bridge.UseCursorClick) { DeckHost.Flash(r.DeckId, r.Slot, S.DeckTipClicker); return; }
+                if (mainController.IsReplayInProgress()) { DeckHost.Flash(r.DeckId, r.Slot, DeckBusyTip()); return; }
+                if (Services.AutomationGuard.BlockedReason() != null) { DeckHost.Flash(r.DeckId, r.Slot, S.DeckTipModal); return; }
+                if (bridge.HasUnsavedActionWork && bridge.AutoSaveEnabled) await bridge.FlushAutoSaveAsync();
+                if (bridge.HasUnsavedActionWork) { DeckHost.Flash(r.DeckId, r.Slot, S.DeckTipUnsaved); return; }
+                var deck = DeckService.Current.Decks.FirstOrDefault(d => d.Id == r.DeckId);
+                if (deck == null) return;
+                // What the place held: it gets it back if the macro never comes. The config is never changed in place, so
+                // this action stays as it was.
+                var before = DeckService.TilesAt(deck, r.Folder, r.Page)?.FirstOrDefault(t => t.Slot == r.Slot)?.Action;
+                string name = DeckService.FreeMacroName(n => S.DeckRecordName(deck: DeckService.MacroSafe(deck.Name), n: S.Num(n)));
+                // Linked now, so the button shows the recording from its first moment (its ring) and stops it when pressed.
+                bool linked = DeckService.EditDeck(r.DeckId, d =>
                 {
-                    tile = new DeckService.Tile { Slot = r.Slot };
-                    tiles.Add(tile);
-                    tiles.Sort((a, b) => a.Slot.CompareTo(b.Slot));
+                    var tiles = DeckService.TilesAt(d, r.Folder, r.Page);
+                    if (tiles == null || r.Slot < 0 || r.Slot >= d.Grid.Cols * d.Grid.Rows || (r.Folder != null && r.Slot == 0)) return false;
+                    var tile = tiles.FirstOrDefault(t => t.Slot == r.Slot);
+                    if (tile == null)
+                    {
+                        tile = new DeckService.Tile { Slot = r.Slot };
+                        tiles.Add(tile);
+                        tiles.Sort((a, b) => a.Slot.CompareTo(b.Slot));
+                    }
+                    tile.Action = new DeckService.Action { Kind = "macro", Macro = name };
+                    return true;
+                });
+                if (!linked) return;
+                Services.DiagnosticLog.Info($"Deck: record here → '{name}' ('{r.DeckId}' slot {r.Slot})");
+                bridge.SendMessage("tray:command", new { command = "recordNew", name });
+                // The page makes the macro and records into it; the list's load that follows brings it to the library.
+                for (int i = 0; i < 60; i++)
+                {
+                    await Task.Delay(200);
+                    if (DeckService.LibraryKnown && DeckService.IsMacroFound(name)) return;
                 }
-                tile.Action = new DeckService.Action { Kind = "macro", Macro = name };
-                return true;
-            });
-            if (!linked) return;
-            Services.DiagnosticLog.Info($"Deck: record here → '{name}' ('{r.DeckId}' slot {r.Slot})");
-            bridge.SendMessage("tray:command", new { command = "recordNew", name });
+                // Fase 8: it never came (the page refused, a dialog of TR3 in the way): the button goes back to what it was —
+                // while it still names this macro — and the deck says so.
+                bool undone = DeckService.EditDeck(r.DeckId, d =>
+                {
+                    var tiles = DeckService.TilesAt(d, r.Folder, r.Page);
+                    var tile = tiles?.FirstOrDefault(t => t.Slot == r.Slot);
+                    if (tiles == null || tile == null || tile.Action.Kind != "macro" || tile.Action.Macro != name) return false;
+                    if (before == null) tiles.Remove(tile);
+                    else tile.Action = before;
+                    return true;
+                });
+                Services.DiagnosticLog.Info($"Deck: record here — '{name}' never came to the library{(undone ? "; the button is back as it was" : "")}");
+                DeckHost.Flash(r.DeckId, r.Slot, S.DeckTipRecordFailed(name: name));
+            }
+            catch (Exception ex)
+            {
+                // async void: nothing may escape.
+                Services.DiagnosticLog.Error($"Deck: record here on '{r.DeckId}' slot {r.Slot} failed", ex);
+            }
         }
 
         /// <summary>A TR3 button: the same commands as the tray's switches and the hotkeys.</summary>

@@ -1702,6 +1702,8 @@ namespace TrueReplayer
             _hotstringBufferLen = 0;
             _lastTapKey = null;
             _lastTapTicks = 0;
+            // Deck (Fase 8): no key owed to a deck, and a summoned deck closes.
+            DeckForgetKeys();
         }
 
         /// <summary>The mouse's share of <see cref="Stop"/>'s reset, resolving instead of dropping.</summary>
@@ -1716,6 +1718,8 @@ namespace TrueReplayer
             _physicalMouseDowns.Clear();
             _captureSwallowedXDowns.Clear();
             // _swallowedXDowns deliberately kept — see ReinstallDeadHooks.
+            // Deck (Fase 8): a press a deck took is let go, and nothing stays owed.
+            DeckForgetMouse();
         }
 
         /// <summary>
@@ -2591,8 +2595,10 @@ namespace TrueReplayer
                     bool ourInjection = (hookStruct.flags & 0x1) != 0
                         && (hookStruct.dwExtraInfo == RemapMouseMark || hookStruct.dwExtraInfo == TecladoMark);
 
-                    // Deck (branch deck, Fase 3): a click on a deck, and its release, are not the macro's (DeckLeavesOut).
-                    if (!skipRecording && !ourInjection && !DeckLeavesOut((int)wParam, hookStruct))
+                    // Deck (branch deck, Fase 3): a click on a deck, and its release, are not the macro's (DeckLeavesOut). Asked
+                    // first, always (Fase 8): a release left out clears its press's mark whatever the other gates say.
+                    bool deckOwn = DeckLeavesOut((int)wParam, hookStruct);
+                    if (!skipRecording && !ourInjection && !deckOwn)
                         OnMouseEvent?.Invoke(button, hookStruct.pt.x, hookStruct.pt.y, isDown, scrollDelta, Environment.TickCount64);
                 }
             }

@@ -23,7 +23,15 @@ export default {
     read: 'The file could not be opened: {{reason}}',
     parse: 'The file is not valid JSON: {{reason}}',
     unknown: 'The reason is unknown.',
+    // Fase 8. missing: deck.json is gone and its last good copy holds decks; shape: valid JSON, but not a deck list;
+    // newer: written by a newer TR3 (version = its schema's number, formatted).
+    missing: 'The file is gone; these decks are its last good copy.',
+    shape: 'The file is not a list of decks.',
+    newer: 'The file was written by a newer TR3 (deck format {{version}}).',
   },
+
+  // Fase 8: deck.json could not be written (the page shows it over the decks). reason = the engine's sentence (S.Reason).
+  saveFailed: 'deck.json could not be saved: {{reason}} The decks hold until TR3 closes.',
 
   // O rótulo de um botão "TR3" sem rótulo próprio, sob o ícone, na janela do deck (DeckWindow): cabe em
   // ~50 DIP a 11 px, então curto. Os nomes de recurso ficam como são.
@@ -72,6 +80,20 @@ export default {
     // A program or a shortcut gave no icon; a picture file could not be read.
     iconFailed: 'Could not take an icon from this file.',
     imageFailed: 'Could not read this picture.',
+    // Fase 8. starting: a press before the app is up; recordFailed: Record here's macro never came (name = its name);
+    // pasteFailed: reason = the engine's sentence; frontFailed: name = the program; openElevated: the reason in
+    // openFailed when TR3 runs as administrator and the desktop's shell could not open it; foldersFull: max = 32.
+    starting: 'TR3 is still starting. Try again in a moment.',
+    recordFailed: 'Could not record here: {{name}} was not created.',
+    pasteFailed: 'Could not paste: {{reason}}',
+    frontFailed: 'Could not bring {{name}} to the front.',
+    openElevated: 'TR3 runs as administrator, and the Windows desktop could not open it for TR3.',
+    foldersFull: 'This deck already has {{max}} folders.',
+    // Fase 8. menuWaits: a deck's menu while a macro, the Clicker or a Teclado game clicks; summonMenu: a summoned deck's
+    // right button; dropOnPill: files dropped on a deck folded into its pill.
+    menuWaits: 'Menus wait while TR3 clicks.',
+    summonMenu: 'A summoned deck is edited on the Deck page.',
+    dropOnPill: 'Open the deck, then drop on a place.',
   },
 
   // Fase 6, the edit mode on screen: the button that ends it, in the deck's header (DeckWindow). Short.

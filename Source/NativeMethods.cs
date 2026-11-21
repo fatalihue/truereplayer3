@@ -470,6 +470,8 @@ namespace TrueReplayer.Interop
         public const int SW_SHOWNOACTIVATE = 4;
         public const int SW_MAXIMIZE = 3; // == SW_SHOWMAXIMIZED
         public const int SW_SHOW = 5;     // show in current size/state (un-hides without un-maximizing)
+        public const int SW_HIDE = 0;
+        public const int SW_SHOWNA = 8;   // as SW_SHOW, without activating (Deck, Fase 8: TR3 back as it was, behind the app in front)
 
         // WM_CLOSE requests a graceful window close (the app can prompt to save) — used by the
         // ActivateWindow "Close" verb. PostMessage (not SendMessage) so a hung target can't block us.

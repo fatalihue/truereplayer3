@@ -104,7 +104,8 @@ export function installDeckDemo() {
           break;
         case 'deck:save':
           config = (m.payload?.config as DeckConfig | undefined) ?? config;
-          emit({ type: 'deck:state', payload: state() });
+          // The number of the save, echoed as the engine does (Fase 8).
+          emit({ type: 'deck:state', payload: { ...state(), seq: typeof m.payload?.seq === 'number' ? m.payload.seq : undefined } });
           break;
         default:
           before?.postMessage(raw);

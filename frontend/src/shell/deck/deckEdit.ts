@@ -3,7 +3,7 @@
 // normalization is what the page ends up holding.
 import type { DeckConfig, DeckDeck, DeckTile } from '../../bridge/messageTypes';
 import { DECK_LIMITS, freeSlot, isBackSlot, newDeck, newId, slotsOf, tilesOf, type DeckView } from './deckModel';
-import { postToEngine, useDeck } from './deckStore';
+import { postToEngine, saveConfig, useDeck } from './deckStore';
 
 /** The explicit "replace the unreadable deck.json" the quarantine waits for (the page's notice). */
 export const overwriteUnreadable = () => postToEngine({ type: 'deck:overwriteUnreadable', payload: {} });
@@ -15,7 +15,7 @@ export const overwriteUnreadable = () => postToEngine({ type: 'deck:overwriteUnr
 export function commit(config: DeckConfig) {
   if (!useDeck.getState().loaded) return;
   useDeck.setState({ config });
-  postToEngine({ type: 'deck:save', payload: { config } });
+  saveConfig(config);
 }
 
 const current = () => useDeck.getState().config;
@@ -36,12 +36,29 @@ export function updateDeck(id: string, patch: Partial<DeckDeck>) {
 
 export const removeDeck = (id: string) => commit({ ...current(), decks: current().decks.filter(d => d.id !== id) });
 
-/** A new deck named `name`, after the others. Null when the Deck holds as many as it can. */
+/**
+ * A new deck named `name`, after the others. Null when the Deck holds as many as it can. Where a fixed deck
+ * already is, it lands 32 DIP further in, as the engine places an imported one (DeckService.Nudge), so the two
+ * both show (Fase 8).
+ */
 export function createDeck(name: string): DeckDeck | null {
   if (current().decks.length >= DECK_LIMITS.decks) return null;
   const deck = newDeck(name);
+  deck.place = nudged(deck.place, current().decks);
   addDeck(deck);
   return deck;
+}
+
+/** A place 32 DIP further in for each fixed deck already at it (same monitor, anchor and offset), as cascaded windows. */
+export function nudged(place: DeckDeck['place'], others: DeckDeck[]): DeckDeck['place'] {
+  const step = 32;
+  const sx = place.anchor.includes('right') ? -step : step;
+  const sy = place.anchor.startsWith('bottom') ? -step : step;
+  let p = { ...place };
+  const taken = () => others.some(o => o.mode === 'fixed' && o.place.anchor === p.anchor && (o.place.monitor ?? '') === (p.monitor ?? '')
+    && Math.abs(o.place.dx - p.dx) < step / 2 && Math.abs(o.place.dy - p.dy) < step / 2);
+  for (let i = 0; i < 12 && taken(); i++) p = { ...p, dx: p.dx + sx, dy: p.dy + sy };
+  return p;
 }
 
 /**
@@ -172,19 +189,20 @@ export function duplicateTile(deckId: string, view: DeckView, slot: number): num
 }
 
 /** Moves a button to the first free place of one of the deck's pages. False when that page has none. */
-export function moveTileToPage(deckId: string, view: DeckView, slot: number, page: number): boolean {
+export function moveTileToPage(deckId: string, view: DeckView, slot: number, page: number): number {
   const deck = deckById(deckId);
   const tile = deck && tilesOf(deck, view).find(t => t.slot === slot);
-  if (!deck || !tile || !deck.pages[page]) return false;
+  if (!deck || !tile || !deck.pages[page]) return -1;
   const target: DeckView = { kind: 'page', index: page };
-  if (view.kind === 'page' && view.index === page) return false;
+  if (view.kind === 'page' && view.index === page) return -1;
   const taken = new Set(tilesOf(deck, target).map(t => t.slot));
   let free = -1;
   for (let i = 0; i < slotsOf(deck); i++) if (!taken.has(i)) { free = i; break; }
-  if (free < 0) return false;
+  if (free < 0) return -1;
   const after = { ...deck, ...withTiles(deck, view, tilesOf(deck, view).filter(t => t.slot !== slot)) };
   updateDeck(deckId, withTiles(after, target, [...tilesOf(after, target), { ...tile, slot: free }]));
-  return true;
+  // The place it took on the other page (Fase 8): the page that shows it next selects and focuses it there.
+  return free;
 }
 
 /** The buttons past the grid's size, brought into its free places, in their order. How many came back. */

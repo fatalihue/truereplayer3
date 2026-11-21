@@ -70,7 +70,6 @@ namespace TrueReplayer.Services
         private static volatile bool _passReplay, _passTeclado, _tecladoEnabled;
         private static long _passNetUntil;
         private static bool _passApplied;
-        private static readonly ManualResetEventSlim _passReady = new(true);
         private static volatile InputHookManager.DeckHits _hits = InputHookManager.DeckHits.None;
         private static DeckWindow? _routedOver;
         private static Action<TecladoFront.State>? _onTecladoFront;
@@ -110,8 +109,11 @@ namespace TrueReplayer.Services
         /// <summary>How far the running macro is, 0 to 1 (its row over its rows).</summary>
         internal static float Progress => _progress;
 
-        /// <summary>A button was pressed and let go on it (deck id, slot, the button). Raised on the Deck thread; MainWindow runs it.</summary>
-        public static event System.Action<string, int, DeckService.Tile>? TileClicked;
+        /// <summary>
+        /// A button was pressed and let go on it (deck id, slot, the button, and a summoned deck's hotkey — its keys may still
+        /// be down, Fase 8). Raised on the Deck thread; MainWindow runs it.
+        /// </summary>
+        public static event System.Action<string, int, DeckService.Tile, string?>? TileClicked;
 
         /// <summary>Starts the thread with the theme saved at the last run (the page's comes later, through SetTheme).</summary>
         public static void Start(IReadOnlyDictionary<string, string>? savedTheme, bool animations)
@@ -139,7 +141,8 @@ namespace TrueReplayer.Services
         public static void SetTheme(IReadOnlyDictionary<string, string> hex, bool animations)
         {
             _theme = new DeckTheme(hex, animations);
-            Post(() => { foreach (var w in _windows.Values) w.Replace(); });
+            // The icons drawn in the old inks go (Fase 8: the painter's caches kept every theme's).
+            Post(() => { foreach (var w in _windows.Values) { w.ForgetPictures(); w.Replace(); } });
         }
 
         /// <summary>A deck's own show/hide hotkey: for this session.</summary>
@@ -183,6 +186,8 @@ namespace TrueReplayer.Services
                 DeckService.Changed += OnConfigChanged;
                 DeckService.MacrosChanged += OnConfigChanged;
                 _ready = true;
+                // The app goes on now (Fase 8): drawing the decks (Direct2D, DirectWrite, the emoji's font) is the thread's own.
+                started.Set();
                 SyncNow();
                 // The Teclado's game in front lets clicks through too (its keys click); its switch is a button's state.
                 _onTecladoFront = _ => OnTeclado();
@@ -191,7 +196,6 @@ namespace TrueReplayer.Services
                 TecladoService.Changed += _onTecladoService;
                 OnTeclado();
                 if (!_excludeSupported) DiagnosticLog.Warn($"Deck: Windows build {Environment.OSVersion.Version.Build} has no WDA_EXCLUDEFROMCAPTURE; the decks step aside while the engine reads the screen");
-                started.Set();
                 Drain();
                 while (DeckNative.GetMessageW(out var msg, IntPtr.Zero, 0, 0) > 0)
                 {
@@ -211,10 +215,13 @@ namespace TrueReplayer.Services
                 DeckService.MacrosChanged -= OnConfigChanged;
                 if (_onTecladoFront != null) TecladoFront.Changed -= _onTecladoFront;
                 if (_onTecladoService != null) TecladoService.Changed -= _onTecladoService;
-                // Nothing of the decks is left for the hook: no click is routed to a window that is gone.
+                // Nothing of the decks is left for the hook: no click is routed to a window that is gone, and no hotkey of
+                // theirs is taken any more (Fase 8: a summon hotkey kept swallowing its keys for a thread that was gone).
                 _hits = InputHookManager.DeckHits.None;
                 InputHookManager.SetDeckHits(_hits);
-                _passReady.Set();
+                InputHookManager.SetDeckSummons(new Dictionary<string, InputHookManager.DeckSummonKey>(StringComparer.Ordinal));
+                InputHookManager.SetDeckHotkeys(new Dictionary<string, string>(StringComparer.Ordinal));
+                PassDone(long.MaxValue);
                 if (_fgHook != IntPtr.Zero) DeckNative.UnhookWinEvent(_fgHook);
                 try { _menu?.Dispose(); } catch { }
                 _menu = null;
@@ -343,6 +350,9 @@ namespace TrueReplayer.Services
 
         private static void OnConfigChanged() => Post(SyncNow);
 
+        /// <summary>A capture overlay is open (an area, a point, a colour): Esc is its own (the hook asks, Fase 8).</summary>
+        internal static bool OverlayOpen => Volatile.Read(ref _overlays) > 0;
+
         /// <summary>The windows follow deck.json: one per fixed deck, drawn again, shown or hidden.</summary>
         private static void SyncNow()
         {
@@ -357,24 +367,31 @@ namespace TrueReplayer.Services
                 // has no hotkey to be called with, or is off.
                 if (deck.Mode != "fixed" && (deck.Mode != "summon" || deck.Hotkey == null || !deck.On)) continue;
                 keep.Add(deck.Id);
-                if (!_windows.TryGetValue(deck.Id, out var window))
+                // One deck that cannot be made or drawn does not keep the others away (Fase 8).
+                try
                 {
-                    window = new DeckWindow(deck, _owner);
-                    _windows[deck.Id] = window;
-                    _byHwnd[window.Hwnd] = window;
+                    if (!_windows.TryGetValue(deck.Id, out var window))
+                    {
+                        window = new DeckWindow(deck, _owner);
+                        _windows[deck.Id] = window;
+                        _byHwnd[window.Hwnd] = window;
+                    }
+                    // Turned on again (the page's Show): a deck hidden for now (its menu, its hotkey) shows again too.
+                    else if (!window.Deck.On && deck.On) _hidden.Remove(deck.Id);
+                    window.Update(deck, _exclude);
+                    window.SetPassthrough(_passApplied);
                 }
-                // Turned on again (the page's Show): a deck hidden for now (its menu, its hotkey) shows again too.
-                else if (!window.Deck.On && deck.On) _hidden.Remove(deck.Id);
-                window.Update(deck, _exclude);
-                window.SetPassthrough(_passApplied);
+                catch (Exception ex) { DiagnosticLog.Warn($"Deck: '{deck.Name}' could not be set up: {ex.GetType().Name}: {ex.Message}"); }
             }
-            // The summoned deck left the config, or stopped being one: it closes.
-            if (_summoned != null && !keep.Contains(_summoned)) CloseSummon("config", fromHook: false);
+            // The summoned deck left the config, or stopped being one (Fase 8: turned fixed on the page): it closes.
+            if (_summoned != null && (!keep.Contains(_summoned) || !(_windows.TryGetValue(_summoned, out var sw) && sw.IsSummonDeck)))
+                CloseSummon("config", fromHook: false);
             foreach (var id in _windows.Keys.Where(k => !keep.Contains(k)).ToList())
             {
                 var window = _windows[id];
                 if (_routedOver == window) _routedOver = null;
                 if (_editing == id) Edit(null);
+                if (_menuFrom == window) CloseMenus();
                 HideTip(window);
                 _byHwnd.Remove(window.Hwnd);
                 window.Dispose();
@@ -473,22 +490,50 @@ namespace TrueReplayer.Services
         {
             var hits = _hits;
             if (hits.Hwnds.Length == 0 || !hits.Touches(x, y)) return;
-            if (hits.Pass && _passReady.IsSet) return;
+            if (hits.Pass && Interlocked.Read(ref _passDone) >= Interlocked.Read(ref _passAsked)) return;
             Interlocked.Exchange(ref _passNetUntil, Environment.TickCount64 + 1000);
             AskPass(wait: true);
         }
 
+        // Fase 8: each ask for the passthrough has its number, and a sync answers every ask made before it began — a sync
+        // already on its way when the ask came (the 150 ms timer, the Teclado) no longer answers it early.
+        private static long _passAsked, _passDone;
+        private static readonly object _passGate = new();
+
         private static void AskPass(bool wait)
         {
             if (_thread == null || !_ready) return;
-            _passReady.Reset();
+            long ticket = Interlocked.Increment(ref _passAsked);
             Post(SyncPass);
-            if (wait && _hits.Hwnds.Length > 0 && Thread.CurrentThread != _thread && !_passReady.Wait(50))
-                DiagnosticLog.Warn("Deck: the decks did not let clicks through within 50 ms");
+            if (!wait || _hits.Hwnds.Length == 0 || Thread.CurrentThread == _thread) return;
+            long until = Environment.TickCount64 + 50;
+            lock (_passGate)
+            {
+                while (Interlocked.Read(ref _passDone) < ticket)
+                {
+                    long left = until - Environment.TickCount64;
+                    if (left <= 0 || !Monitor.Wait(_passGate, (int)left))
+                    {
+                        if (Interlocked.Read(ref _passDone) < ticket) DiagnosticLog.Warn("Deck: the decks did not let clicks through within 50 ms");
+                        break;
+                    }
+                }
+            }
+        }
+
+        private static void PassDone(long ticket)
+        {
+            lock (_passGate)
+            {
+                if (ticket > Interlocked.Read(ref _passDone)) Interlocked.Exchange(ref _passDone, ticket);
+                Monitor.PulseAll(_passGate);
+            }
         }
 
         private static void SyncPass()
         {
+            // Read first: what this sync applies answers every ask made up to here.
+            long ticket = Interlocked.Read(ref _passAsked);
             long netLeft = Interlocked.Read(ref _passNetUntil) - Environment.TickCount64;
             bool want = _passReplay || _passTeclado || netLeft > 0;
             if (want != _passApplied)
@@ -514,27 +559,29 @@ namespace TrueReplayer.Services
             }
             // A step tested on its own lets clicks through for a second: its end comes back here.
             if (want && !_passReplay && !_passTeclado) DeckNative.SetTimer(_owner, TimerPass, (uint)Math.Max(50, netLeft + 50), IntPtr.Zero);
-            _passReady.Set();
+            PassDone(ticket);
         }
 
-        /// <summary>The Teclado's switch, or the game in front, changed (the hook's thread, or a save): its passthrough and its button follow.</summary>
-        private static void OnTeclado()
+        /// <summary>
+        /// The Teclado's switch, or the game in front, changed (the hook's thread, or a save): its passthrough and its button
+        /// follow — worked out on the Deck's thread (Fase 8: the two threads that tell of it wrote the flags at once).
+        /// </summary>
+        private static void OnTeclado() => Post(TecladoNow);
+
+        private static void TecladoNow()
         {
             bool enabled = TecladoService.Current.Enabled;
             bool on = enabled && TecladoFront.Current.GameOn;
             if (on != _passTeclado)
             {
                 _passTeclado = on;
-                AskPass(wait: false);
+                SyncPass();
             }
             if (enabled != _tecladoEnabled)
             {
                 _tecladoEnabled = enabled;
-                Post(() =>
-                {
-                    _live = _live with { Teclado = _tecladoEnabled };
-                    RedrawAll();
-                });
+                _live = _live with { Teclado = enabled };
+                RedrawAll();
             }
         }
 
@@ -543,7 +590,7 @@ namespace TrueReplayer.Services
         {
             foreach (var w in _windows.Values)
             {
-                if (!w.RoutedPress) continue;
+                if (!w.RoutedPress || !w.Shown) continue;
                 w.RoutedMove(x, y);
                 return;
             }
@@ -602,9 +649,22 @@ namespace TrueReplayer.Services
                 : cursor;
             bool mouseOff = deck.Summon.KeysOnly || held;
             _summoned = deckId;
-            window.PrepareSummon(at.X, at.Y, mouseOff);
-            window.SetPassthrough(_passApplied);
-            RefreshVisibility();
+            try
+            {
+                window.PrepareSummon(at.X, at.Y, mouseOff);
+                window.SetPassthrough(_passApplied);
+                RefreshVisibility();
+            }
+            catch (Exception ex) { DiagnosticLog.Warn($"Deck: '{deck.Name}' could not be summoned: {ex.GetType().Name}: {ex.Message}"); }
+            // A deck that cannot show now (a capture overlay open, the engine reading the screen, the Deck off): the hook
+            // stops reading keys for it (Fase 8: it kept taking the digits and arrows for a deck nobody saw).
+            if (!window.Shown)
+            {
+                _summoned = null;
+                InputHookManager.DeckSummonEnded(deckId);
+                DiagnosticLog.Info($"Deck: '{deck.Name}' could not show now: not summoned");
+                return;
+            }
             DiagnosticLog.Info($"Deck: '{deck.Name}' summoned at ({at.X},{at.Y}){(mouseOff ? ", keys only" : "")}{(held ? " (the cursor is held)" : "")}");
         }
 
@@ -769,6 +829,7 @@ namespace TrueReplayer.Services
             {
                 _tip ??= new DeckTip(_owner);
                 _tipFrom = from;
+                _tipFlash = autoHideMs > 0;
                 var monitor = MonitorAt(anchor.Left + anchor.Width / 2, anchor.Top + anchor.Height / 2);
                 _tip.Show(text, anchor, monitor, _theme, _exclude);
                 DeckNative.KillTimer(_owner, TimerTip);
@@ -777,10 +838,13 @@ namespace TrueReplayer.Services
             catch (Exception ex) { DiagnosticLog.Warn($"Deck: the tip could not show: {ex.GetType().Name}: {ex.Message}"); }
         }
 
-        /// <summary>The tip goes, when it is that deck's.</summary>
-        internal static void HideTip(DeckWindow from)
+        // The tip up is a flash (it goes by itself), not a hover's.
+        private static bool _tipFlash;
+
+        /// <summary>The tip goes, when it is that deck's — a flash stays its time when <paramref name="keepFlash"/>.</summary>
+        internal static void HideTip(DeckWindow from, bool keepFlash = false)
         {
-            if (_tipFrom != from) return;
+            if (_tipFrom != from || (keepFlash && _tipFlash)) return;
             _tipFrom = null;
             DeckNative.KillTimer(_owner, TimerTip);
             _tip?.Hide();
@@ -832,7 +896,8 @@ namespace TrueReplayer.Services
         public static IDisposable ForCapture()
         {
             if (!_capturesSeeDecks || _thread == null || !_ready) return Nothing.Instance;
-            if (_hits.Hwnds.Length == 0 && !_captureHidden) return Nothing.Instance;
+            // Every window of the decks counts (Fase 8): a deck by keys only, a menu, the tip are seen by a capture too.
+            if (_shownIds.Length == 0 && _menu == null && !(_tip?.Shown ?? false) && !_captureHidden) return Nothing.Instance;
             Interlocked.Increment(ref _captures);
             var done = new ManualResetEventSlim();
             Post(() =>
@@ -841,6 +906,10 @@ namespace TrueReplayer.Services
                 if (!_captureHidden)
                 {
                     _captureHidden = true;
+                    CloseMenus();
+                    DeckNative.KillTimer(_owner, TimerTip);
+                    _tip?.Hide();
+                    _tipFrom = null;
                     RefreshVisibility();
                     Interlocked.Exchange(ref _captureHiddenAt, Environment.TickCount64);
                 }
@@ -861,15 +930,23 @@ namespace TrueReplayer.Services
         {
             try
             {
-                if (ReadForeground(hwnd))
-                {
-                    // Another app came to the front: a summoned deck was for the one it was called over.
-                    if (_summoned != null) CloseSummon("front", fromHook: false);
-                    RefreshVisibility();
-                }
+                bool changed = ReadForeground(hwnd);
+                // Another window came to the front — an app, or TR3 itself (Fase 8: a menu's item brings TR3 forward, and the
+                // digits typed there picked on the deck): a summoned deck was for the one it was called over.
+                if (_summoned != null && hwnd != IntPtr.Zero && (changed || IsOwnWindow(hwnd))) CloseSummon("front", fromHook: false);
+                if (changed) RefreshVisibility();
                 foreach (var w in _windows.Values) w.KeepOnTop();
+                // The menu and the tip over the decks again (Fase 8: the decks went over them).
+                if (_menu != null) foreach (var m in _menu.Chain()) m.Raise();
+                _tip?.Raise();
             }
             catch (Exception ex) { DiagnosticLog.Warn($"Deck: reading the window in front failed: {ex.GetType().Name}: {ex.Message}"); }
+        }
+
+        private static bool IsOwnWindow(IntPtr hwnd)
+        {
+            DeckNative.GetWindowThreadProcessId(hwnd, out uint pid);
+            return pid == _selfPid;
         }
 
         /// <summary>The process in front, for "only with these apps". The app's own windows change nothing. True when it changed.</summary>
@@ -995,11 +1072,11 @@ namespace TrueReplayer.Services
         }
 
         /// <summary>A button pressed and let go on it (DeckWindow): its last failure is over, and MainWindow runs it.</summary>
-        internal static void TileClick(string id, string where, int slot, DeckService.Tile tile)
+        internal static void TileClick(string id, string where, int slot, DeckService.Tile tile, string? held = null)
         {
             DiagnosticLog.Info($"Deck: click on '{id}' {where} slot {slot} ({tile.Action.Kind})");
             if (KeyOf(tile.Action) is { } key && _failures.Remove(key)) RedrawAll();
-            try { TileClicked?.Invoke(id, slot, tile); }
+            try { TileClicked?.Invoke(id, slot, tile, held); }
             catch (Exception ex) { DiagnosticLog.Warn($"Deck: a TileClicked handler failed: {ex.GetType().Name}: {ex.Message}"); }
         }
 
@@ -1018,7 +1095,12 @@ namespace TrueReplayer.Services
 
         private static string? _editing;
         private static DeckMenu? _menu;
+        // The deck whose menu is open (Fase 8): it stays as with the mouse on it — no fading, folding nor sliding away.
+        private static DeckWindow? _menuFrom;
         private static readonly Dictionary<IntPtr, DeckMenu> _menus = new();
+
+        /// <summary>Is this deck's menu open?</summary>
+        internal static bool HasMenu(DeckWindow w) => _menu != null && _menuFrom == w;
 
         /// <summary>The page's "Edit on screen" (deck:edit): that deck edited on screen, or none.</summary>
         public static void SetEditing(string? deckId) => Post(() => Edit(deckId));
@@ -1052,18 +1134,39 @@ namespace TrueReplayer.Services
         private static void UpdateEscape() => InputHookManager.SetDeckEscape(_editing != null || _menu != null);
 
         /// <summary>The menu of a button, or of an empty place, of a deck (its right button, or a click while edited).</summary>
-        internal static void OpenTileMenu(DeckWindow from, int slot, DeckService.Tile? tile, DeckNative.POINT at) =>
-            OpenMenu(DeckMenus.ForTile(from, slot, tile, _editing == from.Id), at);
+        internal static void OpenTileMenu(DeckWindow from, int slot, DeckService.Tile? tile, DeckNative.POINT at)
+        {
+            if (MenuRefused(from, slot)) return;
+            OpenMenu(from, DeckMenus.ForTile(from, slot, tile, _editing == from.Id), at);
+        }
 
         /// <summary>The deck's own menu (its header's right button).</summary>
-        internal static void OpenDeckMenu(DeckWindow from, DeckNative.POINT at) => OpenMenu(DeckMenus.ForDeck(from, _editing == from.Id), at);
+        internal static void OpenDeckMenu(DeckWindow from, DeckNative.POINT at)
+        {
+            if (MenuRefused(from, -1)) return;
+            OpenMenu(from, DeckMenus.ForDeck(from, _editing == from.Id), at);
+        }
 
-        private static void OpenMenu(List<DeckMenu.Item> items, DeckNative.POINT at)
+        /// <summary>
+        /// No menu, and the tip says why (Fase 8): while the engine clicks (a menu never lets clicks through, and its items
+        /// would be clicked by the macro), and on a summoned deck (edited on the Deck page; an item that brings TR3 forward
+        /// would leave it summoned over TR3, picking with the keys typed there).
+        /// </summary>
+        private static bool MenuRefused(DeckWindow from, int slot)
+        {
+            string? why = _passApplied ? S.DeckTipMenuWaits : from.IsSummonDeck ? S.DeckTipSummonMenu : null;
+            if (why == null) return false;
+            from.Flash(slot, why);
+            return true;
+        }
+
+        private static void OpenMenu(DeckWindow from, List<DeckMenu.Item> items, DeckNative.POINT at)
         {
             CloseMenus();
             try
             {
                 _menu = DeckMenu.Open(_owner, items, at, MonitorAt(at.X, at.Y), _theme, _exclude);
+                _menuFrom = from;
                 MenuOpened(_menu);
             }
             catch (Exception ex) { DiagnosticLog.Warn($"Deck: the menu could not open: {ex.GetType().Name}: {ex.Message}"); }
@@ -1086,11 +1189,15 @@ namespace TrueReplayer.Services
         {
             if (_thread != null && Thread.CurrentThread != _thread) { Post(CloseMenus); return; }
             var menu = _menu;
+            var from = _menuFrom;
             _menu = null;
+            _menuFrom = null;
             if (menu == null) return;
             menu.Dispose();
             PublishHits();
             UpdateEscape();
+            // Its deck settles as the mouse is now: still on it, or gone meanwhile.
+            from?.MenuGone();
         }
 
         /// <summary>A request of a deck's menu to the app (MainWindow, on its thread).</summary>
@@ -1134,13 +1241,35 @@ namespace TrueReplayer.Services
         /// </summary>
         internal static void DropFiles(DeckWindow w, List<string> files, int slot)
         {
+            string id = w.Id;
             string? folder = w.FolderOpen;
-            int page = Math.Max(0, w.Page), placed = 0;
+            int page = Math.Max(0, w.Page);
+            // Off the Deck's thread (Fase 8): a program's icon comes from the shell, which may take its time (a network path).
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try { DropFilesNow(id, folder, page, files, slot); }
+                catch (Exception ex) { DiagnosticLog.Warn($"Deck: a drop on '{id}' failed: {ex.GetType().Name}: {ex.Message}"); }
+            });
+        }
+
+        private static void DropFilesNow(string id, string? folder, int page, List<string> files, int slot)
+        {
+            int placed = 0;
             foreach (var file in files)
             {
+                // Room first (Fase 8): a picture kept for a button that never comes would stay in Deck\images.
+                var live = DeckService.Current.Decks.FirstOrDefault(d => d.Id == id);
+                var liveTiles = live == null ? null : DeckService.TilesAt(live, folder, page);
+                bool hereFree = live != null && liveTiles != null && slot >= 0 && slot < live.Grid.Cols * live.Grid.Rows
+                    && !(folder != null && slot == 0) && !liveTiles.Any(t => t.Slot == slot);
+                if (live == null || (!hereFree && DeckService.FreeSlot(live, folder, page, slot) < 0))
+                {
+                    Flash(id, Math.Max(0, slot), S.DeckTipNoRoom);
+                    break;
+                }
                 string? image = DeckImages.FromProgram(file);
                 int at = -1;
-                bool ok = DeckService.EditDeck(w.Id, d =>
+                bool ok = DeckService.EditDeck(id, d =>
                 {
                     var tiles = DeckService.TilesAt(d, folder, page);
                     if (tiles == null) return false;
@@ -1158,13 +1287,13 @@ namespace TrueReplayer.Services
                 });
                 if (!ok)
                 {
-                    w.Flash(Math.Max(0, slot), S.DeckTipNoRoom);
+                    Flash(id, Math.Max(0, slot), S.DeckTipNoRoom);
                     break;
                 }
                 placed++;
                 slot = at;
             }
-            DiagnosticLog.Info($"Deck: {placed} of {files.Count} file(s) dropped on '{w.Id}' became buttons");
+            DiagnosticLog.Info($"Deck: {placed} of {files.Count} file(s) dropped on '{id}' became buttons");
         }
     }
 }

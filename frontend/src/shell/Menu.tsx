@@ -210,7 +210,8 @@ function MenuList({ entries, label, place, focusFirst, onClose, onBack, panel }:
           const disabled = entry.disabled || entry.notBuilt;
           return (
             <button
-              key={entry.label}
+              // By place too: two entries may say the same (two decks of one name in "Add to a deck").
+              key={`${i}:${entry.label}`}
               type="button"
               role="menuitem"
               className="menu-item shell-menu-item"

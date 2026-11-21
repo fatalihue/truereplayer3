@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -18,7 +19,9 @@ namespace TrueReplayer.Services
     ///
     /// Reading is defensive: a file of at most 16 MB, 300 entries, deck.json of 4 MB, pictures of 2 MB each, read
     /// into memory by name — no path of the archive is ever written to disk. deck.json goes through
-    /// DeckService.Normalize, and a picture is kept only when it decodes as one (DeckImages fits it again).
+    /// DeckService.Normalize, and a picture is kept only when it decodes as one (DeckImages fits it again). Fase 8: a
+    /// picture is a PNG (what an export writes) of at most 4096 px a side, told by its header before any decoding,
+    /// and the pictures read add up to 32 MB at most.
     /// </summary>
     internal static class DeckFile
     {
@@ -26,6 +29,8 @@ namespace TrueReplayer.Services
         private const string JsonEntry = "deck.json", ImagesFolder = "images/";
         private const long MaxFileBytes = 16L * 1024 * 1024, MaxJsonBytes = 4L * 1024 * 1024, MaxImageBytes = 2L * 1024 * 1024;
         private const int MaxEntries = 300;
+        private const long MaxImagesTotalBytes = 32L * 1024 * 1024;
+        private const int MaxImageSide = 4096;
 
         /// <summary>What a file holds once read: its decks, normalized, and the pictures they name, by name.</summary>
         public sealed record Parsed(string FileName, List<DeckService.Deck> Decks, Dictionary<string, byte[]> Images);
@@ -92,24 +97,30 @@ namespace TrueReplayer.Services
                     string text = ReadCapped(reader, MaxJsonBytes);
                     raw = DeckService.FromJsonText(text);
                 }
-                if (raw == null || raw.Decks.Count == 0) { error = S.DeckFileNotDeck; return null; }
+                // "decks": null reads as a list that is not there (Fase 8: it gave a NullReferenceException's text).
+                if (raw?.Decks == null || raw.Decks.Count == 0) { error = S.DeckFileNotDeck; return null; }
                 var decks = DeckService.Normalize(raw).Decks;
                 if (decks.Count == 0) { error = S.DeckFileNotDeck; return null; }
 
                 var wanted = new HashSet<string>(decks.SelectMany(DeckService.ImagesOf), StringComparer.OrdinalIgnoreCase);
                 var images = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+                long total = 0;
                 foreach (var entry in zip.Entries)
                 {
                     if (!entry.FullName.StartsWith(ImagesFolder, StringComparison.OrdinalIgnoreCase)) continue;
                     string name = entry.FullName[ImagesFolder.Length..];
                     if (!IsPlainName(name) || !wanted.Contains(name) || images.ContainsKey(name) || entry.Length <= 0 || entry.Length > MaxImageBytes) continue;
-                    // One picture that lies about its size is left out; the deck still comes.
+                    if (total + entry.Length > MaxImagesTotalBytes) break;
+                    // One picture that lies about its size, or is not a fair PNG, is left out; the deck still comes.
                     try
                     {
                         using var s = entry.Open();
                         using var ms = new MemoryStream();
                         CopyCapped(s, ms, MaxImageBytes);
-                        images[name] = ms.ToArray();
+                        var bytes = ms.ToArray();
+                        if (!IsFairPng(bytes)) continue;
+                        images[name] = bytes;
+                        total += bytes.Length;
                     }
                     catch (InvalidDataException) { }
                 }
@@ -131,6 +142,7 @@ namespace TrueReplayer.Services
         /// <summary>A picture of the file kept in Deck\images under a name of its own (fitted again), or null when it is not a picture.</summary>
         public static string? KeepImage(byte[] bytes)
         {
+            if (!IsFairPng(bytes)) return null;
             try
             {
                 using var ms = new MemoryStream(bytes);
@@ -142,6 +154,17 @@ namespace TrueReplayer.Services
                 DiagnosticLog.Warn($"Deck: a picture of an imported deck was left out: {ex.GetType().Name}: {ex.Message}");
                 return null;
             }
+        }
+
+        /// <summary>A PNG of at most 4096 px a side, by its signature and its IHDR — nothing decoded (Fase 8).</summary>
+        internal static bool IsFairPng(byte[] b)
+        {
+            if (b.Length < 24) return false;
+            ReadOnlySpan<byte> signature = stackalloc byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+            if (!b.AsSpan(0, 8).SequenceEqual(signature) || b[12] != (byte)'I' || b[13] != (byte)'H' || b[14] != (byte)'D' || b[15] != (byte)'R') return false;
+            int w = BinaryPrimitives.ReadInt32BigEndian(b.AsSpan(16, 4));
+            int h = BinaryPrimitives.ReadInt32BigEndian(b.AsSpan(20, 4));
+            return w is > 0 and <= MaxImageSide && h is > 0 and <= MaxImageSide;
         }
 
         // A picture's name as DeckImages writes it: a file name, no folder, nothing that climbs out.

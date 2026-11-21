@@ -17,6 +17,7 @@ export default {
   refuse: {
     automations: 'Feche o diálogo aberto e abra {{>common.pages.automations}} de novo.',
     browser: 'Feche o diálogo aberto e abra {{>settings.categories.browser}} de novo.',
+    deck: 'Feche o diálogo aberto e escolha {{>engine-deck.menu.editInTr3}} no deck de novo.',
   },
 
   import: {

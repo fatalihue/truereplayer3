@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using System.Text;
 using Vortice;
@@ -99,7 +100,7 @@ namespace TrueReplayer.Services
         private ID2D1DeviceContext5? _dc5;
         private readonly Dictionary<uint, ID2D1SolidColorBrush> _brushes = new();
         private readonly Dictionary<string, ID2D1SvgDocument?> _svgs = new(StringComparer.Ordinal);
-        private readonly Dictionary<string, (ID2D1Bitmap? Bitmap, DateTime Stamp)> _images = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, (ID2D1Bitmap? Bitmap, long FailedAt)> _images = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<(string Family, float Size, bool Center, bool Trim, bool Wrap), IDWriteTextFormat> _formats = new();
         private readonly Dictionary<(string Text, IDWriteTextFormat Format), float> _widths = new();
         private readonly List<IDWriteInlineObject> _signs = new();
@@ -277,13 +278,14 @@ namespace TrueReplayer.Services
         /// <summary>A picture file fitted in a box (a capture, a chosen image). False when it cannot be read.</summary>
         public bool Image(string path, float x, float y, float w, float h)
         {
-            DateTime stamp;
-            try { stamp = File.GetLastWriteTimeUtc(path); }
-            catch { return false; }
-            if (!_images.TryGetValue(path, out var entry) || entry.Stamp != stamp)
+            // A picture of Deck\images never changes under its name (a new picture is a new file): read once, and kept until
+            // its deck stops showing it (Fase 8: the file's date was read on every frame). One that could not be read is
+            // tried again 2 s on.
+            if (!_images.TryGetValue(path, out var entry) || (entry.Bitmap == null && Environment.TickCount64 - entry.FailedAt > 2000))
             {
                 entry.Bitmap?.Dispose();
-                entry = (LoadBitmap(path), stamp);
+                var loaded = LoadBitmap(path);
+                entry = (loaded, loaded == null ? Environment.TickCount64 : 0);
                 _images[path] = entry;
             }
             var bmp = entry.Bitmap;
@@ -314,6 +316,25 @@ namespace TrueReplayer.Services
             {
                 DiagnosticLog.Warn($"Deck: the picture {Path.GetFileName(path)} could not be read: {ex.GetType().Name}: {ex.Message}");
                 return null;
+            }
+        }
+
+        /// <summary>The icons and pictures drawn so far go (a new theme draws them in its inks).</summary>
+        public void ForgetPictures()
+        {
+            foreach (var d in _svgs.Values) d?.Dispose();
+            _svgs.Clear();
+            foreach (var (b, _) in _images.Values) b?.Dispose();
+            _images.Clear();
+        }
+
+        /// <summary>The pictures kept are only those still shown (Fase 8: one replaced stayed in memory).</summary>
+        public void KeepImages(ICollection<string> paths)
+        {
+            foreach (var path in _images.Keys.Where(p => !paths.Contains(p)).ToList())
+            {
+                _images[path].Bitmap?.Dispose();
+                _images.Remove(path);
             }
         }
 
